@@ -1,0 +1,100 @@
+name: Proof kernel
+
+on:
+  push:
+    branches:
+      - main
+      - agent/**
+    paths:
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "rust-toolchain.toml"
+      - "crates/proof-kernel/**"
+      - ".github/workflows/proof-kernel.yml"
+  pull_request:
+    paths:
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "rust-toolchain.toml"
+      - "crates/proof-kernel/**"
+      - ".github/workflows/proof-kernel.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: Format, lint and test proof kernel
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy,rustfmt
+
+      - name: Cache Rust build
+        uses: Swatinem/rust-cache@v2
+
+      - name: Check formatting
+        id: formatting
+        continue-on-error: true
+        run: cargo fmt --all --check
+
+      - name: Generate rustfmt patch
+        if: steps.formatting.outcome == 'failure'
+        run: |
+          cargo fmt --all
+          git diff --binary > rustfmt.patch
+
+      - name: Upload rustfmt patch
+        if: steps.formatting.outcome == 'failure'
+        uses: actions/upload-artifact@v4
+        with:
+          name: rustfmt-patch
+          path: rustfmt.patch
+          if-no-files-found: error
+          retention-days: 1
+
+      - name: Run Clippy
+        id: clippy
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          cargo clippy --workspace --all-targets --all-features -- -D warnings 2>&1 | tee clippy.log
+
+      - name: Upload Clippy diagnostics
+        if: steps.clippy.outcome == 'failure'
+        uses: actions/upload-artifact@v4
+        with:
+          name: clippy-diagnostics
+          path: clippy.log
+          if-no-files-found: error
+          retention-days: 1
+
+      - name: Run tests
+        id: tests
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          cargo test --workspace --all-targets --all-features 2>&1 | tee tests.log
+
+      - name: Upload test diagnostics
+        if: steps.tests.outcome == 'failure'
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-diagnostics
+          path: tests.log
+          if-no-files-found: error
+          retention-days: 1
+
+      - name: Fail on validation mismatch
+        if: >-
+          steps.formatting.outcome == 'failure' ||
+          steps.clippy.outcome == 'failure' ||
+          steps.tests.outcome == 'failure'
+        run: exit 1
