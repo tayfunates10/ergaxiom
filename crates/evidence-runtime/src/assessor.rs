@@ -81,8 +81,8 @@ pub fn assess_bundle(
     bundle_value: &Value,
     verified_assurance_level: AssuranceLevel,
 ) -> Result<BundleAssessment, EvidenceBundleError> {
-    let bundle: EvidenceBundle = serde_json::from_value(bundle_value.clone())
-        .map_err(EvidenceBundleError::BundleDecode)?;
+    let bundle: EvidenceBundle =
+        serde_json::from_value(bundle_value.clone()).map_err(EvidenceBundleError::BundleDecode)?;
 
     if bundle.schema_version != SUPPORTED_EVIDENCE_SCHEMA {
         return Err(EvidenceBundleError::UnsupportedSchemaVersion {
