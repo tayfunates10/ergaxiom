@@ -1,0 +1,222 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ergaxiom.dev/schemas/evidence-bundle.schema.json",
+  "title": "Ergaxiom Evidence Bundle",
+  "description": "A sealed record proving which declared claims passed, failed or remained unknown for one execution run.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "bundle_id",
+    "run_id",
+    "created_at",
+    "bindings",
+    "environment",
+    "artifacts",
+    "trace",
+    "proof_results",
+    "decision"
+  ],
+  "properties": {
+    "schema_version": {"const": "0.1.0"},
+    "bundle_id": {"type": "string", "minLength": 1},
+    "run_id": {"type": "string", "minLength": 1},
+    "created_at": {"type": "string", "format": "date-time"},
+    "bindings": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["contract", "profession_capsule", "operator_plan"],
+      "properties": {
+        "contract": {"$ref": "#/$defs/digestReference"},
+        "profession_capsule": {"$ref": "#/$defs/digestReference"},
+        "operator_plan": {"$ref": "#/$defs/digestReference"},
+        "policy_snapshot": {"$ref": "#/$defs/digestReference"}
+      }
+    },
+    "environment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["os", "kernel_version", "applications", "clock_source"],
+      "properties": {
+        "os": {"type": "string"},
+        "kernel_version": {"type": "string"},
+        "applications": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["id", "version", "digest"],
+            "properties": {
+              "id": {"type": "string"},
+              "version": {"type": "string"},
+              "digest": {"type": "string"}
+            }
+          }
+        },
+        "clock_source": {"type": "string"},
+        "sandbox_id": {"type": ["string", "null"]}
+      }
+    },
+    "artifacts": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/artifactEvidence"}
+    },
+    "trace": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["events", "conforms_to_plan"],
+      "properties": {
+        "events": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/traceEvent"}
+        },
+        "conforms_to_plan": {"type": "boolean"},
+        "deviations": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["event_id", "reason", "authorization"],
+            "properties": {
+              "event_id": {"type": "string"},
+              "reason": {"type": "string"},
+              "authorization": {"type": ["string", "null"]}
+            }
+          }
+        }
+      }
+    },
+    "proof_results": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/proofResult"}
+    },
+    "validator_conflicts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["claim_id", "validator_ids", "resolution_status"],
+        "properties": {
+          "claim_id": {"type": "string"},
+          "validator_ids": {
+            "type": "array",
+            "minItems": 2,
+            "items": {"type": "string"}
+          },
+          "resolution_status": {
+            "enum": ["unresolved", "resolved"]
+          },
+          "resolution_evidence": {"type": ["string", "null"]}
+        }
+      }
+    },
+    "decision": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "assurance_level",
+        "mandatory_passed",
+        "mandatory_failed",
+        "mandatory_unknown",
+        "reason"
+      ],
+      "properties": {
+        "status": {
+          "enum": ["ACCEPTED", "REJECTED", "UNRESOLVED"]
+        },
+        "assurance_level": {
+          "enum": ["E0", "E1", "E2", "E3", "E4", "E5"]
+        },
+        "mandatory_passed": {"type": "integer", "minimum": 0},
+        "mandatory_failed": {"type": "integer", "minimum": 0},
+        "mandatory_unknown": {"type": "integer", "minimum": 0},
+        "reason": {"type": "string", "minLength": 1},
+        "sealed_at": {"type": ["string", "null"], "format": "date-time"},
+        "signature": {"type": ["string", "null"]}
+      }
+    }
+  },
+  "$defs": {
+    "digestReference": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "algorithm", "digest"],
+      "properties": {
+        "id": {"type": "string", "minLength": 1},
+        "algorithm": {"enum": ["sha256", "sha512"]},
+        "digest": {"type": "string", "minLength": 1},
+        "uri": {"type": ["string", "null"]}
+      }
+    },
+    "artifactEvidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["artifact_id", "role", "uri", "algorithm", "digest", "size_bytes"],
+      "properties": {
+        "artifact_id": {"type": "string"},
+        "role": {"enum": ["input", "intermediate", "output", "evidence"]},
+        "uri": {"type": "string"},
+        "media_type": {"type": ["string", "null"]},
+        "algorithm": {"enum": ["sha256", "sha512"]},
+        "digest": {"type": "string"},
+        "size_bytes": {"type": "integer", "minimum": 0}
+      }
+    },
+    "traceEvent": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["event_id", "sequence", "timestamp", "operator_id", "status", "input_digests", "output_digests"],
+      "properties": {
+        "event_id": {"type": "string"},
+        "sequence": {"type": "integer", "minimum": 0},
+        "timestamp": {"type": "string", "format": "date-time"},
+        "operator_id": {"type": "string"},
+        "status": {"enum": ["STARTED", "SUCCEEDED", "FAILED", "ROLLED_BACK", "SKIPPED"]},
+        "input_digests": {
+          "type": "array",
+          "items": {"type": "string"}
+        },
+        "output_digests": {
+          "type": "array",
+          "items": {"type": "string"}
+        },
+        "capability_token_id": {"type": ["string", "null"]},
+        "details": {"type": "object", "additionalProperties": true}
+      }
+    },
+    "proofResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "obligation_id",
+        "claim_id",
+        "validator_id",
+        "validator_version",
+        "independence_class",
+        "status",
+        "mandatory",
+        "observed",
+        "evidence_artifact_ids"
+      ],
+      "properties": {
+        "obligation_id": {"type": "string"},
+        "claim_id": {"type": "string"},
+        "validator_id": {"type": "string"},
+        "validator_version": {"type": "string"},
+        "independence_class": {"enum": ["executor", "independent", "diverse"]},
+        "status": {"enum": ["PASSED", "FAILED", "UNKNOWN"]},
+        "mandatory": {"type": "boolean"},
+        "observed": {},
+        "expected": {},
+        "unit": {"type": ["string", "null"]},
+        "tolerance": {"type": ["number", "null"]},
+        "evidence_artifact_ids": {
+          "type": "array",
+          "items": {"type": "string"}
+        },
+        "evaluated_at": {"type": "string", "format": "date-time"}
+      }
+    }
+  }
+}

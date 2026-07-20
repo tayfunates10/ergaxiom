@@ -1,0 +1,292 @@
+{
+  "schema_version": "0.1.0",
+  "contract_id": "example.social-post.0001",
+  "created_at": "2026-07-20T20:00:00Z",
+  "request": {
+    "original_text": "Create a professional Instagram portrait post using the approved brand assets and supplied campaign copy.",
+    "language": "en",
+    "requester_id": "example-user"
+  },
+  "profession": {
+    "capsule_id": "ergaxiom.profession.graphic-designer",
+    "capsule_version": "0.1.0",
+    "specialization": "social_media_design"
+  },
+  "job_type": "social_media_static_post",
+  "environment": {
+    "os": "windows",
+    "applications": [
+      {
+        "application_id": "design-editor",
+        "required_version": null
+      }
+    ],
+    "network_mode": "denied"
+  },
+  "inputs": [
+    {
+      "id": "approved_logo",
+      "kind": "approved_logo",
+      "uri": "contract://inputs/approved-logo.svg",
+      "integrity": {
+        "algorithm": "sha256",
+        "digest": "0000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "media_type": "image/svg+xml",
+      "immutable": true
+    },
+    {
+      "id": "brand_profile",
+      "kind": "brand_profile",
+      "uri": "contract://inputs/brand-profile.json",
+      "integrity": {
+        "algorithm": "sha256",
+        "digest": "1111111111111111111111111111111111111111111111111111111111111111"
+      },
+      "media_type": "application/json",
+      "immutable": true
+    },
+    {
+      "id": "approved_copy",
+      "kind": "approved_copy",
+      "uri": "contract://inputs/copy.txt",
+      "integrity": {
+        "algorithm": "sha256",
+        "digest": "2222222222222222222222222222222222222222222222222222222222222222"
+      },
+      "media_type": "text/plain",
+      "immutable": true
+    }
+  ],
+  "outputs": [
+    {
+      "id": "editable_master",
+      "kind": "editable_master",
+      "destination": "contract://outputs/master.design",
+      "media_type": "application/x-ergaxiom-design-document",
+      "required": true
+    },
+    {
+      "id": "delivery_raster",
+      "kind": "delivery_raster",
+      "destination": "contract://outputs/social-post.png",
+      "media_type": "image/png",
+      "required": true
+    },
+    {
+      "id": "evidence_bundle",
+      "kind": "evidence_bundle",
+      "destination": "contract://outputs/evidence.json",
+      "media_type": "application/json",
+      "required": true
+    }
+  ],
+  "requirements": {
+    "hard": [
+      {
+        "id": "canvas_width",
+        "claim": "The exported raster width is exactly 1080 pixels.",
+        "subject": "delivery_raster.width",
+        "operator": "eq",
+        "expected": 1080,
+        "unit": "px",
+        "tolerance": 0,
+        "mandatory": true,
+        "source": "platform_profile.instagram_portrait"
+      },
+      {
+        "id": "canvas_height",
+        "claim": "The exported raster height is exactly 1350 pixels.",
+        "subject": "delivery_raster.height",
+        "operator": "eq",
+        "expected": 1350,
+        "unit": "px",
+        "tolerance": 0,
+        "mandatory": true,
+        "source": "platform_profile.instagram_portrait"
+      },
+      {
+        "id": "color_profile",
+        "claim": "The delivery raster contains the approved sRGB profile.",
+        "subject": "delivery_raster.icc_profile",
+        "operator": "eq",
+        "expected": "sRGB IEC61966-2.1",
+        "unit": null,
+        "tolerance": null,
+        "mandatory": true,
+        "source": "brand_profile"
+      },
+      {
+        "id": "logo_aspect_ratio",
+        "claim": "The placed logo preserves the source aspect ratio.",
+        "subject": "editable_master.logo.aspect_ratio_delta",
+        "operator": "lte",
+        "expected": 0,
+        "unit": "ratio_delta",
+        "tolerance": 0,
+        "mandatory": true,
+        "source": "approved_logo"
+      },
+      {
+        "id": "logo_clear_space",
+        "claim": "The logo clear space is at least the brand-profile minimum.",
+        "subject": "editable_master.logo.minimum_clear_space",
+        "operator": "gte",
+        "expected": 48,
+        "unit": "px",
+        "tolerance": 0,
+        "mandatory": true,
+        "source": "brand_profile"
+      },
+      {
+        "id": "text_within_safe_area",
+        "claim": "All rendered text bounds are contained by the safe-area polygon.",
+        "subject": "editable_master.text.safe_area_violations",
+        "operator": "eq",
+        "expected": 0,
+        "unit": "count",
+        "tolerance": 0,
+        "mandatory": true,
+        "source": "platform_profile.instagram_portrait"
+      },
+      {
+        "id": "minimum_text_contrast",
+        "claim": "Every declared text region has a contrast ratio of at least 4.5 to 1.",
+        "subject": "delivery_raster.text.minimum_contrast_ratio",
+        "operator": "gte",
+        "expected": 4.5,
+        "unit": "ratio",
+        "tolerance": 0,
+        "mandatory": true,
+        "source": "profession_standard.wcag-contrast"
+      },
+      {
+        "id": "export_media_type",
+        "claim": "The delivery artifact is a valid PNG image.",
+        "subject": "delivery_raster.media_type",
+        "operator": "eq",
+        "expected": "image/png",
+        "unit": null,
+        "tolerance": null,
+        "mandatory": true,
+        "source": "work_contract"
+      }
+    ],
+    "preferences": [
+      {
+        "id": "visual_tone",
+        "description": "Prefer a modern, strong and uncluttered composition consistent with the approved reference set.",
+        "weight": 1,
+        "evaluation_mode": "reference_set"
+      }
+    ],
+    "unknowns": []
+  },
+  "permissions": [
+    {
+      "capability": "filesystem",
+      "resource": "contract://inputs/*",
+      "access": "read",
+      "constraints": {
+        "immutable": true
+      }
+    },
+    {
+      "capability": "filesystem",
+      "resource": "contract://outputs/*",
+      "access": "write",
+      "constraints": {
+        "overwrite": false
+      }
+    },
+    {
+      "capability": "design-editor",
+      "resource": "isolated-workspace",
+      "access": "control",
+      "constraints": {
+        "network": false
+      }
+    }
+  ],
+  "proof_obligations": [
+    {
+      "id": "proof.canvas_width",
+      "constraint_id": "canvas_width",
+      "validator_id": "raster.dimensions",
+      "mandatory": true,
+      "independence_class": "independent",
+      "evidence_types": ["decoded_image_metadata", "measurement_record"]
+    },
+    {
+      "id": "proof.canvas_height",
+      "constraint_id": "canvas_height",
+      "validator_id": "raster.dimensions",
+      "mandatory": true,
+      "independence_class": "independent",
+      "evidence_types": ["decoded_image_metadata", "measurement_record"]
+    },
+    {
+      "id": "proof.color_profile",
+      "constraint_id": "color_profile",
+      "validator_id": "raster.icc_profile",
+      "mandatory": true,
+      "independence_class": "independent",
+      "evidence_types": ["embedded_profile_digest", "decoded_image_metadata"]
+    },
+    {
+      "id": "proof.logo_aspect_ratio",
+      "constraint_id": "logo_aspect_ratio",
+      "validator_id": "document.logo_geometry",
+      "mandatory": true,
+      "independence_class": "independent",
+      "evidence_types": ["document_geometry_snapshot", "measurement_record"]
+    },
+    {
+      "id": "proof.logo_clear_space",
+      "constraint_id": "logo_clear_space",
+      "validator_id": "document.logo_geometry",
+      "mandatory": true,
+      "independence_class": "independent",
+      "evidence_types": ["document_geometry_snapshot", "measurement_record"]
+    },
+    {
+      "id": "proof.text_within_safe_area",
+      "constraint_id": "text_within_safe_area",
+      "validator_id": "document.text_bounds",
+      "mandatory": true,
+      "independence_class": "independent",
+      "evidence_types": ["text_bounds_snapshot", "safe_area_geometry", "measurement_record"]
+    },
+    {
+      "id": "proof.minimum_text_contrast",
+      "constraint_id": "minimum_text_contrast",
+      "validator_id": "raster.text_contrast",
+      "mandatory": true,
+      "independence_class": "diverse",
+      "evidence_types": ["contrast_measurements", "sample_coordinates", "render_digest"]
+    },
+    {
+      "id": "proof.export_media_type",
+      "constraint_id": "export_media_type",
+      "validator_id": "raster.media_type",
+      "mandatory": true,
+      "independence_class": "independent",
+      "evidence_types": ["magic_bytes", "decoded_image_metadata"]
+    }
+  ],
+  "approval_policy": {
+    "require_pre_execution_approval": false,
+    "require_irreversible_action_approval": true,
+    "approval_ttl_seconds": 300
+  },
+  "acceptance": {
+    "minimum_assurance_level": "E3",
+    "unknowns_must_be_empty": true,
+    "all_mandatory_proofs_must_pass": true,
+    "validator_conflicts_allowed": false
+  },
+  "metadata": {
+    "example": true,
+    "note": "Digest values are placeholders for schema and workflow demonstrations."
+  }
+}

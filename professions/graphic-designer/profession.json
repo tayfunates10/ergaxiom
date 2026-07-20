@@ -1,0 +1,288 @@
+{
+  "schema_version": "0.1.0",
+  "capsule_id": "ergaxiom.profession.graphic-designer",
+  "version": "0.1.0",
+  "profession": {
+    "name": "graphic_designer",
+    "display_name": "Graphic Designer",
+    "description": "Produces digital and print-ready visual artifacts under explicit technical, brand and delivery constraints.",
+    "specializations": [
+      "social_media_design",
+      "brand_compliance",
+      "image_editing",
+      "print_preflight",
+      "vector_artwork"
+    ]
+  },
+  "standards": [
+    {
+      "id": "wcag-contrast",
+      "name": "WCAG text contrast requirements",
+      "version": "2.2",
+      "required_for": ["social_media_static_post"],
+      "reference": null
+    },
+    {
+      "id": "icc-color-management",
+      "name": "ICC color profile handling",
+      "version": "capsule-defined",
+      "required_for": ["social_media_static_post"],
+      "reference": null
+    }
+  ],
+  "job_types": [
+    {
+      "id": "social_media_static_post",
+      "description": "Create one static social-media artwork from approved brand assets and supplied copy.",
+      "specialization": "social_media_design",
+      "required_inputs": [
+        "approved_logo",
+        "brand_profile",
+        "approved_copy"
+      ],
+      "required_outputs": [
+        "editable_master",
+        "delivery_raster",
+        "evidence_bundle"
+      ],
+      "required_constraints": [
+        "canvas_width",
+        "canvas_height",
+        "color_profile",
+        "logo_aspect_ratio",
+        "logo_clear_space",
+        "text_within_safe_area",
+        "minimum_text_contrast",
+        "export_media_type"
+      ],
+      "operator_ids": [
+        "design.create_canvas",
+        "design.place_asset",
+        "design.compose_text",
+        "design.export_raster"
+      ],
+      "minimum_assurance_level": "E3"
+    }
+  ],
+  "operators": [
+    {
+      "id": "design.create_canvas",
+      "version": "0.1.0",
+      "description": "Create a new document with an explicit canvas, unit and color profile.",
+      "input_types": ["canvas_specification"],
+      "output_types": ["editable_document"],
+      "preconditions": [
+        "canvas_dimensions_are_positive",
+        "color_profile_is_supported"
+      ],
+      "postconditions": [
+        "document_exists",
+        "document_dimensions_match_contract",
+        "document_color_profile_matches_contract"
+      ],
+      "permissions": [
+        "application.control:design_editor",
+        "filesystem.write:workspace"
+      ],
+      "execution_methods": [
+        "document_model",
+        "application_api",
+        "signed_plugin"
+      ],
+      "deterministic": true,
+      "randomness_seed_required": false,
+      "rollback": {
+        "supported": true,
+        "strategy": "discard isolated document"
+      }
+    },
+    {
+      "id": "design.place_asset",
+      "version": "0.1.0",
+      "description": "Place an immutable approved asset while preserving declared geometric invariants.",
+      "input_types": ["editable_document", "approved_asset", "placement_specification"],
+      "output_types": ["editable_document"],
+      "preconditions": [
+        "asset_hash_matches_contract",
+        "asset_is_decodable",
+        "placement_is_within_canvas"
+      ],
+      "postconditions": [
+        "asset_layer_exists",
+        "asset_aspect_ratio_is_preserved",
+        "asset_clear_space_is_satisfied"
+      ],
+      "permissions": [
+        "filesystem.read:contract_inputs",
+        "application.control:design_editor"
+      ],
+      "execution_methods": [
+        "document_model",
+        "application_api",
+        "signed_plugin"
+      ],
+      "deterministic": true,
+      "randomness_seed_required": false,
+      "rollback": {
+        "supported": true,
+        "strategy": "remove inserted layer"
+      }
+    },
+    {
+      "id": "design.compose_text",
+      "version": "0.1.0",
+      "description": "Create text layers from approved copy and explicit typography constraints.",
+      "input_types": ["editable_document", "approved_copy", "typography_specification"],
+      "output_types": ["editable_document"],
+      "preconditions": [
+        "copy_is_approved",
+        "font_is_available_and_permitted",
+        "safe_area_is_defined"
+      ],
+      "postconditions": [
+        "text_matches_approved_copy",
+        "text_is_inside_safe_area",
+        "text_has_no_overflow"
+      ],
+      "permissions": [
+        "application.control:design_editor",
+        "filesystem.read:approved_fonts"
+      ],
+      "execution_methods": [
+        "document_model",
+        "application_api",
+        "signed_plugin"
+      ],
+      "deterministic": true,
+      "randomness_seed_required": false,
+      "rollback": {
+        "supported": true,
+        "strategy": "restore document checkpoint"
+      }
+    },
+    {
+      "id": "design.export_raster",
+      "version": "0.1.0",
+      "description": "Export a delivery raster using explicit dimensions, media type and color-profile requirements.",
+      "input_types": ["editable_document", "export_specification"],
+      "output_types": ["delivery_raster"],
+      "preconditions": [
+        "document_is_saved_to_isolated_workspace",
+        "export_destination_is_authorized"
+      ],
+      "postconditions": [
+        "output_exists",
+        "output_is_decodable",
+        "output_dimensions_match_contract",
+        "output_media_type_matches_contract"
+      ],
+      "permissions": [
+        "application.control:design_editor",
+        "filesystem.write:declared_output"
+      ],
+      "execution_methods": [
+        "application_api",
+        "signed_plugin",
+        "cli"
+      ],
+      "deterministic": true,
+      "randomness_seed_required": false,
+      "rollback": {
+        "supported": true,
+        "strategy": "delete unaccepted output from isolated workspace"
+      }
+    }
+  ],
+  "validators": [
+    {
+      "id": "raster.dimensions",
+      "version": "0.1.0",
+      "claims": ["canvas_width", "canvas_height"],
+      "independence_class": "independent",
+      "evidence_types": ["decoded_image_metadata", "measurement_record"],
+      "deterministic": true,
+      "implementation": {
+        "strategy": "decode exported artifact independently of design application"
+      }
+    },
+    {
+      "id": "raster.media_type",
+      "version": "0.1.0",
+      "claims": ["export_media_type"],
+      "independence_class": "independent",
+      "evidence_types": ["magic_bytes", "decoded_image_metadata"],
+      "deterministic": true,
+      "implementation": {
+        "strategy": "inspect file signature and decoder result"
+      }
+    },
+    {
+      "id": "document.logo_geometry",
+      "version": "0.1.0",
+      "claims": ["logo_aspect_ratio", "logo_clear_space"],
+      "independence_class": "independent",
+      "evidence_types": ["document_geometry_snapshot", "measurement_record"],
+      "deterministic": true,
+      "implementation": {
+        "strategy": "compare source asset bounds with placed layer transform and neighboring bounds"
+      }
+    },
+    {
+      "id": "document.text_bounds",
+      "version": "0.1.0",
+      "claims": ["text_within_safe_area"],
+      "independence_class": "independent",
+      "evidence_types": ["text_bounds_snapshot", "safe_area_geometry", "measurement_record"],
+      "deterministic": true,
+      "implementation": {
+        "strategy": "evaluate every rendered text bound against the declared safe-area polygon"
+      }
+    },
+    {
+      "id": "raster.text_contrast",
+      "version": "0.1.0",
+      "claims": ["minimum_text_contrast"],
+      "independence_class": "diverse",
+      "evidence_types": ["contrast_measurements", "sample_coordinates", "render_digest"],
+      "deterministic": true,
+      "implementation": {
+        "strategy": "measure declared text foreground and effective background luminance"
+      }
+    },
+    {
+      "id": "raster.icc_profile",
+      "version": "0.1.0",
+      "claims": ["color_profile"],
+      "independence_class": "independent",
+      "evidence_types": ["embedded_profile_digest", "decoded_image_metadata"],
+      "deterministic": true,
+      "implementation": {
+        "strategy": "extract and identify embedded ICC profile"
+      }
+    }
+  ],
+  "policies": {
+    "default_network": "denied",
+    "unknown_handling": "request_resolution",
+    "self_verification_allowed": false,
+    "irreversible_actions_require_approval": true,
+    "minimum_assurance_by_job_type": {
+      "social_media_static_post": "E3"
+    }
+  },
+  "training": {
+    "live_learning_allowed": false,
+    "certification_suite": "evals/graphic-designer",
+    "minimum_pass_rate": 1.0,
+    "required_zero_failure_tests": [
+      "does_not_distort_logo",
+      "does_not_modify_approved_copy",
+      "does_not_accept_unknown_mandatory_constraint",
+      "does_not_overwrite_source_asset"
+    ]
+  },
+  "metadata": {
+    "status": "draft",
+    "owner": "Ergaxiom core team"
+  }
+}
