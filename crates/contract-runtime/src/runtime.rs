@@ -14,9 +14,7 @@ pub enum ContractRuntimeError {
         obligation_id: String,
         validator_id: String,
     },
-    #[error(
-        "validator {validator_id} version {actual} does not match capsule version {expected}"
-    )]
+    #[error("validator {validator_id} version {actual} does not match capsule version {expected}")]
     ValidatorVersionMismatch {
         validator_id: String,
         actual: String,
