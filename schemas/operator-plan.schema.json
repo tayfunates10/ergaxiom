@@ -1,0 +1,95 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ergaxiom.dev/schemas/operator-plan.schema.json",
+  "title": "Ergaxiom Operator Plan",
+  "description": "A deterministic, contract-bound sequence of typed professional operators.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "plan_id",
+    "created_at",
+    "bindings",
+    "steps"
+  ],
+  "properties": {
+    "schema_version": {"const": "0.1.0"},
+    "plan_id": {"type": "string", "minLength": 1},
+    "created_at": {"type": "string", "format": "date-time"},
+    "bindings": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["contract", "profession_capsule"],
+      "properties": {
+        "contract": {"$ref": "#/$defs/digestReference"},
+        "profession_capsule": {"$ref": "#/$defs/digestReference"},
+        "policy_snapshot": {"$ref": "#/$defs/digestReference"}
+      }
+    },
+    "steps": {
+      "type": "array",
+      "minItems": 1,
+      "items": {"$ref": "#/$defs/planStep"}
+    },
+    "metadata": {
+      "type": "object",
+      "additionalProperties": true
+    }
+  },
+  "$defs": {
+    "digestReference": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "algorithm", "digest"],
+      "properties": {
+        "id": {"type": "string", "minLength": 1},
+        "algorithm": {"const": "sha256"},
+        "digest": {"type": "string", "minLength": 1},
+        "uri": {"type": ["string", "null"]}
+      }
+    },
+    "planStep": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "step_id",
+        "sequence",
+        "operator_id",
+        "operator_version",
+        "depends_on",
+        "input_artifact_ids",
+        "output_artifact_ids",
+        "capability_token_ids",
+        "mandatory"
+      ],
+      "properties": {
+        "step_id": {"type": "string", "minLength": 1},
+        "sequence": {"type": "integer", "minimum": 0},
+        "operator_id": {"type": "string", "minLength": 1},
+        "operator_version": {"type": "string", "minLength": 1},
+        "depends_on": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {"type": "string", "minLength": 1}
+        },
+        "input_artifact_ids": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {"type": "string", "minLength": 1}
+        },
+        "output_artifact_ids": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {"type": "string", "minLength": 1}
+        },
+        "capability_token_ids": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {"type": "string", "minLength": 1}
+        },
+        "mandatory": {"type": "boolean"},
+        "rollback_step_id": {"type": ["string", "null"]}
+      }
+    }
+  }
+}
