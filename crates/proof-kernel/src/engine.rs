@@ -236,9 +236,7 @@ fn validate_policy(policy: AcceptancePolicy) -> Result<(), KernelError> {
         ));
     }
     if !policy.all_mandatory_proofs_must_pass {
-        return Err(KernelError::UnsafePolicy(
-            "all mandatory proofs must pass",
-        ));
+        return Err(KernelError::UnsafePolicy("all mandatory proofs must pass"));
     }
     if policy.validator_conflicts_allowed {
         return Err(KernelError::UnsafePolicy(
@@ -301,17 +299,19 @@ fn state_for(accumulator: &ObligationAccumulator) -> ObligationState {
             evidence.result == TruthValue::True
                 && evidence.independence >= IndependenceClass::Independent
         }),
-        IndependenceClass::Diverse => accumulator
-            .evidence
-            .iter()
-            .filter(|evidence| {
-                evidence.result == TruthValue::True
-                    && evidence.independence >= IndependenceClass::Independent
-            })
-            .map(|evidence| evidence.validator_id.as_str())
-            .collect::<BTreeSet<_>>()
-            .len()
-            >= 2,
+        IndependenceClass::Diverse => {
+            accumulator
+                .evidence
+                .iter()
+                .filter(|evidence| {
+                    evidence.result == TruthValue::True
+                        && evidence.independence >= IndependenceClass::Independent
+                })
+                .map(|evidence| evidence.validator_id.as_str())
+                .collect::<BTreeSet<_>>()
+                .len()
+                >= 2
+        }
     };
 
     if satisfied {
