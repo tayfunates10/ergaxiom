@@ -83,15 +83,25 @@ pub enum DecisionStatus {
 #[serde(tag = "code", rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum DecisionReason {
     NoMandatoryObligations,
-    UnresolvedUnknowns { count: usize },
+    UnresolvedUnknowns {
+        count: usize,
+    },
     AssuranceBelowMinimum {
         actual: AssuranceLevel,
         required: AssuranceLevel,
     },
-    MandatoryProofPending { obligation_id: String },
-    MandatoryProofIndeterminate { obligation_id: String },
-    MandatoryProofFailed { obligation_id: String },
-    MandatoryProofInvalidated { obligation_id: String },
+    MandatoryProofPending {
+        obligation_id: String,
+    },
+    MandatoryProofIndeterminate {
+        obligation_id: String,
+    },
+    MandatoryProofFailed {
+        obligation_id: String,
+    },
+    MandatoryProofInvalidated {
+        obligation_id: String,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
