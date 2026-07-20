@@ -423,7 +423,8 @@ fn detects_a_forged_trace_conformance_claim() -> Result<(), Box<dyn Error>> {
 }
 
 #[test]
-fn nonconforming_trace_blocks_the_bundle_even_when_claimed_honestly() -> Result<(), Box<dyn Error>> {
+fn nonconforming_trace_blocks_the_bundle_even_when_claimed_honestly() -> Result<(), Box<dyn Error>>
+{
     let context = context()?;
     let mut evidence_bundle = bundle(&context);
     evidence_bundle["trace"]["events"]
