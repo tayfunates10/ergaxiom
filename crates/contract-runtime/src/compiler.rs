@@ -143,12 +143,12 @@ pub fn compile_contract(
     let mut mandatory_obligation_count = 0_usize;
 
     for obligation in obligations.values() {
-        let constraint = constraints.get(obligation.constraint_id.as_str()).ok_or_else(|| {
-            ContractCompileError::UnknownConstraint {
+        let constraint = constraints
+            .get(obligation.constraint_id.as_str())
+            .ok_or_else(|| ContractCompileError::UnknownConstraint {
                 obligation_id: obligation.id.clone(),
                 constraint_id: obligation.constraint_id.clone(),
-            }
-        })?;
+            })?;
 
         let bindings = validate_obligation(obligation, &validators)?;
         validator_bindings.insert(obligation.id.clone(), bindings);
@@ -198,9 +198,7 @@ pub fn compile_contract(
         .requirements
         .unknowns
         .iter()
-        .filter(|unknown| {
-            unknown.mandatory && unknown.resolution == UnknownResolution::Unresolved
-        })
+        .filter(|unknown| unknown.mandatory && unknown.resolution == UnknownResolution::Unresolved)
         .count();
 
     proof_requirements.sort_by(|left, right| left.obligation_id.cmp(&right.obligation_id));
@@ -216,9 +214,7 @@ pub fn compile_contract(
         policy: AcceptancePolicy {
             minimum_assurance_level: contract_minimum,
             unknowns_must_be_empty: contract.acceptance.unknowns_must_be_empty,
-            all_mandatory_proofs_must_pass: contract
-                .acceptance
-                .all_mandatory_proofs_must_pass,
+            all_mandatory_proofs_must_pass: contract.acceptance.all_mandatory_proofs_must_pass,
             validator_conflicts_allowed: contract.acceptance.validator_conflicts_allowed,
         },
         minimum_assurance_level: contract_minimum,
@@ -335,7 +331,11 @@ fn validate_obligation(
             }
         })?;
 
-        if !validator.claims.iter().any(|claim| claim == &obligation.constraint_id) {
+        if !validator
+            .claims
+            .iter()
+            .any(|claim| claim == &obligation.constraint_id)
+        {
             return Err(ContractCompileError::ValidatorClaimMismatch {
                 validator_id: validator_id.clone(),
                 constraint_id: obligation.constraint_id.clone(),
