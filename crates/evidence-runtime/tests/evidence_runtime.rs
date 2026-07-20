@@ -108,7 +108,11 @@ fn bundle(compiled: &CompiledContract) -> Value {
         let artifact_id = proof["evidence_artifact_ids"][0]
             .as_str()
             .unwrap_or("invalid-evidence-artifact");
-        artifacts.push(artifact(artifact_id, "evidence", &format!("digest-{artifact_id}")));
+        artifacts.push(artifact(
+            artifact_id,
+            "evidence",
+            &format!("digest-{artifact_id}"),
+        ));
     }
 
     json!({
