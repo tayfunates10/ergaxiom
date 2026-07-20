@@ -1,9 +1,9 @@
 use std::error::Error;
 
 use ergaxiom_proof_kernel::{
-    AcceptancePolicy, AssuranceLevel, ContractSeal, DecisionReason, DecisionStatus,
-    EvidenceRecord, IndependenceClass, KernelError, ObligationState, ProofKernel,
-    ProofObligationRequirement, TruthValue, canonical_json_sha256,
+    AcceptancePolicy, AssuranceLevel, ContractSeal, DecisionReason, DecisionStatus, EvidenceRecord,
+    IndependenceClass, KernelError, ObligationState, ProofKernel, ProofObligationRequirement,
+    TruthValue, canonical_json_sha256,
 };
 use serde_json::json;
 
@@ -55,10 +55,7 @@ fn strong_kleene_truth_tables_preserve_unknown() {
         TruthValue::False.and(TruthValue::Unknown),
         TruthValue::False
     );
-    assert_eq!(
-        TruthValue::True.or(TruthValue::Unknown),
-        TruthValue::True
-    );
+    assert_eq!(TruthValue::True.or(TruthValue::Unknown), TruthValue::True);
     assert_eq!(
         TruthValue::False.or(TruthValue::Unknown),
         TruthValue::Unknown
@@ -107,9 +104,11 @@ fn unresolved_contract_unknown_blocks_acceptance() -> Result<(), Box<dyn Error>>
 
     let decision = kernel.evaluate();
     assert_eq!(decision.status, DecisionStatus::Blocked);
-    assert!(decision.reasons.contains(&DecisionReason::UnresolvedUnknowns {
-        count: 1
-    }));
+    assert!(
+        decision
+            .reasons
+            .contains(&DecisionReason::UnresolvedUnknowns { count: 1 })
+    );
     Ok(())
 }
 
@@ -125,9 +124,13 @@ fn missing_mandatory_evidence_blocks_acceptance() -> Result<(), Box<dyn Error>> 
 
     let decision = kernel.evaluate();
     assert_eq!(decision.status, DecisionStatus::Blocked);
-    assert!(decision.reasons.contains(&DecisionReason::MandatoryProofPending {
-        obligation_id: "proof.canvas.width".to_owned()
-    }));
+    assert!(
+        decision
+            .reasons
+            .contains(&DecisionReason::MandatoryProofPending {
+                obligation_id: "proof.canvas.width".to_owned()
+            })
+    );
     Ok(())
 }
 
