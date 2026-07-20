@@ -10,8 +10,7 @@ use serde_json::{Value, json};
 
 const CONTRACT_SOURCE: &str =
     include_str!("../../../examples/work-contracts/social-media-static-post.json");
-const CAPSULE_SOURCE: &str =
-    include_str!("../../../professions/graphic-designer/profession.json");
+const CAPSULE_SOURCE: &str = include_str!("../../../professions/graphic-designer/profession.json");
 
 fn documents() -> Result<(Value, Value), serde_json::Error> {
     Ok((
@@ -161,9 +160,6 @@ fn contract_digest_changes_after_a_material_edit() -> Result<(), Box<dyn Error>>
     modified_contract["requirements"]["hard"][0]["expected"] = json!(1081);
     let modified = compile_contract(&modified_contract, &capsule)?;
 
-    assert_ne!(
-        original.seal.contract_digest,
-        modified.seal.contract_digest
-    );
+    assert_ne!(original.seal.contract_digest, modified.seal.contract_digest);
     Ok(())
 }
