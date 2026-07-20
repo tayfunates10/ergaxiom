@@ -1,5 +1,5 @@
 [workspace]
-members = ["crates/proof-kernel"]
+members = ["crates/contract-runtime", "crates/proof-kernel"]
 resolver = "2"
 
 [workspace.package]

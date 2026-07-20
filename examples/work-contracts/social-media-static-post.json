@@ -1,5 +1,5 @@
 {
-  "schema_version": "0.1.0",
+  "schema_version": "0.2.0",
   "contract_id": "example.social-post.0001",
   "created_at": "2026-07-20T20:00:00Z",
   "request": {
@@ -9,7 +9,7 @@
   },
   "profession": {
     "capsule_id": "ergaxiom.profession.graphic-designer",
-    "capsule_version": "0.1.0",
+    "capsule_version": "0.2.0",
     "specialization": "social_media_design"
   },
   "job_type": "social_media_static_post",
@@ -212,7 +212,7 @@
     {
       "id": "proof.canvas_width",
       "constraint_id": "canvas_width",
-      "validator_id": "raster.dimensions",
+      "validator_ids": ["raster.dimensions"],
       "mandatory": true,
       "independence_class": "independent",
       "evidence_types": ["decoded_image_metadata", "measurement_record"]
@@ -220,7 +220,7 @@
     {
       "id": "proof.canvas_height",
       "constraint_id": "canvas_height",
-      "validator_id": "raster.dimensions",
+      "validator_ids": ["raster.dimensions"],
       "mandatory": true,
       "independence_class": "independent",
       "evidence_types": ["decoded_image_metadata", "measurement_record"]
@@ -228,7 +228,7 @@
     {
       "id": "proof.color_profile",
       "constraint_id": "color_profile",
-      "validator_id": "raster.icc_profile",
+      "validator_ids": ["raster.icc_profile"],
       "mandatory": true,
       "independence_class": "independent",
       "evidence_types": ["embedded_profile_digest", "decoded_image_metadata"]
@@ -236,7 +236,7 @@
     {
       "id": "proof.logo_aspect_ratio",
       "constraint_id": "logo_aspect_ratio",
-      "validator_id": "document.logo_geometry",
+      "validator_ids": ["document.logo_geometry"],
       "mandatory": true,
       "independence_class": "independent",
       "evidence_types": ["document_geometry_snapshot", "measurement_record"]
@@ -244,7 +244,7 @@
     {
       "id": "proof.logo_clear_space",
       "constraint_id": "logo_clear_space",
-      "validator_id": "document.logo_geometry",
+      "validator_ids": ["document.logo_geometry"],
       "mandatory": true,
       "independence_class": "independent",
       "evidence_types": ["document_geometry_snapshot", "measurement_record"]
@@ -252,7 +252,7 @@
     {
       "id": "proof.text_within_safe_area",
       "constraint_id": "text_within_safe_area",
-      "validator_id": "document.text_bounds",
+      "validator_ids": ["document.text_bounds"],
       "mandatory": true,
       "independence_class": "independent",
       "evidence_types": ["text_bounds_snapshot", "safe_area_geometry", "measurement_record"]
@@ -260,7 +260,10 @@
     {
       "id": "proof.minimum_text_contrast",
       "constraint_id": "minimum_text_contrast",
-      "validator_id": "raster.text_contrast",
+      "validator_ids": [
+        "raster.text_contrast.relative_luminance",
+        "raster.text_contrast.render_sampling"
+      ],
       "mandatory": true,
       "independence_class": "diverse",
       "evidence_types": ["contrast_measurements", "sample_coordinates", "render_digest"]
@@ -268,7 +271,7 @@
     {
       "id": "proof.export_media_type",
       "constraint_id": "export_media_type",
-      "validator_id": "raster.media_type",
+      "validator_ids": ["raster.media_type"],
       "mandatory": true,
       "independence_class": "independent",
       "evidence_types": ["magic_bytes", "decoded_image_metadata"]

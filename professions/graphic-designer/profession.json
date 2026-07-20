@@ -1,7 +1,7 @@
 {
   "schema_version": "0.1.0",
   "capsule_id": "ergaxiom.profession.graphic-designer",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "profession": {
     "name": "graphic_designer",
     "display_name": "Graphic Designer",
@@ -239,14 +239,25 @@
       }
     },
     {
-      "id": "raster.text_contrast",
+      "id": "raster.text_contrast.relative_luminance",
       "version": "0.1.0",
       "claims": ["minimum_text_contrast"],
-      "independence_class": "diverse",
+      "independence_class": "independent",
+      "evidence_types": ["contrast_measurements", "declared_region_geometry", "render_digest"],
+      "deterministic": true,
+      "implementation": {
+        "strategy": "calculate WCAG relative luminance from declared foreground and effective background regions"
+      }
+    },
+    {
+      "id": "raster.text_contrast.render_sampling",
+      "version": "0.1.0",
+      "claims": ["minimum_text_contrast"],
+      "independence_class": "independent",
       "evidence_types": ["contrast_measurements", "sample_coordinates", "render_digest"],
       "deterministic": true,
       "implementation": {
-        "strategy": "measure declared text foreground and effective background luminance"
+        "strategy": "independently sample rendered pixels around glyph interiors and local backgrounds"
       }
     },
     {
