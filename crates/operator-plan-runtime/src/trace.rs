@@ -231,7 +231,10 @@ fn validate_capability_token(
     event: &TraceEvent,
     violations: &mut Vec<TraceViolation>,
 ) {
-    match (&event.capability_token_id, step.capability_token_ids.is_empty()) {
+    match (
+        &event.capability_token_id,
+        step.capability_token_ids.is_empty(),
+    ) {
         (None, false) => violations.push(TraceViolation::MissingCapabilityToken {
             step_id: step.step_id.clone(),
         }),
