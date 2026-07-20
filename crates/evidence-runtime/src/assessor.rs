@@ -1,6 +1,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use ergaxiom_contract_runtime::{CompiledContract, ContractRuntimeError, ContractSession};
+use ergaxiom_operator_plan_runtime::{CompiledPlan, TraceAssessment, verify_trace};
 use ergaxiom_proof_kernel::{
     AcceptanceDecision, AssuranceLevel, DecisionStatus, EvidenceRecord, HashingError,
     ObligationState, TruthValue, canonical_json_sha256,
@@ -12,7 +13,7 @@ use crate::model::{
     ArtifactEvidence, ArtifactRole, DigestAlgorithm, EvidenceBundle, ProofResultStatus,
 };
 
-const SUPPORTED_EVIDENCE_SCHEMA: &str = "0.2.0";
+const SUPPORTED_EVIDENCE_SCHEMA: &str = "0.3.0";
 
 #[derive(Debug, Error)]
 pub enum EvidenceBundleError {
@@ -33,10 +34,16 @@ pub enum EvidenceBundleError {
     ContractDigestMismatch,
     #[error("bundle profession-capsule digest does not match the compiled capsule")]
     CapsuleDigestMismatch,
+    #[error("bundle operator-plan ID {actual} does not match compiled plan {expected}")]
+    PlanBindingIdMismatch { actual: String, expected: String },
+    #[error("bundle operator-plan digest does not match the compiled plan")]
+    PlanDigestMismatch,
     #[error("binding {0} must use sha256")]
     UnsupportedBindingAlgorithm(&'static str),
-    #[error("execution trace does not conform to the sealed operator plan")]
-    TraceNonConformance,
+    #[error("claimed trace conformance does not match independently recomputed conformance")]
+    TraceClaimMismatch,
+    #[error("execution trace violates the sealed operator plan ({violation_count} violations)")]
+    TraceNonConformance { violation_count: usize },
     #[error("duplicate artifact identifier: {0}")]
     DuplicateArtifact(String),
     #[error("proof result references unknown subject artifact {0}")]
@@ -70,6 +77,7 @@ pub struct BundleAssessment {
     pub run_id: String,
     pub bundle_digest: String,
     pub verified_assurance_level: AssuranceLevel,
+    pub trace_assessment: TraceAssessment,
     pub mandatory_passed: usize,
     pub mandatory_failed: usize,
     pub mandatory_unknown: usize,
@@ -78,6 +86,7 @@ pub struct BundleAssessment {
 
 pub fn assess_bundle(
     compiled: CompiledContract,
+    compiled_plan: &CompiledPlan,
     bundle_value: &Value,
     verified_assurance_level: AssuranceLevel,
 ) -> Result<BundleAssessment, EvidenceBundleError> {
@@ -90,14 +99,25 @@ pub fn assess_bundle(
             expected: SUPPORTED_EVIDENCE_SCHEMA,
         });
     }
-    validate_bindings(&compiled, &bundle)?;
-    if !bundle.trace.conforms_to_plan {
-        return Err(EvidenceBundleError::TraceNonConformance);
-    }
+    validate_bindings(&compiled, compiled_plan, &bundle)?;
     if bundle.claimed_decision.assurance_level != verified_assurance_level {
         return Err(EvidenceBundleError::ClaimedAssuranceMismatch {
             claimed: bundle.claimed_decision.assurance_level,
             verified: verified_assurance_level,
+        });
+    }
+
+    let trace_assessment = verify_trace(
+        compiled_plan,
+        &bundle.trace.events,
+        bundle.trace.claimed_conforms_to_plan,
+    );
+    if !trace_assessment.claim_matches {
+        return Err(EvidenceBundleError::TraceClaimMismatch);
+    }
+    if !trace_assessment.conforms_to_plan {
+        return Err(EvidenceBundleError::TraceNonConformance {
+            violation_count: trace_assessment.violations.len(),
         });
     }
 
@@ -183,6 +203,7 @@ pub fn assess_bundle(
         run_id: bundle.run_id,
         bundle_digest: canonical_json_sha256(bundle_value)?,
         verified_assurance_level,
+        trace_assessment,
         mandatory_passed,
         mandatory_failed,
         mandatory_unknown,
@@ -192,6 +213,7 @@ pub fn assess_bundle(
 
 fn validate_bindings(
     compiled: &CompiledContract,
+    compiled_plan: &CompiledPlan,
     bundle: &EvidenceBundle,
 ) -> Result<(), EvidenceBundleError> {
     if bundle.bindings.contract.algorithm != DigestAlgorithm::Sha256 {
@@ -200,6 +222,11 @@ fn validate_bindings(
     if bundle.bindings.profession_capsule.algorithm != DigestAlgorithm::Sha256 {
         return Err(EvidenceBundleError::UnsupportedBindingAlgorithm(
             "profession_capsule",
+        ));
+    }
+    if bundle.bindings.operator_plan.algorithm != DigestAlgorithm::Sha256 {
+        return Err(EvidenceBundleError::UnsupportedBindingAlgorithm(
+            "operator_plan",
         ));
     }
     if bundle.bindings.contract.id != compiled.contract_id {
@@ -213,6 +240,15 @@ fn validate_bindings(
     }
     if bundle.bindings.profession_capsule.digest != compiled.seal.capsule_digest {
         return Err(EvidenceBundleError::CapsuleDigestMismatch);
+    }
+    if bundle.bindings.operator_plan.id != compiled_plan.plan_id {
+        return Err(EvidenceBundleError::PlanBindingIdMismatch {
+            actual: bundle.bindings.operator_plan.id.clone(),
+            expected: compiled_plan.plan_id.clone(),
+        });
+    }
+    if bundle.bindings.operator_plan.digest != compiled_plan.plan_digest {
+        return Err(EvidenceBundleError::PlanDigestMismatch);
     }
     Ok(())
 }
