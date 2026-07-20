@@ -1,4 +1,4 @@
-name: Proof kernel
+name: Rust core
 
 on:
   push:
@@ -9,14 +9,14 @@ on:
       - "Cargo.toml"
       - "Cargo.lock"
       - "rust-toolchain.toml"
-      - "crates/proof-kernel/**"
+      - "crates/**"
       - ".github/workflows/proof-kernel.yml"
   pull_request:
     paths:
       - "Cargo.toml"
       - "Cargo.lock"
       - "rust-toolchain.toml"
-      - "crates/proof-kernel/**"
+      - "crates/**"
       - ".github/workflows/proof-kernel.yml"
 
 permissions:
@@ -24,7 +24,7 @@ permissions:
 
 jobs:
   verify:
-    name: Format, lint and test proof kernel
+    name: Format, lint and test Rust core
     runs-on: ubuntu-latest
     timeout-minutes: 10
 
