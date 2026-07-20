@@ -143,7 +143,7 @@ pub fn compile_plan(
 
     let OperatorPlan {
         plan_id,
-        steps: mut steps,
+        mut steps,
         ..
     } = plan;
     steps.sort_by_key(|step| step.sequence);
@@ -174,12 +174,13 @@ pub fn compile_plan(
             });
         }
         for dependency_id in &step.depends_on {
-            let dependency_sequence = step_ids.get(dependency_id).ok_or_else(|| {
-                PlanCompileError::UnknownDependency {
-                    step_id: step.step_id.clone(),
-                    dependency_id: dependency_id.clone(),
-                }
-            })?;
+            let dependency_sequence =
+                step_ids
+                    .get(dependency_id)
+                    .ok_or_else(|| PlanCompileError::UnknownDependency {
+                        step_id: step.step_id.clone(),
+                        dependency_id: dependency_id.clone(),
+                    })?;
             if *dependency_sequence >= step.sequence {
                 return Err(PlanCompileError::DependencyNotEarlier {
                     step_id: step.step_id.clone(),
