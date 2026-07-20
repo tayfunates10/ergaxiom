@@ -123,10 +123,13 @@ pub fn compile_plan(
         .ok_or_else(|| PlanCompileError::UnsupportedJobType(compiled_contract.job_type.clone()))?;
     let allowed_operators: BTreeSet<_> = job_type.operator_ids.iter().map(String::as_str).collect();
 
-    let mut step_ids = BTreeMap::new();
+    let mut step_ids: BTreeMap<String, usize> = BTreeMap::new();
     let mut sequences = BTreeSet::new();
     for step in &plan.steps {
-        if step_ids.insert(step.step_id.as_str(), step.sequence).is_some() {
+        if step_ids
+            .insert(step.step_id.clone(), step.sequence)
+            .is_some()
+        {
             return Err(PlanCompileError::DuplicateIdentifier {
                 kind: "step",
                 id: step.step_id.clone(),
@@ -138,7 +141,11 @@ pub fn compile_plan(
         validate_unique_step_values(step)?;
     }
 
-    let mut steps = plan.steps;
+    let OperatorPlan {
+        plan_id,
+        steps: mut steps,
+        ..
+    } = plan;
     steps.sort_by_key(|step| step.sequence);
     for (expected, step) in steps.iter().enumerate() {
         if step.sequence != expected {
@@ -167,7 +174,7 @@ pub fn compile_plan(
             });
         }
         for dependency_id in &step.depends_on {
-            let dependency_sequence = step_ids.get(dependency_id.as_str()).ok_or_else(|| {
+            let dependency_sequence = step_ids.get(dependency_id).ok_or_else(|| {
                 PlanCompileError::UnknownDependency {
                     step_id: step.step_id.clone(),
                     dependency_id: dependency_id.clone(),
@@ -181,7 +188,7 @@ pub fn compile_plan(
             }
         }
         if let Some(rollback_step_id) = &step.rollback_step_id {
-            if !step_ids.contains_key(rollback_step_id.as_str()) {
+            if !step_ids.contains_key(rollback_step_id) {
                 return Err(PlanCompileError::UnknownRollbackStep {
                     step_id: step.step_id.clone(),
                     rollback_step_id: rollback_step_id.clone(),
@@ -195,7 +202,7 @@ pub fn compile_plan(
     }
 
     Ok(CompiledPlan {
-        plan_id: plan.plan_id,
+        plan_id,
         plan_digest: canonical_json_sha256(plan_value)?,
         contract_digest: compiled_contract.seal.contract_digest.clone(),
         capsule_digest: compiled_contract.seal.capsule_digest.clone(),
