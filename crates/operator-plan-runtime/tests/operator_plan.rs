@@ -173,10 +173,12 @@ fn dependency_must_succeed_before_the_next_step_starts() -> Result<(), Box<dyn E
     let assessment = verify_trace(&compiled_plan, &events, false);
     assert!(!assessment.conforms_to_plan);
     assert!(assessment.claim_matches);
-    assert!(assessment.violations.iter().any(|violation| matches!(
-        violation,
-        TraceViolation::DependencyIncomplete { .. }
-    )));
+    assert!(
+        assessment
+            .violations
+            .iter()
+            .any(|violation| matches!(violation, TraceViolation::DependencyIncomplete { .. }))
+    );
     Ok(())
 }
 
