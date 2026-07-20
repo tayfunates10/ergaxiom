@@ -1,3 +1,4 @@
+use ergaxiom_operator_plan_runtime::TraceEvent;
 use ergaxiom_proof_kernel::{AssuranceLevel, DecisionStatus, IndependenceClass};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -77,8 +78,8 @@ pub enum ArtifactRole {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct TraceEvidence {
-    pub events: Vec<Value>,
-    pub conforms_to_plan: bool,
+    pub events: Vec<TraceEvent>,
+    pub claimed_conforms_to_plan: bool,
     #[serde(default)]
     pub deviations: Vec<Value>,
 }
