@@ -1,0 +1,254 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ergaxiom.dev/schemas/work-contract.schema.json",
+  "title": "Ergaxiom Work Contract",
+  "description": "A typed, bounded and auditable contract compiled from a user's professional intent.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "contract_id",
+    "created_at",
+    "request",
+    "profession",
+    "job_type",
+    "inputs",
+    "outputs",
+    "requirements",
+    "permissions",
+    "proof_obligations",
+    "acceptance"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "0.1.0"
+    },
+    "contract_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "request": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["original_text", "language"],
+      "properties": {
+        "original_text": {"type": "string", "minLength": 1},
+        "language": {"type": "string", "minLength": 2},
+        "requester_id": {"type": ["string", "null"]}
+      }
+    },
+    "profession": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["capsule_id", "capsule_version"],
+      "properties": {
+        "capsule_id": {"type": "string", "minLength": 1},
+        "capsule_version": {"type": "string", "minLength": 1},
+        "specialization": {"type": ["string", "null"]}
+      }
+    },
+    "job_type": {
+      "type": "string",
+      "minLength": 1
+    },
+    "environment": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "os": {"type": ["string", "null"]},
+        "applications": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["application_id"],
+            "properties": {
+              "application_id": {"type": "string"},
+              "required_version": {"type": ["string", "null"]}
+            }
+          }
+        },
+        "network_mode": {
+          "enum": ["denied", "allowlisted", "unrestricted"]
+        }
+      }
+    },
+    "inputs": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/artifactReference"}
+    },
+    "outputs": {
+      "type": "array",
+      "minItems": 1,
+      "items": {"$ref": "#/$defs/outputDeclaration"}
+    },
+    "requirements": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["hard", "preferences", "unknowns"],
+      "properties": {
+        "hard": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/constraint"}
+        },
+        "preferences": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/preference"}
+        },
+        "unknowns": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/unknown"}
+        }
+      }
+    },
+    "permissions": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/permission"}
+    },
+    "proof_obligations": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/proofObligation"}
+    },
+    "approval_policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "require_pre_execution_approval": {"type": "boolean"},
+        "require_irreversible_action_approval": {"type": "boolean"},
+        "approval_ttl_seconds": {"type": "integer", "minimum": 1}
+      }
+    },
+    "acceptance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["minimum_assurance_level", "unknowns_must_be_empty", "all_mandatory_proofs_must_pass"],
+      "properties": {
+        "minimum_assurance_level": {
+          "enum": ["E0", "E1", "E2", "E3", "E4", "E5"]
+        },
+        "unknowns_must_be_empty": {"type": "boolean"},
+        "all_mandatory_proofs_must_pass": {"const": true},
+        "validator_conflicts_allowed": {"const": false}
+      }
+    },
+    "metadata": {
+      "type": "object",
+      "additionalProperties": true
+    }
+  },
+  "$defs": {
+    "artifactReference": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "kind", "uri", "integrity"],
+      "properties": {
+        "id": {"type": "string", "minLength": 1},
+        "kind": {"type": "string", "minLength": 1},
+        "uri": {"type": "string", "minLength": 1},
+        "integrity": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["algorithm", "digest"],
+          "properties": {
+            "algorithm": {"enum": ["sha256", "sha512"]},
+            "digest": {"type": "string", "minLength": 1}
+          }
+        },
+        "media_type": {"type": ["string", "null"]},
+        "immutable": {"type": "boolean"}
+      }
+    },
+    "outputDeclaration": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "kind", "destination", "required"],
+      "properties": {
+        "id": {"type": "string", "minLength": 1},
+        "kind": {"type": "string", "minLength": 1},
+        "destination": {"type": "string", "minLength": 1},
+        "media_type": {"type": ["string", "null"]},
+        "required": {"type": "boolean"}
+      }
+    },
+    "constraint": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "claim", "subject", "operator", "expected", "mandatory"],
+      "properties": {
+        "id": {"type": "string", "minLength": 1},
+        "claim": {"type": "string", "minLength": 1},
+        "subject": {"type": "string", "minLength": 1},
+        "operator": {
+          "enum": ["eq", "neq", "gt", "gte", "lt", "lte", "in", "not_in", "matches", "exists"]
+        },
+        "expected": {},
+        "unit": {"type": ["string", "null"]},
+        "tolerance": {"type": ["number", "null"], "minimum": 0},
+        "mandatory": {"type": "boolean"},
+        "source": {"type": ["string", "null"]}
+      }
+    },
+    "preference": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "description", "weight", "evaluation_mode"],
+      "properties": {
+        "id": {"type": "string", "minLength": 1},
+        "description": {"type": "string", "minLength": 1},
+        "weight": {"type": "number", "minimum": 0, "maximum": 1},
+        "evaluation_mode": {
+          "enum": ["user_profile", "reference_set", "human_review", "advisory_model"]
+        }
+      }
+    },
+    "unknown": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "question", "mandatory", "resolution"],
+      "properties": {
+        "id": {"type": "string", "minLength": 1},
+        "question": {"type": "string", "minLength": 1},
+        "mandatory": {"type": "boolean"},
+        "resolution": {
+          "enum": ["unresolved", "user_answer", "trusted_profile", "trusted_source", "not_required"]
+        },
+        "value": {}
+      }
+    },
+    "permission": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["capability", "resource", "access"],
+      "properties": {
+        "capability": {"type": "string", "minLength": 1},
+        "resource": {"type": "string", "minLength": 1},
+        "access": {
+          "enum": ["read", "write", "execute", "control", "network", "secret_use"]
+        },
+        "constraints": {"type": "object", "additionalProperties": true}
+      }
+    },
+    "proofObligation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "constraint_id", "validator_id", "mandatory", "independence_class"],
+      "properties": {
+        "id": {"type": "string", "minLength": 1},
+        "constraint_id": {"type": "string", "minLength": 1},
+        "validator_id": {"type": "string", "minLength": 1},
+        "mandatory": {"type": "boolean"},
+        "independence_class": {
+          "enum": ["executor", "independent", "diverse"]
+        },
+        "evidence_types": {
+          "type": "array",
+          "items": {"type": "string"}
+        }
+      }
+    }
+  }
+}
