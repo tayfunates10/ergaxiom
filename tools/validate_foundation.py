@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validate Ergaxiom's Phase 0 schemas and cross-document invariants."""
+"""Validate Ergaxiom's foundation schemas and cross-document invariants."""
 
 from __future__ import annotations
 
@@ -23,7 +23,7 @@ CONTRACT_PATH = ROOT / "examples" / "work-contracts" / "social-media-static-post
 
 
 class FoundationValidationError(RuntimeError):
-    """Raised when a Phase 0 invariant is violated."""
+    """Raised when a foundation invariant is violated."""
 
 
 def load_json(path: Path) -> dict[str, Any]:
@@ -84,6 +84,14 @@ def assurance_rank(level: str) -> int:
         raise FoundationValidationError(f"Unknown assurance level: {level}") from exc
 
 
+def independence_rank(level: str) -> int:
+    levels = {"executor": 0, "independent": 1, "diverse": 2}
+    try:
+        return levels[level]
+    except KeyError as exc:
+        raise FoundationValidationError(f"Unknown independence class: {level}") from exc
+
+
 def validate_cross_document_invariants(
     profession: dict[str, Any], contract: dict[str, Any]
 ) -> None:
@@ -110,20 +118,77 @@ def validate_cross_document_invariants(
     constraints = unique_index(contract["requirements"]["hard"], "id", "constraint")
     obligations = unique_index(contract["proof_obligations"], "id", "proof obligation")
 
+    missing_required_constraints = sorted(set(job_type["required_constraints"]) - set(constraints))
+    if missing_required_constraints:
+        raise FoundationValidationError(
+            "Contract lacks job-type constraints: " + ", ".join(missing_required_constraints)
+        )
+
+    non_mandatory_required_constraints = sorted(
+        constraint_id
+        for constraint_id in job_type["required_constraints"]
+        if not constraints[constraint_id]["mandatory"]
+    )
+    if non_mandatory_required_constraints:
+        raise FoundationValidationError(
+            "Job-type constraints must be mandatory: "
+            + ", ".join(non_mandatory_required_constraints)
+        )
+
     for obligation in obligations.values():
         constraint_id = obligation["constraint_id"]
-        validator_id = obligation["validator_id"]
+        validator_ids = obligation["validator_ids"]
         if constraint_id not in constraints:
             raise FoundationValidationError(
                 f"Proof obligation {obligation['id']} references missing constraint {constraint_id}"
             )
-        if validator_id not in validators:
+        if len(validator_ids) != len(set(validator_ids)):
             raise FoundationValidationError(
-                f"Proof obligation {obligation['id']} references missing validator {validator_id}"
+                f"Proof obligation {obligation['id']} repeats a validator ID"
             )
-        if constraint_id not in validators[validator_id]["claims"]:
+
+        selected_validators: list[dict[str, Any]] = []
+        for validator_id in validator_ids:
+            if validator_id not in validators:
+                raise FoundationValidationError(
+                    f"Proof obligation {obligation['id']} references missing validator {validator_id}"
+                )
+            validator = validators[validator_id]
+            if constraint_id not in validator["claims"]:
+                raise FoundationValidationError(
+                    f"Validator {validator_id} does not declare support for claim {constraint_id}"
+                )
+            selected_validators.append(validator)
+
+        obligation_class = obligation["independence_class"]
+        independent_validators = {
+            validator_id
+            for validator_id, validator in zip(validator_ids, selected_validators, strict=True)
+            if independence_rank(validator["independence_class"])
+            >= independence_rank("independent")
+        }
+        if obligation_class == "independent" and not independent_validators:
             raise FoundationValidationError(
-                f"Validator {validator_id} does not declare support for claim {constraint_id}"
+                f"Proof obligation {obligation['id']} lacks an independent validator"
+            )
+        if obligation_class == "diverse" and len(independent_validators) < 2:
+            raise FoundationValidationError(
+                f"Proof obligation {obligation['id']} requires two distinct independent validators"
+            )
+
+        declared_evidence_types = set(obligation.get("evidence_types", []))
+        supported_evidence_types = {
+            evidence_type
+            for validator in selected_validators
+            for evidence_type in validator.get("evidence_types", [])
+        }
+        unsupported_evidence_types = sorted(
+            declared_evidence_types - supported_evidence_types
+        )
+        if unsupported_evidence_types:
+            raise FoundationValidationError(
+                f"Proof obligation {obligation['id']} declares unsupported evidence types: "
+                + ", ".join(unsupported_evidence_types)
             )
 
     mandatory_constraints = {
