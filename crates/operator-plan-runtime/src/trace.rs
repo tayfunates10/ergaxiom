@@ -81,15 +81,15 @@ pub fn verify_trace(
     events: &[TraceEvent],
     claimed_conforms_to_plan: bool,
 ) -> TraceAssessment {
-    let steps: BTreeMap<_, _> = plan
+    let steps: BTreeMap<String, _> = plan
         .steps
         .iter()
-        .map(|step| (step.step_id.as_str(), step))
+        .map(|step| (step.step_id.clone(), step))
         .collect();
-    let mut states: BTreeMap<_, _> = plan
+    let mut states: BTreeMap<String, StepState> = plan
         .steps
         .iter()
-        .map(|step| (step.step_id.as_str(), StepState::NotStarted))
+        .map(|step| (step.step_id.clone(), StepState::NotStarted))
         .collect();
     let mut event_ids = BTreeSet::new();
     let mut violations = Vec::new();
@@ -107,7 +107,7 @@ pub fn verify_trace(
             });
         }
 
-        let Some(step) = steps.get(event.step_id.as_str()) else {
+        let Some(step) = steps.get(&event.step_id) else {
             violations.push(TraceViolation::UnknownStep {
                 step_id: event.step_id.clone(),
             });
@@ -123,7 +123,7 @@ pub fn verify_trace(
         validate_capability_token(step, event, &mut violations);
 
         let previous = states
-            .get(event.step_id.as_str())
+            .get(&event.step_id)
             .copied()
             .unwrap_or(StepState::NotStarted);
         match event.status {
@@ -136,14 +136,14 @@ pub fn verify_trace(
                     });
                 }
                 for dependency_id in &step.depends_on {
-                    if states.get(dependency_id.as_str()) != Some(&StepState::Succeeded) {
+                    if states.get(dependency_id) != Some(&StepState::Succeeded) {
                         violations.push(TraceViolation::DependencyIncomplete {
                             step_id: event.step_id.clone(),
                             dependency_id: dependency_id.clone(),
                         });
                     }
                 }
-                states.insert(event.step_id.as_str(), StepState::Started);
+                states.insert(event.step_id.clone(), StepState::Started);
             }
             TraceStatus::Succeeded => {
                 if previous != StepState::Started {
@@ -153,7 +153,7 @@ pub fn verify_trace(
                         event: event.status,
                     });
                 }
-                states.insert(event.step_id.as_str(), StepState::Succeeded);
+                states.insert(event.step_id.clone(), StepState::Succeeded);
             }
             TraceStatus::Failed => {
                 if previous != StepState::Started {
@@ -163,7 +163,7 @@ pub fn verify_trace(
                         event: event.status,
                     });
                 }
-                states.insert(event.step_id.as_str(), StepState::Failed);
+                states.insert(event.step_id.clone(), StepState::Failed);
                 violations.push(TraceViolation::FailedStep {
                     step_id: event.step_id.clone(),
                 });
@@ -176,7 +176,7 @@ pub fn verify_trace(
                         event: event.status,
                     });
                 }
-                states.insert(event.step_id.as_str(), StepState::RolledBack);
+                states.insert(event.step_id.clone(), StepState::RolledBack);
                 violations.push(TraceViolation::RolledBackStep {
                     step_id: event.step_id.clone(),
                 });
@@ -189,7 +189,7 @@ pub fn verify_trace(
                         event: event.status,
                     });
                 }
-                states.insert(event.step_id.as_str(), StepState::Skipped);
+                states.insert(event.step_id.clone(), StepState::Skipped);
                 if step.mandatory {
                     violations.push(TraceViolation::MandatoryStepSkipped {
                         step_id: event.step_id.clone(),
@@ -201,7 +201,7 @@ pub fn verify_trace(
 
     for step in &plan.steps {
         let final_state = states
-            .get(step.step_id.as_str())
+            .get(&step.step_id)
             .copied()
             .unwrap_or(StepState::NotStarted);
         if final_state == StepState::Started {
