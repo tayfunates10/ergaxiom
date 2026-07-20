@@ -142,9 +142,7 @@ pub fn compile_plan(
     }
 
     let OperatorPlan {
-        plan_id,
-        mut steps,
-        ..
+        plan_id, mut steps, ..
     } = plan;
     steps.sort_by_key(|step| step.sequence);
     for (expected, step) in steps.iter().enumerate() {
