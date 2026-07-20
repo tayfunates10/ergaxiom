@@ -105,8 +105,10 @@ pub fn assess_bundle(
     let requirements: BTreeMap<_, _> = compiled
         .proof_requirements
         .iter()
-        .map(|requirement| (requirement.obligation_id.as_str(), requirement))
+        .cloned()
+        .map(|requirement| (requirement.obligation_id.clone(), requirement))
         .collect();
+    let contract_digest = compiled.seal.contract_digest.clone();
     let mut evidence_ids = BTreeSet::new();
     let mut session = ContractSession::new(compiled, verified_assurance_level)?;
 
@@ -117,11 +119,9 @@ pub fn assess_bundle(
                 result.evidence_id
             )));
         }
-        let requirement = requirements
-            .get(result.obligation_id.as_str())
-            .ok_or_else(|| {
-                EvidenceBundleError::UnknownProofObligation(result.obligation_id.clone())
-            })?;
+        let requirement = requirements.get(&result.obligation_id).ok_or_else(|| {
+            EvidenceBundleError::UnknownProofObligation(result.obligation_id.clone())
+        })?;
         if result.claim_id != requirement.constraint_id {
             return Err(EvidenceBundleError::ClaimMismatch {
                 actual: result.claim_id.clone(),
@@ -158,11 +158,7 @@ pub fn assess_bundle(
             evidence_id: result.evidence_id.clone(),
             obligation_id: result.obligation_id.clone(),
             constraint_id: result.claim_id.clone(),
-            contract_digest: session
-                .compiled_contract()
-                .seal
-                .contract_digest
-                .clone(),
+            contract_digest: contract_digest.clone(),
             subject_digest: subject.digest.clone(),
             validator_id: result.validator_id.clone(),
             validator_version: result.validator_version.clone(),
