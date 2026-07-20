@@ -64,7 +64,6 @@ pub enum TraceStatus {
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 pub(crate) struct CapsulePlanView {
     pub capsule_id: String,
-    pub version: String,
     pub operators: Vec<CapsuleOperator>,
     pub job_types: Vec<CapsuleJobType>,
 }
