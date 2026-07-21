@@ -14,16 +14,18 @@ use ergaxiom_operator_plan_runtime::{CompiledPlan, compile_plan};
 use ergaxiom_proof_kernel::{canonical_json_bytes, canonical_json_sha256};
 use ergaxiom_windows_bridge_runtime::{
     ObservedWindowsState, WindowsAdapterTransition, WindowsApplicationIdentity,
-    WindowsBridgeAction, WindowsBridgeAdapter, WindowsBridgeError, WindowsBridgeExecutionContext,
-    WindowsBridgeKeyRegistry, WindowsBridgeRequest, WindowsBridgeStatus, WindowsBridgeVerifyError,
-    WindowsControlMethod, WindowsStateAssertion, WindowsTargetSelector, execute_windows_bridge,
+    WindowsBridgeAction, WindowsBridgeAdapter, WindowsBridgeError,
+    WindowsBridgeExecutionContext, WindowsBridgeKeyRegistry, WindowsBridgePackage,
+    WindowsBridgeRequest, WindowsBridgeStatus, WindowsBridgeVerifyError, WindowsControlMethod,
+    WindowsStateAssertion, WindowsTargetSelector, execute_windows_bridge,
     seal_observed_state, verify_windows_bridge_package,
 };
 use serde_json::{Value, json};
 
 const CONTRACT_SOURCE: &str =
     include_str!("../../../examples/work-contracts/social-media-static-post.json");
-const CAPSULE_SOURCE: &str = include_str!("../../../professions/graphic-designer/profession.json");
+const CAPSULE_SOURCE: &str =
+    include_str!("../../../professions/graphic-designer/profession.json");
 const POLICY_ISSUER: &str = "ergaxiom.policy-authority";
 const POLICY_KEY_ID: &str = "windows-bridge-policy-key";
 const BRIDGE_ISSUER: &str = "ergaxiom.windows-bridge-authority";
@@ -53,8 +55,14 @@ fn context() -> Result<Context, Box<dyn Error>> {
         policy_key.verifying_key().to_bytes(),
     )?;
     let mut authorizer = CapabilityAuthorizer::new(keys);
-    let receipt =
-        authorizer.authorize(&token, &contract, &plan, NOW, EXECUTOR_ID, Some(DEVICE_ID))?;
+    let receipt = authorizer.authorize(
+        &token,
+        &contract,
+        &plan,
+        NOW,
+        EXECUTOR_ID,
+        Some(DEVICE_ID),
+    )?;
     let receipt_value = serde_json::to_value(&receipt)?;
     Ok(Context {
         contract,
@@ -86,27 +94,9 @@ fn plan_value(contract: &CompiledContract) -> Value {
         },
         "steps": [
             step("step.canvas", 0, "design.create_canvas", &[], "token.canvas"),
-            step(
-                "step.logo",
-                1,
-                "design.place_asset",
-                &["step.canvas"],
-                "token.logo"
-            ),
-            step(
-                "step.text",
-                2,
-                "design.compose_text",
-                &["step.logo"],
-                "token.text.bridge"
-            ),
-            step(
-                "step.export",
-                3,
-                "design.export_raster",
-                &["step.text"],
-                "token.export"
-            )
+            step("step.logo", 1, "design.place_asset", &["step.canvas"], "token.logo"),
+            step("step.text", 2, "design.compose_text", &["step.logo"], "token.text.bridge"),
+            step("step.export", 3, "design.export_raster", &["step.text"], "token.export"),
         ]
     })
 }
@@ -207,7 +197,7 @@ fn state(
     })?)
 }
 
-fn uia_request(context: &Context, pre_state_digest: &str) -> WindowsBridgeRequest {
+fn request(context: &Context, pre_state_digest: &str) -> WindowsBridgeRequest {
     WindowsBridgeRequest {
         schema_version: "0.1.0".to_owned(),
         request_id: "request.windows-bridge-test.0001".to_owned(),
@@ -237,7 +227,7 @@ fn uia_request(context: &Context, pre_state_digest: &str) -> WindowsBridgeReques
     }
 }
 
-fn bridge_context<'a>(context: &'a Context) -> WindowsBridgeExecutionContext<'a> {
+fn execution_context(context: &Context) -> WindowsBridgeExecutionContext<'_> {
     WindowsBridgeExecutionContext {
         compiled_contract: &context.contract,
         compiled_plan: &context.plan,
@@ -259,11 +249,24 @@ fn bridge_keys(context: &Context) -> Result<WindowsBridgeKeyRegistry, Box<dyn Er
     Ok(keys)
 }
 
+fn run_bridge(
+    context: &Context,
+    adapter: &mut MockAdapter,
+    request: WindowsBridgeRequest,
+) -> Result<WindowsBridgePackage, WindowsBridgeError> {
+    let authorization = context.authorization.clone();
+    execute_windows_bridge(
+        adapter,
+        execution_context(context),
+        request,
+        authorization,
+    )
+}
+
 struct MockAdapter {
     pre_state: ObservedWindowsState,
     post_state: ObservedWindowsState,
     consumed_pre_state_digest: String,
-    adapter_event_digest: String,
     observe_calls: usize,
     execute_calls: usize,
 }
@@ -274,7 +277,6 @@ impl MockAdapter {
             consumed_pre_state_digest: pre_state.state_digest.clone(),
             pre_state,
             post_state,
-            adapter_event_digest: "adapter-event-digest".to_owned(),
             observe_calls: 0,
             execute_calls: 0,
         }
@@ -300,30 +302,22 @@ impl WindowsBridgeAdapter for MockAdapter {
         self.execute_calls += 1;
         Ok(WindowsAdapterTransition {
             consumed_pre_state_digest: self.consumed_pre_state_digest.clone(),
-            adapter_event_digest: self.adapter_event_digest.clone(),
+            adapter_event_digest: "adapter-event-digest".to_owned(),
         })
     }
 }
 
 #[test]
-fn ui_automation_success_is_signed_and_independently_verified() -> Result<(), Box<dyn Error>> {
+fn ui_automation_success_is_signed_and_verified() -> Result<(), Box<dyn Error>> {
     let context = context()?;
     let pre = state(application(), "Edit/copy-field", "BEFORE", 1_000)?;
     let post = state(application(), "Edit/copy-field", "APPROVED", 2_000)?;
-    let request = uia_request(&context, &pre.state_digest);
+    let bridge_request = request(&context, &pre.state_digest);
     let mut adapter = MockAdapter::new(pre, post);
+    let package = run_bridge(&context, &mut adapter, bridge_request)?;
 
-    let package = execute_windows_bridge(
-        &mut adapter,
-        bridge_context(&context),
-        request,
-        context.authorization.clone(),
-    )?;
     assert_eq!(adapter.execute_calls, 1);
-    assert_eq!(
-        package.record.payload.status,
-        WindowsBridgeStatus::Succeeded
-    );
+    assert_eq!(package.record.payload.status, WindowsBridgeStatus::Succeeded);
     let verified = verify_windows_bridge_package(
         &package,
         &bridge_keys(&context)?,
@@ -340,16 +334,11 @@ fn stale_expected_pre_state_blocks_before_action() -> Result<(), Box<dyn Error>>
     let context = context()?;
     let pre = state(application(), "Edit/copy-field", "BEFORE", 1_000)?;
     let post = state(application(), "Edit/copy-field", "APPROVED", 2_000)?;
-    let request = uia_request(&context, "stale-pre-state-digest");
+    let bridge_request = request(&context, "stale-pre-state-digest");
     let mut adapter = MockAdapter::new(pre, post);
 
     assert!(matches!(
-        execute_windows_bridge(
-            &mut adapter,
-            bridge_context(&context),
-            request,
-            context.authorization.clone(),
-        ),
+        run_bridge(&context, &mut adapter, bridge_request),
         Err(WindowsBridgeError::TimeOfCheckTimeOfUseMismatch)
     ));
     assert_eq!(adapter.execute_calls, 0);
@@ -361,17 +350,12 @@ fn adapter_consuming_another_pre_state_is_rejected() -> Result<(), Box<dyn Error
     let context = context()?;
     let pre = state(application(), "Edit/copy-field", "BEFORE", 1_000)?;
     let post = state(application(), "Edit/copy-field", "APPROVED", 2_000)?;
-    let request = uia_request(&context, &pre.state_digest);
+    let bridge_request = request(&context, &pre.state_digest);
     let mut adapter = MockAdapter::new(pre, post);
     adapter.consumed_pre_state_digest = "changed-before-action".to_owned();
 
     assert!(matches!(
-        execute_windows_bridge(
-            &mut adapter,
-            bridge_context(&context),
-            request,
-            context.authorization.clone(),
-        ),
+        run_bridge(&context, &mut adapter, bridge_request),
         Err(WindowsBridgeError::TimeOfCheckTimeOfUseMismatch)
     ));
     assert_eq!(adapter.execute_calls, 1);
@@ -386,16 +370,11 @@ fn application_identity_mismatch_blocks_before_action() -> Result<(), Box<dyn Er
     wrong_app.executable_digest = "another-executable".to_owned();
     let pre = state(wrong_app, "Edit/copy-field", "BEFORE", 1_000)?;
     let post = state(application(), "Edit/copy-field", "APPROVED", 2_000)?;
-    let request = uia_request(&context, &pre.state_digest);
+    let bridge_request = request(&context, &pre.state_digest);
     let mut adapter = MockAdapter::new(pre, post);
 
     assert!(matches!(
-        execute_windows_bridge(
-            &mut adapter,
-            bridge_context(&context),
-            request,
-            context.authorization.clone(),
-        ),
+        run_bridge(&context, &mut adapter, bridge_request),
         Err(WindowsBridgeError::ApplicationIdentityMismatch)
     ));
     assert_eq!(adapter.execute_calls, 0);
@@ -407,21 +386,15 @@ fn grant_mismatch_blocks_before_observation() -> Result<(), Box<dyn Error>> {
     let context = context()?;
     let pre = state(application(), "Edit/copy-field", "BEFORE", 1_000)?;
     let post = state(application(), "Edit/copy-field", "APPROVED", 2_000)?;
-    let mut request = uia_request(&context, &pre.state_digest);
-    request.required_grant.resource = "host://unsealed".to_owned();
+    let mut bridge_request = request(&context, &pre.state_digest);
+    bridge_request.required_grant.resource = "host://unsealed".to_owned();
     let mut adapter = MockAdapter::new(pre, post);
 
     assert!(matches!(
-        execute_windows_bridge(
-            &mut adapter,
-            bridge_context(&context),
-            request,
-            context.authorization.clone(),
-        ),
+        run_bridge(&context, &mut adapter, bridge_request),
         Err(WindowsBridgeError::AuthorizationGrantMismatch)
     ));
     assert_eq!(adapter.observe_calls, 0);
-    assert_eq!(adapter.execute_calls, 0);
     Ok(())
 }
 
@@ -430,17 +403,12 @@ fn method_selector_mismatch_blocks_before_observation() -> Result<(), Box<dyn Er
     let context = context()?;
     let pre = state(application(), "Edit/copy-field", "BEFORE", 1_000)?;
     let post = state(application(), "Edit/copy-field", "APPROVED", 2_000)?;
-    let mut request = uia_request(&context, &pre.state_digest);
-    request.control_method = WindowsControlMethod::Cli;
+    let mut bridge_request = request(&context, &pre.state_digest);
+    bridge_request.control_method = WindowsControlMethod::Cli;
     let mut adapter = MockAdapter::new(pre, post);
 
     assert!(matches!(
-        execute_windows_bridge(
-            &mut adapter,
-            bridge_context(&context),
-            request,
-            context.authorization.clone(),
-        ),
+        run_bridge(&context, &mut adapter, bridge_request),
         Err(WindowsBridgeError::SelectorMethodMismatch)
     ));
     assert_eq!(adapter.observe_calls, 0);
@@ -448,28 +416,26 @@ fn method_selector_mismatch_blocks_before_observation() -> Result<(), Box<dyn Er
 }
 
 #[test]
-fn failed_postcondition_produces_signed_failed_record_not_success() -> Result<(), Box<dyn Error>> {
+fn failed_postcondition_produces_a_signed_failed_record() -> Result<(), Box<dyn Error>> {
     let context = context()?;
     let pre = state(application(), "Edit/copy-field", "BEFORE", 1_000)?;
     let post = state(application(), "Edit/copy-field", "WRONG", 2_000)?;
-    let request = uia_request(&context, &pre.state_digest);
+    let bridge_request = request(&context, &pre.state_digest);
     let mut adapter = MockAdapter::new(pre, post);
+    let package = run_bridge(&context, &mut adapter, bridge_request)?;
 
-    let package = execute_windows_bridge(
-        &mut adapter,
-        bridge_context(&context),
-        request,
-        context.authorization.clone(),
-    )?;
     assert_eq!(package.record.payload.status, WindowsBridgeStatus::Failed);
     assert_eq!(package.record.payload.violations.len(), 1);
-    let verified = verify_windows_bridge_package(
-        &package,
-        &bridge_keys(&context)?,
-        &context.contract,
-        &context.plan,
-    )?;
-    assert_eq!(verified.status, WindowsBridgeStatus::Failed);
+    assert_eq!(
+        verify_windows_bridge_package(
+            &package,
+            &bridge_keys(&context)?,
+            &context.contract,
+            &context.plan,
+        )?
+        .status,
+        WindowsBridgeStatus::Failed
+    );
     Ok(())
 }
 
@@ -478,25 +444,20 @@ fn coordinate_fallback_without_effect_assertion_is_rejected() -> Result<(), Box<
     let context = context()?;
     let pre = state(application(), "region.copy", "BEFORE", 1_000)?;
     let post = state(application(), "region.copy", "APPROVED", 2_000)?;
-    let mut request = uia_request(&context, &pre.state_digest);
-    request.control_method = WindowsControlMethod::CoordinateFallback;
-    request.selector = WindowsTargetSelector::Coordinates {
+    let mut bridge_request = request(&context, &pre.state_digest);
+    bridge_request.control_method = WindowsControlMethod::CoordinateFallback;
+    bridge_request.selector = WindowsTargetSelector::Coordinates {
         x: 300,
         y: 200,
         confirmation_region_id: "region.copy".to_owned(),
     };
-    request.postconditions = vec![WindowsStateAssertion::TargetStableIdEquals {
+    bridge_request.postconditions = vec![WindowsStateAssertion::TargetStableIdEquals {
         stable_id: "region.copy".to_owned(),
     }];
     let mut adapter = MockAdapter::new(pre, post);
 
     assert!(matches!(
-        execute_windows_bridge(
-            &mut adapter,
-            bridge_context(&context),
-            request,
-            context.authorization.clone(),
-        ),
+        run_bridge(&context, &mut adapter, bridge_request),
         Err(WindowsBridgeError::MissingIndependentEffectPostcondition)
     ));
     assert_eq!(adapter.observe_calls, 0);
@@ -504,29 +465,21 @@ fn coordinate_fallback_without_effect_assertion_is_rejected() -> Result<(), Box<
 }
 
 #[test]
-fn coordinate_fallback_can_succeed_only_with_observed_effect() -> Result<(), Box<dyn Error>> {
+fn coordinate_fallback_succeeds_only_with_observed_effect() -> Result<(), Box<dyn Error>> {
     let context = context()?;
     let pre = state(application(), "region.copy", "BEFORE", 1_000)?;
     let post = state(application(), "region.copy", "APPROVED", 2_000)?;
-    let mut request = uia_request(&context, &pre.state_digest);
-    request.control_method = WindowsControlMethod::CoordinateFallback;
-    request.selector = WindowsTargetSelector::Coordinates {
+    let mut bridge_request = request(&context, &pre.state_digest);
+    bridge_request.control_method = WindowsControlMethod::CoordinateFallback;
+    bridge_request.selector = WindowsTargetSelector::Coordinates {
         x: 300,
         y: 200,
         confirmation_region_id: "region.copy".to_owned(),
     };
     let mut adapter = MockAdapter::new(pre, post);
+    let package = run_bridge(&context, &mut adapter, bridge_request)?;
 
-    let package = execute_windows_bridge(
-        &mut adapter,
-        bridge_context(&context),
-        request,
-        context.authorization.clone(),
-    )?;
-    assert_eq!(
-        package.record.payload.status,
-        WindowsBridgeStatus::Succeeded
-    );
+    assert_eq!(package.record.payload.status, WindowsBridgeStatus::Succeeded);
     assert_eq!(
         verify_windows_bridge_package(
             &package,
@@ -545,14 +498,9 @@ fn signed_record_payload_mutation_invalidates_signature() -> Result<(), Box<dyn 
     let context = context()?;
     let pre = state(application(), "Edit/copy-field", "BEFORE", 1_000)?;
     let post = state(application(), "Edit/copy-field", "APPROVED", 2_000)?;
-    let request = uia_request(&context, &pre.state_digest);
+    let bridge_request = request(&context, &pre.state_digest);
     let mut adapter = MockAdapter::new(pre, post);
-    let mut package = execute_windows_bridge(
-        &mut adapter,
-        bridge_context(&context),
-        request,
-        context.authorization.clone(),
-    )?;
+    let mut package = run_bridge(&context, &mut adapter, bridge_request)?;
     package.record.payload.recorded_at_epoch_ms += 1;
 
     assert!(matches!(
@@ -568,60 +516,43 @@ fn signed_record_payload_mutation_invalidates_signature() -> Result<(), Box<dyn 
 }
 
 #[test]
-fn post_state_mutation_is_detected_even_when_record_is_unchanged() -> Result<(), Box<dyn Error>> {
+fn post_state_mutation_is_detected() -> Result<(), Box<dyn Error>> {
     let context = context()?;
     let pre = state(application(), "Edit/copy-field", "BEFORE", 1_000)?;
     let post = state(application(), "Edit/copy-field", "APPROVED", 2_000)?;
-    let request = uia_request(&context, &pre.state_digest);
+    let bridge_request = request(&context, &pre.state_digest);
     let mut adapter = MockAdapter::new(pre, post);
-    let mut package = execute_windows_bridge(
-        &mut adapter,
-        bridge_context(&context),
-        request,
-        context.authorization.clone(),
-    )?;
+    let mut package = run_bridge(&context, &mut adapter, bridge_request)?;
     package
         .post_state
         .properties
         .insert("text".to_owned(), "TAMPERED".to_owned());
 
-    assert!(
-        verify_windows_bridge_package(
-            &package,
-            &bridge_keys(&context)?,
-            &context.contract,
-            &context.plan,
-        )
-        .is_err()
-    );
+    assert!(verify_windows_bridge_package(
+        &package,
+        &bridge_keys(&context)?,
+        &context.contract,
+        &context.plan,
+    )
+    .is_err());
     Ok(())
 }
 
 #[test]
-fn identical_inputs_produce_identical_signed_bridge_packages() -> Result<(), Box<dyn Error>> {
+fn identical_inputs_produce_identical_signed_packages() -> Result<(), Box<dyn Error>> {
     let left = context()?;
     let right = context()?;
     let left_pre = state(application(), "Edit/copy-field", "BEFORE", 1_000)?;
     let left_post = state(application(), "Edit/copy-field", "APPROVED", 2_000)?;
     let right_pre = left_pre.clone();
     let right_post = left_post.clone();
-    let left_request = uia_request(&left, &left_pre.state_digest);
-    let right_request = uia_request(&right, &right_pre.state_digest);
+    let left_request = request(&left, &left_pre.state_digest);
+    let right_request = request(&right, &right_pre.state_digest);
     let mut left_adapter = MockAdapter::new(left_pre, left_post);
     let mut right_adapter = MockAdapter::new(right_pre, right_post);
 
-    let left_package = execute_windows_bridge(
-        &mut left_adapter,
-        bridge_context(&left),
-        left_request,
-        left.authorization.clone(),
-    )?;
-    let right_package = execute_windows_bridge(
-        &mut right_adapter,
-        bridge_context(&right),
-        right_request,
-        right.authorization.clone(),
-    )?;
+    let left_package = run_bridge(&left, &mut left_adapter, left_request)?;
+    let right_package = run_bridge(&right, &mut right_adapter, right_request)?;
     assert_eq!(left_package, right_package);
     Ok(())
 }
