@@ -95,7 +95,7 @@ pub enum WindowsStateAssertion {
     },
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct WindowsBridgeRequest {
     pub schema_version: String,
     pub request_id: String,
