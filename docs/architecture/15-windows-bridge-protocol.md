@@ -97,6 +97,23 @@ A platform adapter implements two operations:
 
 The adapter cannot decide acceptance. It cannot omit post-state observation. It cannot convert a failed assertion into success.
 
+## Automated adversarial coverage
+
+The protocol suite exercises real Ed25519 capability authorization and a deterministic adapter across these boundaries:
+
+- independently verified UI Automation success,
+- stale expected pre-state rejection before action,
+- adapter-side TOCTOU mismatch rejection,
+- executable/application identity mismatch rejection,
+- request grant mismatch rejection before observation,
+- control-method and selector mismatch rejection,
+- signed `FAILED` records for unmet postconditions,
+- coordinate fallback rejection without an observable effect,
+- coordinate fallback acceptance only after effect observation,
+- signed-record payload mutation detection,
+- post-state mutation detection,
+- deterministic package reproduction for identical inputs and keys.
+
 ## Deliberate limitations
 
 - v1 defines protocol and verifier behavior, not a production Windows service.
