@@ -13,7 +13,9 @@ use ergaxiom_capability_runtime::{
 };
 use ergaxiom_contract_runtime::{CompiledContract, PermissionAccess, compile_contract};
 use ergaxiom_operator_plan_runtime::{CompiledPlan, compile_plan};
-use ergaxiom_proof_kernel::{AssuranceLevel, DecisionStatus, canonical_json_bytes, canonical_json_sha256};
+use ergaxiom_proof_kernel::{
+    AssuranceLevel, DecisionStatus, canonical_json_bytes, canonical_json_sha256,
+};
 use serde_json::{Value, json};
 
 const POLICY_ISSUER: &str = "ergaxiom.policy-authority";
@@ -152,14 +154,8 @@ fn bundle_value(
         policy_key.verifying_key().to_bytes(),
     )?;
     let mut authorizer = CapabilityAuthorizer::new(trusted_keys);
-    let receipt = authorizer.authorize(
-        &token,
-        contract,
-        plan,
-        NOW,
-        EXECUTOR_ID,
-        Some(DEVICE_ID),
-    )?;
+    let receipt =
+        authorizer.authorize(&token, contract, plan, NOW, EXECUTOR_ID, Some(DEVICE_ID))?;
     let receipt_value = serde_json::to_value(&receipt)?;
     let receipt_digest = canonical_json_sha256(&receipt_value)?;
 
@@ -337,7 +333,9 @@ fn certificate_registry(context: &Context) -> Result<AttestationKeyRegistry, Box
     Ok(registry)
 }
 
-fn issue(context: Context) -> Result<ergaxiom_attestation_runtime::AttestationPackage, Box<dyn Error>> {
+fn issue(
+    context: Context,
+) -> Result<ergaxiom_attestation_runtime::AttestationPackage, Box<dyn Error>> {
     Ok(issue_attestation(
         context.contract,
         &context.plan,
@@ -479,12 +477,11 @@ fn signature_tampering_is_rejected() -> Result<(), Box<dyn Error>> {
     let context = context()?;
     let registry = certificate_registry(&context)?;
     let mut package = issue(context)?;
-    package.certificate.signature.value = "invalid-signature".to_owned();
+    package.certificate.signature.value = URL_SAFE_NO_PAD.encode([0_u8; 64]);
 
     assert!(matches!(
         verify_attestation(&package, &registry),
-        Err(AttestationVerifyError::InvalidSignatureLength)
-            | Err(AttestationVerifyError::SignatureVerificationFailed)
+        Err(AttestationVerifyError::SignatureVerificationFailed)
     ));
     Ok(())
 }
