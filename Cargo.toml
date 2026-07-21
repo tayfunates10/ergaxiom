@@ -8,6 +8,7 @@ members = [
   "crates/graphic-designer-twin-runtime",
   "crates/occupational-twin-runtime",
   "crates/operator-plan-runtime",
+  "crates/operator-simulation-runtime",
   "crates/proof-kernel"
 ]
 resolver = "2"
