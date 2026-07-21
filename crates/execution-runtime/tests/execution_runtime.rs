@@ -167,10 +167,7 @@ fn trace(
         .enumerate()
         .map(|(sequence, status)| ReceiptBoundTraceEvent {
             event: event(sequence, status),
-            authorization_receipt_digest: event_receipt_digests
-                .get(sequence)
-                .cloned()
-                .flatten(),
+            authorization_receipt_digest: event_receipt_digests.get(sequence).cloned().flatten(),
         })
         .collect();
     AuthorizedExecutionTrace {
@@ -238,10 +235,15 @@ fn forged_receipt_digest_is_rejected() -> Result<(), Box<dyn Error>> {
     )?;
 
     assert!(!assessment.conforms_to_authorized_plan);
-    assert!(assessment.authorization_violations.iter().any(|violation| matches!(
-        violation,
-        AuthorizationTraceViolation::ReceiptDigestMismatch { .. }
-    )));
+    assert!(
+        assessment
+            .authorization_violations
+            .iter()
+            .any(|violation| matches!(
+                violation,
+                AuthorizationTraceViolation::ReceiptDigestMismatch { .. }
+            ))
+    );
     Ok(())
 }
 
@@ -256,10 +258,15 @@ fn missing_event_receipt_is_rejected() -> Result<(), Box<dyn Error>> {
     )?;
 
     assert!(!assessment.conforms_to_authorized_plan);
-    assert!(assessment.authorization_violations.iter().any(|violation| matches!(
-        violation,
-        AuthorizationTraceViolation::MissingAuthorizationReceipt { .. }
-    )));
+    assert!(
+        assessment
+            .authorization_violations
+            .iter()
+            .any(|violation| matches!(
+                violation,
+                AuthorizationTraceViolation::MissingAuthorizationReceipt { .. }
+            ))
+    );
     Ok(())
 }
 
@@ -280,10 +287,15 @@ fn receipt_is_bound_to_the_exact_plan_digest() -> Result<(), Box<dyn Error>> {
         ),
     )?;
 
-    assert!(assessment.authorization_violations.iter().any(|violation| matches!(
-        violation,
-        AuthorizationTraceViolation::ReceiptPlanDigestMismatch { .. }
-    )));
+    assert!(
+        assessment
+            .authorization_violations
+            .iter()
+            .any(|violation| matches!(
+                violation,
+                AuthorizationTraceViolation::ReceiptPlanDigestMismatch { .. }
+            ))
+    );
     Ok(())
 }
 
@@ -301,10 +313,15 @@ fn receipt_token_must_match_the_trace_event() -> Result<(), Box<dyn Error>> {
     authorized_trace.events[1].event.capability_token_id = Some("token.other".to_owned());
     let assessment = verify_authorized_trace(&context.plan, &authorized_trace)?;
 
-    assert!(assessment.authorization_violations.iter().any(|violation| matches!(
-        violation,
-        AuthorizationTraceViolation::ReceiptTokenMismatch { .. }
-    )));
+    assert!(
+        assessment
+            .authorization_violations
+            .iter()
+            .any(|violation| matches!(
+                violation,
+                AuthorizationTraceViolation::ReceiptTokenMismatch { .. }
+            ))
+    );
     Ok(())
 }
 
@@ -342,10 +359,15 @@ fn one_step_cannot_switch_receipts_mid_execution() -> Result<(), Box<dyn Error>>
         ),
     )?;
 
-    assert!(assessment.authorization_violations.iter().any(|violation| matches!(
-        violation,
-        AuthorizationTraceViolation::InconsistentStepReceipt { .. }
-    )));
+    assert!(
+        assessment
+            .authorization_violations
+            .iter()
+            .any(|violation| matches!(
+                violation,
+                AuthorizationTraceViolation::InconsistentStepReceipt { .. }
+            ))
+    );
     Ok(())
 }
 
@@ -381,10 +403,15 @@ fn unused_receipt_is_rejected() -> Result<(), Box<dyn Error>> {
         ),
     )?;
 
-    assert!(assessment.authorization_violations.iter().any(|violation| matches!(
-        violation,
-        AuthorizationTraceViolation::UnusedAuthorizationReceipt { .. }
-    )));
+    assert!(
+        assessment
+            .authorization_violations
+            .iter()
+            .any(|violation| matches!(
+                violation,
+                AuthorizationTraceViolation::UnusedAuthorizationReceipt { .. }
+            ))
+    );
     Ok(())
 }
 
