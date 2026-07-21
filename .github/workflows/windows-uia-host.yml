@@ -36,18 +36,21 @@ jobs:
         run: dotnet restore hosts/windows-uia/Ergaxiom.WindowsUiaHost.csproj
 
       - name: Verify C# formatting
-        run: >-
-          dotnet format hosts/windows-uia/Ergaxiom.WindowsUiaHost.csproj
-          --verify-no-changes
-          --no-restore
-          --exclude hosts/windows-uia/obj
-          --exclude hosts/windows-uia/bin
+        shell: pwsh
+        run: |
+          dotnet format hosts/windows-uia/Ergaxiom.WindowsUiaHost.csproj --no-restore
+          git diff --exit-code -- `
+            ':(glob)hosts/windows-uia/*.cs' `
+            ':(glob)hosts/windows-uia/*.csproj'
 
       - name: Build Windows host
         run: dotnet build hosts/windows-uia/Ergaxiom.WindowsUiaHost.csproj --configuration Release --no-restore
 
       - name: Run Windows host self-tests
         run: dotnet run --project hosts/windows-uia/Ergaxiom.WindowsUiaHost.csproj --configuration Release --no-build -- --self-test
+
+      - name: Restore win-x64 publish assets
+        run: dotnet restore hosts/windows-uia/Ergaxiom.WindowsUiaHost.csproj --runtime win-x64
 
       - name: Publish Windows host
         shell: pwsh
