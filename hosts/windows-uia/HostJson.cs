@@ -6,11 +6,11 @@ namespace Ergaxiom.WindowsUiaHost;
 
 public static class HostJson
 {
-    public static JsonSerializerOptions Options { get; } = new()
-    {
-        Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
-        PropertyNameCaseInsensitive = false,
-        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
-        WriteIndented = false,
-    };
+  public static JsonSerializerOptions Options { get; } = new()
+  {
+    Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
+    PropertyNameCaseInsensitive = false,
+    DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
+    WriteIndented = false,
+  };
 }

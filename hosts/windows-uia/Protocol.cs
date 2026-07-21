@@ -52,14 +52,14 @@ public sealed record HostResponse(
     [property: JsonPropertyName("transition")] WindowsAdapterTransitionDto? Transition,
     [property: JsonPropertyName("error")] HostError? Error)
 {
-    public static HostResponse Observed(ObservedWindowsStateDto state) =>
-        new(true, "observe", state, null, null);
+  public static HostResponse Observed(ObservedWindowsStateDto state) =>
+      new(true, "observe", state, null, null);
 
-    public static HostResponse Executed(WindowsAdapterTransitionDto transition) =>
-        new(true, "execute", null, transition, null);
+  public static HostResponse Executed(WindowsAdapterTransitionDto transition) =>
+      new(true, "execute", null, transition, null);
 
-    public static HostResponse Failed(string kind, string code, string message) =>
-        new(false, kind, null, null, new HostError(code, message));
+  public static HostResponse Failed(string kind, string code, string message) =>
+      new(false, kind, null, null, new HostError(code, message));
 }
 
 public sealed record HostError(
@@ -68,10 +68,10 @@ public sealed record HostError(
 
 public sealed class HostProtocolException : Exception
 {
-    public HostProtocolException(string code, string message) : base(message)
-    {
-        Code = code;
-    }
+  public HostProtocolException(string code, string message) : base(message)
+  {
+    Code = code;
+  }
 
-    public string Code { get; }
+  public string Code { get; }
 }
