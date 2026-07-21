@@ -144,6 +144,29 @@ where
         )
     }
 
+    fn complete_post_observe(
+        &mut self,
+        request: &WindowsBridgeRequest,
+    ) -> Result<ObservedWindowsState, WindowsUiaClientError> {
+        let state = self.send_observe(request)?;
+        self.phase = ClientPhase::Idle;
+        Ok(state)
+    }
+
+    fn complete_execute(
+        &mut self,
+        request: &WindowsBridgeRequest,
+        expected_pre_state_digest: &str,
+        request_id: String,
+    ) -> Result<WindowsAdapterTransition, WindowsUiaClientError> {
+        let transition = self.send_execute(request, expected_pre_state_digest)?;
+        if transition.consumed_pre_state_digest != expected_pre_state_digest {
+            return Err(WindowsUiaClientError::ConsumedPreStateMismatch);
+        }
+        self.phase = ClientPhase::AwaitingPostState { request_id };
+        Ok(transition)
+    }
+
     fn exchange(
         &mut self,
         command: HostCommand<'_>,
@@ -182,9 +205,7 @@ where
                 if request_id != request.request_id {
                     Err(WindowsUiaClientError::RequestIdentityMismatch)
                 } else {
-                    let state = self.send_observe(request)?;
-                    self.phase = ClientPhase::Idle;
-                    Ok(state)
+                    self.complete_post_observe(request)
                 }
             }
             ClientPhase::Idle => Err(WindowsUiaClientError::ClientNotPrimed),
@@ -212,13 +233,7 @@ where
                 } else if expected_pre_state_digest != state_digest {
                     Err(WindowsUiaClientError::ExpectedPreStateMismatch)
                 } else {
-                    let transition = self.send_execute(request, expected_pre_state_digest)?;
-                    if transition.consumed_pre_state_digest != expected_pre_state_digest {
-                        Err(WindowsUiaClientError::ConsumedPreStateMismatch)
-                    } else {
-                        self.phase = ClientPhase::AwaitingPostState { request_id };
-                        Ok(transition)
-                    }
+                    self.complete_execute(request, expected_pre_state_digest, request_id)
                 }
             }
             ClientPhase::Idle | ClientPhase::Primed { .. } => {
