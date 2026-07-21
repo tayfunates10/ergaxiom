@@ -8,8 +8,9 @@ use ergaxiom_proof_kernel::{HashingError, canonical_json_bytes, canonical_json_s
 use thiserror::Error;
 
 use crate::model::{
-    VerifiedWindowsBridgeRecord, WindowsBridgePackage, WindowsBridgeStatus,
-    WindowsBridgeViolation,
+    VerifiedWindowsBridgeRecord, WindowsBridgePackage, WindowsBridgeSignatureAlgorithm,
+    WindowsBridgeSignatureEncoding, WindowsBridgeStatus, WindowsControlMethod,
+    WindowsStateAssertion, WindowsTargetSelector,
 };
 use crate::runtime::{
     evaluate_postconditions, observed_state_digest, selector_stable_id, validate_observed_state,
@@ -48,6 +49,8 @@ pub enum WindowsBridgeVerifyError {
     InvalidTrustedKey,
     #[error("unknown Windows Bridge key {issuer_id}/{key_id}")]
     UnknownTrustedKey { issuer_id: String, key_id: String },
+    #[error("Windows Bridge signature metadata is unsupported")]
+    UnsupportedSignatureMetadata,
     #[error("Windows Bridge signature is not valid base64url")]
     InvalidSignatureEncoding,
     #[error("Windows Bridge signature has an invalid Ed25519 length")]
@@ -64,6 +67,12 @@ pub enum WindowsBridgeVerifyError {
     AuthorizationReceiptDigestMismatch,
     #[error("authorization receipt or request does not match sealed plan and contract")]
     AuthorizationBindingMismatch,
+    #[error("request control method and selector are incompatible")]
+    SelectorMethodMismatch,
+    #[error("request has no independently observable postcondition")]
+    MissingPostconditions,
+    #[error("visual or coordinate fallback has no independently observable effect assertion")]
+    MissingIndependentEffectPostcondition,
     #[error("observed pre-state digest does not reproduce")]
     PreStateDigestMismatch,
     #[error("observed post-state digest does not reproduce")]
@@ -90,6 +99,12 @@ pub fn verify_windows_bridge_package(
             payload.schema_version.clone(),
         ));
     }
+    if package.record.signature.algorithm != WindowsBridgeSignatureAlgorithm::Ed25519
+        || package.record.signature.encoding != WindowsBridgeSignatureEncoding::Base64url
+    {
+        return Err(WindowsBridgeVerifyError::UnsupportedSignatureMetadata);
+    }
+    validate_request_policy(package)?;
 
     let key = trusted_keys
         .get(
@@ -172,6 +187,31 @@ pub fn verify_windows_bridge_package(
     })
 }
 
+fn validate_request_policy(
+    package: &WindowsBridgePackage,
+) -> Result<(), WindowsBridgeVerifyError> {
+    let request = &package.request;
+    if !selector_matches_method(request.control_method, &request.selector) {
+        return Err(WindowsBridgeVerifyError::SelectorMethodMismatch);
+    }
+    if request.postconditions.is_empty() {
+        return Err(WindowsBridgeVerifyError::MissingPostconditions);
+    }
+    if matches!(
+        request.control_method,
+        WindowsControlMethod::VisuallyConfirmed | WindowsControlMethod::CoordinateFallback
+    ) && !request.postconditions.iter().any(|assertion| {
+        matches!(
+            assertion,
+            WindowsStateAssertion::PropertyEquals { .. }
+                | WindowsStateAssertion::ArtifactDigestEquals { .. }
+        )
+    }) {
+        return Err(WindowsBridgeVerifyError::MissingIndependentEffectPostcondition);
+    }
+    Ok(())
+}
+
 fn validate_package_bindings(
     package: &WindowsBridgePackage,
     compiled_contract: &CompiledContract,
@@ -213,9 +253,36 @@ fn validate_package_bindings(
     }
 }
 
-#[allow(dead_code)]
-fn _assert_violation_type_is_stable(violation: &WindowsBridgeViolation) -> usize {
-    match violation {
-        WindowsBridgeViolation::PostconditionFailed { index } => *index,
-    }
+fn selector_matches_method(
+    method: WindowsControlMethod,
+    selector: &WindowsTargetSelector,
+) -> bool {
+    matches!(
+        (method, selector),
+        (
+            WindowsControlMethod::NativeModel,
+            WindowsTargetSelector::NativeObject { .. }
+        ) | (
+            WindowsControlMethod::ApplicationApi,
+            WindowsTargetSelector::ApplicationObject { .. }
+        ) | (
+            WindowsControlMethod::SignedPlugin,
+            WindowsTargetSelector::PluginObject { .. }
+        ) | (
+            WindowsControlMethod::Cli,
+            WindowsTargetSelector::CliEndpoint { .. }
+        ) | (
+            WindowsControlMethod::UiAutomation,
+            WindowsTargetSelector::UiAutomation { .. }
+        ) | (
+            WindowsControlMethod::Accessibility,
+            WindowsTargetSelector::Accessibility { .. }
+        ) | (
+            WindowsControlMethod::VisuallyConfirmed,
+            WindowsTargetSelector::VisualRegion { .. }
+        ) | (
+            WindowsControlMethod::CoordinateFallback,
+            WindowsTargetSelector::Coordinates { .. }
+        )
+    )
 }
