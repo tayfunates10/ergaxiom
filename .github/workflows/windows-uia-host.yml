@@ -43,8 +43,34 @@ jobs:
             ':(glob)hosts/windows-uia/*.cs' `
             ':(glob)hosts/windows-uia/*.csproj'
 
-      - name: Build Windows host
-        run: dotnet build hosts/windows-uia/Ergaxiom.WindowsUiaHost.csproj --configuration Release --no-restore
+      - name: Build Windows host and capture diagnostics
+        id: build
+        shell: pwsh
+        continue-on-error: true
+        run: |
+          $log = Join-Path $env:RUNNER_TEMP "windows-uia-build.log"
+          dotnet build hosts/windows-uia/Ergaxiom.WindowsUiaHost.csproj `
+            --configuration Release `
+            --no-restore 2>&1 | Tee-Object -FilePath $log
+          "exit_code=$LASTEXITCODE" | Out-File `
+            -FilePath $env:GITHUB_OUTPUT `
+            -Encoding utf8 `
+            -Append
+          exit 0
+
+      - name: Upload Windows host build diagnostics
+        if: steps.build.outputs.exit_code != '0'
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-uia-build-diagnostics
+          path: ${{ runner.temp }}/windows-uia-build.log
+          if-no-files-found: error
+          retention-days: 1
+
+      - name: Fail on Windows host build error
+        if: steps.build.outputs.exit_code != '0'
+        shell: pwsh
+        run: throw "Windows UI Automation host build failed"
 
       - name: Run Windows host self-tests
         run: dotnet run --project hosts/windows-uia/Ergaxiom.WindowsUiaHost.csproj --configuration Release --no-build -- --self-test
