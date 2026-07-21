@@ -14,10 +14,9 @@ use ergaxiom_operator_plan_runtime::{CompiledPlan, compile_plan};
 use ergaxiom_proof_kernel::{canonical_json_bytes, canonical_json_sha256};
 use ergaxiom_windows_bridge_runtime::{
     ObservedWindowsState, WindowsAdapterTransition, WindowsApplicationIdentity,
-    WindowsBridgeAction, WindowsBridgeAdapter, WindowsBridgeError,
-    WindowsBridgeExecutionContext, WindowsBridgeKeyRegistry, WindowsBridgePackage,
-    WindowsBridgeRequest, WindowsControlMethod, WindowsStateAssertion, WindowsTargetSelector,
-    execute_windows_bridge, seal_observed_state,
+    WindowsBridgeAction, WindowsBridgeAdapter, WindowsBridgeError, WindowsBridgeExecutionContext,
+    WindowsBridgeKeyRegistry, WindowsBridgePackage, WindowsBridgeRequest, WindowsControlMethod,
+    WindowsStateAssertion, WindowsTargetSelector, execute_windows_bridge, seal_observed_state,
 };
 use serde_json::{Value, json};
 
@@ -244,9 +243,7 @@ fn execution_context(context: &Context) -> WindowsBridgeExecutionContext<'_> {
     }
 }
 
-pub(crate) fn bridge_keys(
-    context: &Context,
-) -> Result<WindowsBridgeKeyRegistry, Box<dyn Error>> {
+pub(crate) fn bridge_keys(context: &Context) -> Result<WindowsBridgeKeyRegistry, Box<dyn Error>> {
     let mut keys = WindowsBridgeKeyRegistry::default();
     keys.insert_ed25519(
         BRIDGE_ISSUER,
@@ -274,10 +271,7 @@ pub(crate) struct MockAdapter {
 }
 
 impl MockAdapter {
-    pub(crate) fn new(
-        pre_state: ObservedWindowsState,
-        post_state: ObservedWindowsState,
-    ) -> Self {
+    pub(crate) fn new(pre_state: ObservedWindowsState, post_state: ObservedWindowsState) -> Self {
         Self {
             consumed_pre_state_digest: pre_state.state_digest.clone(),
             pre_state,
