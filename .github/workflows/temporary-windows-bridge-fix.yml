@@ -1,0 +1,91 @@
+name: Temporary Windows Bridge fix
+
+on:
+  push:
+    branches:
+      - agent/windows-bridge-protocol-v1
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out branch
+        uses: actions/checkout@v4
+        with:
+          ref: agent/windows-bridge-protocol-v1
+          fetch-depth: 0
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Apply targeted Windows Bridge fixes
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          model = Path('crates/windows-bridge-runtime/src/model.rs')
+          text = model.read_text()
+          marker = 'pub struct WindowsBridgeRequest {'
+          before, after = text.split(marker, 1)
+          before = before[::-1].replace(
+              '])ezilaireseD ,ezilaireS ,qE ,qElaitraP ,enolC ,gubeD[(evired#',
+              '])ezilaireseD ,ezilaireS ,qElaitraP ,enolC ,gubeD[(evired#',
+              1,
+          )[::-1]
+          model.write_text(before + marker + after)
+
+          verifier = Path('crates/windows-bridge-runtime/src/verifier.rs')
+          text = verifier.read_text()
+          old = '''    if observed_state_digest(&package.pre_state)? != package.pre_state.state_digest
+        || package.pre_state.state_digest != payload.pre_state_digest
+        || package.request.expected_pre_state_digest != payload.pre_state_digest
+    {
+        return Err(WindowsBridgeVerifyError::PreStateDigestMismatch);
+    }
+    if observed_state_digest(&package.post_state)? != package.post_state.state_digest
+        || package.post_state.state_digest != payload.post_state_digest
+    {
+        return Err(WindowsBridgeVerifyError::PostStateDigestMismatch);
+    }
+'''
+          new = '''    let reproduced_pre_state_digest = observed_state_digest(&package.pre_state)
+        .map_err(|_| WindowsBridgeVerifyError::PreStateDigestMismatch)?;
+    if reproduced_pre_state_digest != package.pre_state.state_digest
+        || package.pre_state.state_digest != payload.pre_state_digest
+        || package.request.expected_pre_state_digest != payload.pre_state_digest
+    {
+        return Err(WindowsBridgeVerifyError::PreStateDigestMismatch);
+    }
+    let reproduced_post_state_digest = observed_state_digest(&package.post_state)
+        .map_err(|_| WindowsBridgeVerifyError::PostStateDigestMismatch)?;
+    if reproduced_post_state_digest != package.post_state.state_digest
+        || package.post_state.state_digest != payload.post_state_digest
+    {
+        return Err(WindowsBridgeVerifyError::PostStateDigestMismatch);
+    }
+'''
+          if old not in text:
+              raise SystemExit('verifier target block not found')
+          verifier.write_text(text.replace(old, new, 1))
+          PY
+
+      - name: Apply machine-safe Clippy fixes
+        run: cargo clippy --fix --workspace --all-targets --all-features --allow-dirty --allow-staged
+
+      - name: Format workspace
+        run: cargo fmt --all
+
+      - name: Commit fixes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add --all
+          git diff --cached --quiet && exit 0
+          git commit -m "Fix Windows Bridge types and verification errors"
+          git push origin HEAD:agent/windows-bridge-protocol-v1
