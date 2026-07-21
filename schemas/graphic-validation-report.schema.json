@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ergaxiom.dev/schemas/graphic-validation-report.schema.json",
+  "title": "Ergaxiom Graphic Validation Report",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version", "job_id", "document_digest", "raster_digest",
+    "all_mandatory_passed", "observations", "report_digest"
+  ],
+  "properties": {
+    "schema_version": {"const": "0.1.0"},
+    "job_id": {"type": "string", "minLength": 1},
+    "document_digest": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "raster_digest": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "all_mandatory_passed": {"type": "boolean"},
+    "observations": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "validator_id", "validator_version", "claim_id", "passed",
+          "observed", "expected", "evidence_digest"
+        ],
+        "properties": {
+          "validator_id": {"type": "string", "minLength": 1},
+          "validator_version": {"type": "string", "minLength": 1},
+          "claim_id": {"type": "string", "minLength": 1},
+          "passed": {"type": "boolean"},
+          "observed": {},
+          "expected": {},
+          "evidence_digest": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+        }
+      }
+    },
+    "report_digest": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+  }
+}
