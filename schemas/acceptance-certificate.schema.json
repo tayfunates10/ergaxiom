@@ -1,0 +1,71 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ergaxiom.dev/schemas/acceptance-certificate.schema.json",
+  "title": "Ergaxiom Acceptance Certificate",
+  "description": "An Ed25519-signed certificate issued only for an independently recomputed ACCEPTED run.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["payload", "signature"],
+  "properties": {
+    "payload": {"$ref": "#/$defs/payload"},
+    "signature": {"$ref": "#/$defs/signature"}
+  },
+  "$defs": {
+    "payload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "certificate_id",
+        "issuer_id",
+        "key_id",
+        "issued_at_epoch_s",
+        "contract_digest",
+        "capsule_digest",
+        "plan_id",
+        "plan_digest",
+        "evidence_bundle_id",
+        "run_id",
+        "evidence_bundle_digest",
+        "authorized_trace_digest",
+        "replay_manifest_digest",
+        "assurance_level",
+        "mandatory_passed",
+        "mandatory_failed",
+        "mandatory_unknown",
+        "decision"
+      ],
+      "properties": {
+        "schema_version": {"const": "0.1.0"},
+        "certificate_id": {"type": "string", "minLength": 1},
+        "issuer_id": {"type": "string", "minLength": 1},
+        "key_id": {"type": "string", "minLength": 1},
+        "issued_at_epoch_s": {"type": "integer", "minimum": 0},
+        "contract_digest": {"type": "string", "minLength": 1},
+        "capsule_digest": {"type": "string", "minLength": 1},
+        "plan_id": {"type": "string", "minLength": 1},
+        "plan_digest": {"type": "string", "minLength": 1},
+        "evidence_bundle_id": {"type": "string", "minLength": 1},
+        "run_id": {"type": "string", "minLength": 1},
+        "evidence_bundle_digest": {"type": "string", "minLength": 1},
+        "authorized_trace_digest": {"type": "string", "minLength": 1},
+        "replay_manifest_digest": {"type": "string", "minLength": 1},
+        "assurance_level": {"enum": ["E0", "E1", "E2", "E3", "E4", "E5"]},
+        "mandatory_passed": {"type": "integer", "minimum": 1},
+        "mandatory_failed": {"const": 0},
+        "mandatory_unknown": {"const": 0},
+        "decision": {"const": "ACCEPTED"}
+      }
+    },
+    "signature": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["algorithm", "encoding", "value"],
+      "properties": {
+        "algorithm": {"const": "ed25519"},
+        "encoding": {"const": "base64url"},
+        "value": {"type": "string", "minLength": 1}
+      }
+    }
+  }
+}
