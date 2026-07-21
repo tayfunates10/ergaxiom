@@ -52,10 +52,19 @@ pub enum AuthorizationTraceViolation {
         event_id: String,
         receipt_digest: String,
     },
-    ReceiptPlanMismatch {
+    ReceiptContractDigestMismatch {
+        receipt_digest: String,
+    },
+    ReceiptCapsuleDigestMismatch {
+        receipt_digest: String,
+    },
+    ReceiptPlanIdMismatch {
         receipt_digest: String,
         actual: String,
         expected: String,
+    },
+    ReceiptPlanDigestMismatch {
+        receipt_digest: String,
     },
     ReceiptStepMismatch {
         event_id: String,
