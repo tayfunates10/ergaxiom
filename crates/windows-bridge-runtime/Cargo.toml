@@ -1,0 +1,22 @@
+[package]
+name = "ergaxiom-windows-bridge-runtime"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+publish = false
+
+[dependencies]
+base64.workspace = true
+ergaxiom-capability-runtime = { path = "../capability-runtime" }
+ergaxiom-contract-runtime = { path = "../contract-runtime" }
+ergaxiom-execution-runtime = { path = "../execution-runtime" }
+ergaxiom-operator-plan-runtime = { path = "../operator-plan-runtime" }
+ergaxiom-proof-kernel = { path = "../proof-kernel" }
+ed25519-dalek.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+
+[lints]
+workspace = true
