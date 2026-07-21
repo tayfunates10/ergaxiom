@@ -121,12 +121,6 @@ pub struct OperationReceipt {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct JournalEntry {
-    pub sequence: u64,
-    pub receipt: OperationReceipt,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CheckpointDescriptor {
     pub checkpoint_id: String,
     pub snapshot_digest: String,
@@ -141,6 +135,19 @@ pub struct RollbackReceipt {
     pub restored_snapshot_digest: String,
     pub new_snapshot_digest: String,
     pub changed_artifact_ids: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "record_type", rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum JournalRecord {
+    Operation { receipt: OperationReceipt },
+    Rollback { receipt: RollbackReceipt },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct JournalEntry {
+    pub sequence: u64,
+    pub record: JournalRecord,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
