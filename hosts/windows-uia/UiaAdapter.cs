@@ -7,14 +7,22 @@ namespace Ergaxiom.WindowsUiaHost;
 
 public sealed class UiaAdapter
 {
+    private const int MaximumCachedObservations = 128;
+
     private readonly JsonSerializerOptions _jsonOptions;
     private readonly string _hostExecutableDigest;
+    private readonly object _observationLock = new();
+    private readonly Dictionary<string, ObservedWindowsStateDto> _observations =
+        new(StringComparer.Ordinal);
+    private readonly Queue<string> _observationOrder = new();
 
     public UiaAdapter(JsonSerializerOptions jsonOptions)
     {
         _jsonOptions = jsonOptions;
         var hostPath = Environment.ProcessPath
-            ?? throw new HostProtocolException("HOST_IDENTITY_UNAVAILABLE", "Host executable path is unavailable.");
+            ?? throw new HostProtocolException(
+                "HOST_IDENTITY_UNAVAILABLE",
+                "Host executable path is unavailable.");
         _hostExecutableDigest = HashFile(hostPath);
     }
 
@@ -22,7 +30,9 @@ public sealed class UiaAdapter
     {
         ValidateRequestEnvelope(request);
         var target = ResolveTarget(request);
-        return ObserveTarget(request, target);
+        var state = ObserveTarget(target);
+        CacheObservation(state);
+        return state;
     }
 
     public WindowsAdapterTransitionDto Execute(
@@ -37,13 +47,14 @@ public sealed class UiaAdapter
                 "Execute requires a non-empty expected pre-state digest.");
         }
 
+        var expectedState = ConsumeObservation(expectedPreStateDigest);
         var target = ResolveTarget(request);
-        var consumedState = ObserveTarget(request, target);
-        if (!StringComparer.Ordinal.Equals(consumedState.StateDigest, expectedPreStateDigest))
+        var currentState = ObserveTarget(target);
+        if (!SemanticStateEquals(expectedState, currentState))
         {
             throw new HostProtocolException(
                 "TOCTOU_MISMATCH",
-                "Observed state changed before the UI Automation action boundary.");
+                "Observed UI Automation state changed before the action boundary.");
         }
 
         ApplyAction(request, target.Element);
@@ -51,7 +62,7 @@ public sealed class UiaAdapter
             new Dictionary<string, object?>
             {
                 ["action"] = request.Action,
-                ["consumed_pre_state_digest"] = consumedState.StateDigest,
+                ["consumed_pre_state_digest"] = expectedState.StateDigest,
                 ["host_executable_digest"] = _hostExecutableDigest,
                 ["request_id"] = request.RequestId,
                 ["target_stable_id"] = target.StableId,
@@ -59,8 +70,47 @@ public sealed class UiaAdapter
             _jsonOptions);
 
         return new WindowsAdapterTransitionDto(
-            consumedState.StateDigest,
+            expectedState.StateDigest,
             CanonicalJson.Sha256(eventValue));
+    }
+
+    private void CacheObservation(ObservedWindowsStateDto state)
+    {
+        lock (_observationLock)
+        {
+            _observations[state.StateDigest] = state;
+            _observationOrder.Enqueue(state.StateDigest);
+            while (_observationOrder.Count > MaximumCachedObservations)
+            {
+                var expiredDigest = _observationOrder.Dequeue();
+                _observations.Remove(expiredDigest);
+            }
+        }
+    }
+
+    private ObservedWindowsStateDto ConsumeObservation(string expectedPreStateDigest)
+    {
+        lock (_observationLock)
+        {
+            if (!_observations.Remove(expectedPreStateDigest, out var state))
+            {
+                throw new HostProtocolException(
+                    "PRE_STATE_NOT_OBSERVED_BY_HOST",
+                    "Expected pre-state digest is unknown, expired or already consumed.");
+            }
+
+            return state;
+        }
+    }
+
+    private static bool SemanticStateEquals(
+        ObservedWindowsStateDto expected,
+        ObservedWindowsStateDto current)
+    {
+        return expected.Application == current.Application
+            && StringComparer.Ordinal.Equals(expected.TargetStableId, current.TargetStableId)
+            && expected.Properties.SequenceEqual(current.Properties)
+            && expected.ArtifactDigests.SequenceEqual(current.ArtifactDigests);
     }
 
     private static void ValidateRequestEnvelope(WindowsBridgeRequestDto request)
@@ -150,9 +200,7 @@ public sealed class UiaAdapter
         }
     }
 
-    private static ObservedWindowsStateDto ObserveTarget(
-        WindowsBridgeRequestDto request,
-        TargetContext target)
+    private static ObservedWindowsStateDto ObserveTarget(TargetContext target)
     {
         var current = target.Element.Current;
         var properties = new SortedDictionary<string, string>(StringComparer.Ordinal)
