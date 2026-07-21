@@ -123,7 +123,12 @@ where
             request,
             expected_pre_state_digest: None,
         })?;
-        success_payload(response, OBSERVE_COMMAND, |response| response.state, "state")
+        success_payload(
+            response,
+            OBSERVE_COMMAND,
+            |response| response.state,
+            "state",
+        )
     }
 
     fn send_execute(
