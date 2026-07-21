@@ -1,0 +1,56 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ergaxiom.dev/schemas/operator-simulation-plan.schema.json",
+  "title": "Ergaxiom Operator Simulation Plan",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "simulation_id", "plan_id", "plan_digest", "invocations"],
+  "properties": {
+    "schema_version": {"const": "0.1.0"},
+    "simulation_id": {"type": "string", "minLength": 1},
+    "plan_id": {"type": "string", "minLength": 1},
+    "plan_digest": {"type": "string", "minLength": 1},
+    "invocations": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/invocation"}
+    }
+  },
+  "$defs": {
+    "invocation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["step_id", "operator_id", "operator_version", "operation", "fault"],
+      "properties": {
+        "step_id": {"type": "string", "minLength": 1},
+        "operator_id": {"type": "string", "minLength": 1},
+        "operator_version": {"type": "string", "minLength": 1},
+        "operation": {"$ref": "typed-operation.schema.json"},
+        "fault": {
+          "oneOf": [
+            {"type": "null"},
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["fault", "artifact_id"],
+              "properties": {
+                "fault": {
+                  "enum": ["FORCE_PRECONDITION_FAILURE", "FORCE_POSTCONDITION_FAILURE"]
+                },
+                "artifact_id": {"type": "string", "minLength": 1}
+              }
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["fault", "replacement_base64url"],
+              "properties": {
+                "fault": {"const": "CORRUPT_FIRST_WRITE"},
+                "replacement_base64url": {"type": "string"}
+              }
+            }
+          ]
+        }
+      }
+    }
+  }
+}
