@@ -8,8 +8,8 @@ use serde_json::Value;
 use thiserror::Error;
 
 use crate::model::{
-    ContractProofObligation, JobTypeDefinition, ProfessionCapsule, UnknownResolution,
-    ValidatorDefinition, WorkContract,
+    ContractPermission, ContractProofObligation, JobTypeDefinition, ProfessionCapsule,
+    UnknownResolution, ValidatorDefinition, WorkContract,
 };
 
 const SUPPORTED_CONTRACT_SCHEMA: &str = "0.2.0";
@@ -102,6 +102,7 @@ pub struct CompiledContract {
     pub policy: AcceptancePolicy,
     pub minimum_assurance_level: AssuranceLevel,
     pub unresolved_mandatory_unknowns: usize,
+    pub permissions: Vec<ContractPermission>,
     pub proof_requirements: Vec<ProofObligationRequirement>,
     pub(crate) validator_bindings: BTreeMap<String, BTreeMap<String, ValidatorBinding>>,
 }
@@ -219,6 +220,7 @@ pub fn compile_contract(
         },
         minimum_assurance_level: contract_minimum,
         unresolved_mandatory_unknowns,
+        permissions: contract.permissions,
         proof_requirements,
         validator_bindings,
     })
