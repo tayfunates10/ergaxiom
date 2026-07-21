@@ -1,4 +1,4 @@
-name: Temporary Windows UIA format
+name: Temporary Windows UIA cleanup
 
 on:
   push:
@@ -9,9 +9,9 @@ permissions:
   contents: write
 
 jobs:
-  format:
+  cleanup:
     if: github.actor != 'github-actions[bot]'
-    runs-on: windows-latest
+    runs-on: ubuntu-latest
     steps:
       - name: Check out branch
         uses: actions/checkout@v4
@@ -19,25 +19,17 @@ jobs:
           ref: agent/windows-uia-host-v1
           fetch-depth: 0
 
-      - name: Install .NET SDK
-        uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: "8.0.x"
+      - name: Remove generated files and temporary workflow
+        run: |
+          set -euo pipefail
+          printf 'bin/\nobj/\n' > hosts/windows-uia/.gitignore
+          git rm -r --ignore-unmatch hosts/windows-uia/obj
+          git rm .github/workflows/temporary-windows-uia-format.yml
 
-      - name: Restore host
-        run: dotnet restore hosts/windows-uia/Ergaxiom.WindowsUiaHost.csproj
-
-      - name: Format host
-        run: dotnet format hosts/windows-uia/Ergaxiom.WindowsUiaHost.csproj --no-restore
-
-      - name: Commit formatting
-        shell: pwsh
+      - name: Commit cleanup
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add hosts/windows-uia
-          if (git diff --cached --quiet) {
-            exit 0
-          }
-          git commit -m "Format Windows UI Automation host"
+          git add hosts/windows-uia/.gitignore
+          git commit -m "Remove generated Windows host files"
           git push origin HEAD:agent/windows-uia-host-v1
