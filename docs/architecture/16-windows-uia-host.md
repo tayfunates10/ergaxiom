@@ -121,6 +121,8 @@ The Windows workflow performs:
 6. a Rust integration test that starts the published host as a subprocess and validates one JSONL error response,
 7. artifact upload for inspection.
 
+The checked-in C# source is normalized by `dotnet format` before final CI acceptance.
+
 ## Deliberate limitations
 
 - CI does not yet automate a real third-party design application.
