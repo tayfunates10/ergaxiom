@@ -31,8 +31,7 @@ use sha2::{Digest, Sha256};
 
 const CONTRACT_SOURCE: &str =
     include_str!("../../../examples/work-contracts/social-media-static-post.json");
-const CAPSULE_SOURCE: &str =
-    include_str!("../../../professions/graphic-designer/profession.json");
+const CAPSULE_SOURCE: &str = include_str!("../../../professions/graphic-designer/profession.json");
 const POLICY_ISSUER: &str = "ergaxiom.policy-authority";
 const POLICY_KEY_ID: &str = "windows-real-uia-policy-key";
 const BRIDGE_ISSUER: &str = "ergaxiom.windows-bridge-authority";
@@ -106,14 +105,25 @@ fn real_uia_set_value_is_signed_and_independently_verified() -> Result<(), Box<d
         context.authorization.clone(),
     )?;
 
-    assert_eq!(package.record.payload.status, WindowsBridgeStatus::Succeeded);
+    assert_eq!(
+        package.record.payload.status,
+        WindowsBridgeStatus::Succeeded
+    );
     assert!(package.record.payload.violations.is_empty());
     assert_eq!(
-        package.pre_state.properties.get("value").map(String::as_str),
+        package
+            .pre_state
+            .properties
+            .get("value")
+            .map(String::as_str),
         Some("BEFORE")
     );
     assert_eq!(
-        package.post_state.properties.get("value").map(String::as_str),
+        package
+            .post_state
+            .properties
+            .get("value")
+            .map(String::as_str),
         Some("APPROVED")
     );
 
@@ -123,12 +133,8 @@ fn real_uia_set_value_is_signed_and_independently_verified() -> Result<(), Box<d
         BRIDGE_KEY_ID,
         context.bridge_key.verifying_key().to_bytes(),
     )?;
-    let verified = verify_windows_bridge_package(
-        &package,
-        &bridge_keys,
-        &context.contract,
-        &context.plan,
-    )?;
+    let verified =
+        verify_windows_bridge_package(&package, &bridge_keys, &context.contract, &context.plan)?;
     assert_eq!(verified.status, WindowsBridgeStatus::Succeeded);
     assert_eq!(verified.pre_state_digest, primed.state_digest);
     Ok(())
@@ -148,14 +154,8 @@ fn context() -> Result<Context, Box<dyn Error>> {
         policy_key.verifying_key().to_bytes(),
     )?;
     let mut authorizer = CapabilityAuthorizer::new(policy_keys);
-    let receipt = authorizer.authorize(
-        &token,
-        &contract,
-        &plan,
-        NOW,
-        EXECUTOR_ID,
-        Some(DEVICE_ID),
-    )?;
+    let receipt =
+        authorizer.authorize(&token, &contract, &plan, NOW, EXECUTOR_ID, Some(DEVICE_ID))?;
     let receipt_value = serde_json::to_value(&receipt)?;
     Ok(Context {
         contract,
