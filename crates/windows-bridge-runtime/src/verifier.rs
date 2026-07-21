@@ -145,13 +145,17 @@ pub fn verify_windows_bridge_package(
         .map_err(|_| WindowsBridgeVerifyError::ObservedIdentityMismatch)?;
     validate_observed_state(&package.post_state, &package.request)
         .map_err(|_| WindowsBridgeVerifyError::ObservedIdentityMismatch)?;
-    if observed_state_digest(&package.pre_state)? != package.pre_state.state_digest
+    let reproduced_pre_state_digest = observed_state_digest(&package.pre_state)
+        .map_err(|_| WindowsBridgeVerifyError::PreStateDigestMismatch)?;
+    if reproduced_pre_state_digest != package.pre_state.state_digest
         || package.pre_state.state_digest != payload.pre_state_digest
         || package.request.expected_pre_state_digest != payload.pre_state_digest
     {
         return Err(WindowsBridgeVerifyError::PreStateDigestMismatch);
     }
-    if observed_state_digest(&package.post_state)? != package.post_state.state_digest
+    let reproduced_post_state_digest = observed_state_digest(&package.post_state)
+        .map_err(|_| WindowsBridgeVerifyError::PostStateDigestMismatch)?;
+    if reproduced_post_state_digest != package.post_state.state_digest
         || package.post_state.state_digest != payload.post_state_digest
     {
         return Err(WindowsBridgeVerifyError::PostStateDigestMismatch);
