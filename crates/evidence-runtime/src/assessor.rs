@@ -1,7 +1,10 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use ergaxiom_contract_runtime::{CompiledContract, ContractRuntimeError, ContractSession};
-use ergaxiom_operator_plan_runtime::{CompiledPlan, TraceAssessment, verify_trace};
+use ergaxiom_execution_runtime::{
+    ExecutionRuntimeError, ExecutionTraceAssessment, verify_authorized_trace,
+};
+use ergaxiom_operator_plan_runtime::CompiledPlan;
 use ergaxiom_proof_kernel::{
     AcceptanceDecision, AssuranceLevel, DecisionStatus, EvidenceRecord, HashingError,
     ObligationState, TruthValue, canonical_json_sha256,
@@ -13,7 +16,7 @@ use crate::model::{
     ArtifactEvidence, ArtifactRole, DigestAlgorithm, EvidenceBundle, ProofResultStatus,
 };
 
-const SUPPORTED_EVIDENCE_SCHEMA: &str = "0.3.0";
+const SUPPORTED_EVIDENCE_SCHEMA: &str = "0.4.0";
 
 #[derive(Debug, Error)]
 pub enum EvidenceBundleError {
@@ -23,6 +26,8 @@ pub enum EvidenceBundleError {
     Hashing(#[from] HashingError),
     #[error(transparent)]
     ContractRuntime(#[from] ContractRuntimeError),
+    #[error(transparent)]
+    ExecutionRuntime(#[from] ExecutionRuntimeError),
     #[error("unsupported Evidence Bundle schema version {actual}; expected {expected}")]
     UnsupportedSchemaVersion {
         actual: String,
@@ -40,9 +45,9 @@ pub enum EvidenceBundleError {
     PlanDigestMismatch,
     #[error("binding {0} must use sha256")]
     UnsupportedBindingAlgorithm(&'static str),
-    #[error("claimed trace conformance does not match independently recomputed conformance")]
+    #[error("claimed authorized-trace conformance does not match recomputed conformance")]
     TraceClaimMismatch,
-    #[error("execution trace violates the sealed operator plan ({violation_count} violations)")]
+    #[error("authorized execution trace has {violation_count} total violations")]
     TraceNonConformance { violation_count: usize },
     #[error("duplicate artifact identifier: {0}")]
     DuplicateArtifact(String),
@@ -77,7 +82,7 @@ pub struct BundleAssessment {
     pub run_id: String,
     pub bundle_digest: String,
     pub verified_assurance_level: AssuranceLevel,
-    pub trace_assessment: TraceAssessment,
+    pub trace_assessment: ExecutionTraceAssessment,
     pub mandatory_passed: usize,
     pub mandatory_failed: usize,
     pub mandatory_unknown: usize,
@@ -107,17 +112,14 @@ pub fn assess_bundle(
         });
     }
 
-    let trace_assessment = verify_trace(
-        compiled_plan,
-        &bundle.trace.events,
-        bundle.trace.claimed_conforms_to_plan,
-    );
+    let trace_assessment = verify_authorized_trace(compiled_plan, &bundle.trace)?;
     if !trace_assessment.claim_matches {
         return Err(EvidenceBundleError::TraceClaimMismatch);
     }
-    if !trace_assessment.conforms_to_plan {
+    if !trace_assessment.conforms_to_authorized_plan {
         return Err(EvidenceBundleError::TraceNonConformance {
-            violation_count: trace_assessment.violations.len(),
+            violation_count: trace_assessment.plan_trace.violations.len()
+                + trace_assessment.authorization_violations.len(),
         });
     }
 
