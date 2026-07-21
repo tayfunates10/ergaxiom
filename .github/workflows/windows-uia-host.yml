@@ -1,0 +1,75 @@
+name: Windows UI Automation host
+
+on:
+  pull_request:
+    paths:
+      - "hosts/windows-uia/**"
+      - "crates/windows-bridge-runtime/**"
+      - ".github/workflows/windows-uia-host.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "hosts/windows-uia/**"
+      - "crates/windows-bridge-runtime/**"
+      - ".github/workflows/windows-uia-host.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  build-self-test-and-interop:
+    runs-on: windows-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Install .NET SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Restore Windows host
+        run: dotnet restore hosts/windows-uia/Ergaxiom.WindowsUiaHost.csproj
+
+      - name: Verify C# formatting
+        run: dotnet format hosts/windows-uia/Ergaxiom.WindowsUiaHost.csproj --verify-no-changes --no-restore
+
+      - name: Build Windows host
+        run: dotnet build hosts/windows-uia/Ergaxiom.WindowsUiaHost.csproj --configuration Release --no-restore
+
+      - name: Run Windows host self-tests
+        run: dotnet run --project hosts/windows-uia/Ergaxiom.WindowsUiaHost.csproj --configuration Release --no-build -- --self-test
+
+      - name: Publish Windows host
+        shell: pwsh
+        run: |
+          $output = Join-Path $env:RUNNER_TEMP "windows-uia-host"
+          dotnet publish hosts/windows-uia/Ergaxiom.WindowsUiaHost.csproj `
+            --configuration Release `
+            --runtime win-x64 `
+            --self-contained false `
+            --no-restore `
+            --output $output
+          $hostExe = Join-Path $output "Ergaxiom.WindowsUiaHost.exe"
+          if (-not (Test-Path $hostExe)) {
+            throw "Published Windows host executable was not found: $hostExe"
+          }
+          "ERGAXIOM_WINDOWS_UIA_HOST=$hostExe" | Out-File `
+            -FilePath $env:GITHUB_ENV `
+            -Encoding utf8 `
+            -Append
+
+      - name: Run Rust-to-host process integration test
+        run: cargo test -p ergaxiom-windows-bridge-runtime --test windows_uia_host_process
+
+      - name: Upload published Windows host
+        uses: actions/upload-artifact@v4
+        with:
+          name: ergaxiom-windows-uia-host-win-x64
+          path: ${{ runner.temp }}/windows-uia-host
+          if-no-files-found: error
+          retention-days: 7
