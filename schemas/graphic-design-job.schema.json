@@ -1,0 +1,97 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ergaxiom.dev/schemas/graphic-design-job.schema.json",
+  "title": "Ergaxiom Graphic Design Job",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version", "job_id", "evaluated_at", "canvas", "safe_area",
+    "logo_bounds", "text_origin_x", "text_origin_y", "text_scale",
+    "text_color", "approved_logo", "approved_copy", "brand_profile",
+    "editable_master_id", "delivery_raster_id"
+  ],
+  "properties": {
+    "schema_version": {"const": "0.1.0"},
+    "job_id": {"type": "string", "minLength": 1},
+    "evaluated_at": {"type": "string", "format": "date-time"},
+    "canvas": {"$ref": "#/$defs/canvas"},
+    "safe_area": {"$ref": "#/$defs/rect"},
+    "logo_bounds": {"$ref": "#/$defs/rect"},
+    "text_origin_x": {"type": "integer", "minimum": 0},
+    "text_origin_y": {"type": "integer", "minimum": 0},
+    "text_scale": {"type": "integer", "minimum": 1},
+    "text_color": {"$ref": "#/$defs/color"},
+    "approved_logo": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["artifact_id", "media_type", "content", "source_width", "source_height", "primary_color", "secondary_color"],
+      "properties": {
+        "artifact_id": {"type": "string", "minLength": 1},
+        "media_type": {"type": "string", "minLength": 1},
+        "content": {"type": "array", "items": {"type": "integer", "minimum": 0, "maximum": 255}},
+        "source_width": {"type": "integer", "minimum": 1},
+        "source_height": {"type": "integer", "minimum": 1},
+        "primary_color": {"$ref": "#/$defs/color"},
+        "secondary_color": {"$ref": "#/$defs/color"}
+      }
+    },
+    "approved_copy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["artifact_id", "media_type", "text"],
+      "properties": {
+        "artifact_id": {"type": "string", "minLength": 1},
+        "media_type": {"type": "string", "minLength": 1},
+        "text": {"type": "string"}
+      }
+    },
+    "brand_profile": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["artifact_id", "media_type", "minimum_logo_clear_space_px", "minimum_text_contrast_milli"],
+      "properties": {
+        "artifact_id": {"type": "string", "minLength": 1},
+        "media_type": {"type": "string", "minLength": 1},
+        "minimum_logo_clear_space_px": {"type": "integer", "minimum": 0},
+        "minimum_text_contrast_milli": {"type": "integer", "minimum": 1000}
+      }
+    },
+    "editable_master_id": {"type": "string", "minLength": 1},
+    "delivery_raster_id": {"type": "string", "minLength": 1}
+  },
+  "$defs": {
+    "color": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["red", "green", "blue", "alpha"],
+      "properties": {
+        "red": {"type": "integer", "minimum": 0, "maximum": 255},
+        "green": {"type": "integer", "minimum": 0, "maximum": 255},
+        "blue": {"type": "integer", "minimum": 0, "maximum": 255},
+        "alpha": {"const": 255}
+      }
+    },
+    "rect": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["x", "y", "width", "height"],
+      "properties": {
+        "x": {"type": "integer", "minimum": 0},
+        "y": {"type": "integer", "minimum": 0},
+        "width": {"type": "integer", "minimum": 0},
+        "height": {"type": "integer", "minimum": 0}
+      }
+    },
+    "canvas": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["width", "height", "color_profile", "background"],
+      "properties": {
+        "width": {"type": "integer", "minimum": 1},
+        "height": {"type": "integer", "minimum": 1},
+        "color_profile": {"const": "sRGB IEC61966-2.1"},
+        "background": {"$ref": "#/$defs/color"}
+      }
+    }
+  }
+}

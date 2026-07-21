@@ -224,17 +224,16 @@ fn validate_dependencies(
     step.depends_on
         .iter()
         .filter(|dependency_id| !succeeded_steps.contains(*dependency_id))
-        .map(|dependency_id| SimulationViolation::DependencyNotSucceeded {
-            step_id: step.step_id.clone(),
-            dependency_id: dependency_id.clone(),
-        })
+        .map(
+            |dependency_id| SimulationViolation::DependencyNotSucceeded {
+                step_id: step.step_id.clone(),
+                dependency_id: dependency_id.clone(),
+            },
+        )
         .collect()
 }
 
-fn validate_invocation(
-    step: &PlanStep,
-    invocation: &StepInvocation,
-) -> Vec<SimulationViolation> {
+fn validate_invocation(step: &PlanStep, invocation: &StepInvocation) -> Vec<SimulationViolation> {
     let mut violations = Vec::new();
     if invocation.operator_id != step.operator_id {
         violations.push(SimulationViolation::InvocationOperatorMismatch {
@@ -306,16 +305,19 @@ fn apply_fault(operation: &mut TypedOperation, fault: &FaultInjection) -> bool {
         }
         FaultInjection::CorruptFirstWrite {
             replacement_base64url,
-        } => operation.commands.iter_mut().find_map(|command| match command {
-            WorkspaceCommand::WriteArtifact {
-                content_base64url,
-                ..
-            } => {
-                *content_base64url = replacement_base64url.clone();
-                Some(())
-            }
-            WorkspaceCommand::DeleteArtifact { .. } => None,
-        }).is_some(),
+        } => operation
+            .commands
+            .iter_mut()
+            .find_map(|command| match command {
+                WorkspaceCommand::WriteArtifact {
+                    content_base64url, ..
+                } => {
+                    *content_base64url = replacement_base64url.clone();
+                    Some(())
+                }
+                WorkspaceCommand::DeleteArtifact { .. } => None,
+            })
+            .is_some(),
     }
 }
 

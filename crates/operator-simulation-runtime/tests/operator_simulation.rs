@@ -239,7 +239,8 @@ fn identical_simulations_are_deterministic() -> Result<(), Box<dyn Error>> {
     let mut left = context()?;
     let mut right = context()?;
     let left_report = simulate_operator_plan(&mut left.workspace, &left.plan, &left.simulation)?;
-    let right_report = simulate_operator_plan(&mut right.workspace, &right.plan, &right.simulation)?;
+    let right_report =
+        simulate_operator_plan(&mut right.workspace, &right.plan, &right.simulation)?;
 
     assert!(left_report.conforms_to_plan);
     assert_eq!(left_report, right_report);
@@ -255,7 +256,8 @@ fn identical_simulations_are_deterministic() -> Result<(), Box<dyn Error>> {
 fn missing_mandatory_invocation_fails_closed() -> Result<(), Box<dyn Error>> {
     let mut context = context()?;
     context.simulation.invocations.pop();
-    let report = simulate_operator_plan(&mut context.workspace, &context.plan, &context.simulation)?;
+    let report =
+        simulate_operator_plan(&mut context.workspace, &context.plan, &context.simulation)?;
 
     assert!(!report.conforms_to_plan);
     assert_eq!(report.steps[1].status, SimulatedStepStatus::Missing);
@@ -271,10 +273,14 @@ fn operator_identity_mismatch_blocks_before_workspace_mutation() -> Result<(), B
     let mut context = context()?;
     context.simulation.invocations[0].operator_id = "operator.other".to_owned();
     let initial = context.workspace.current_snapshot()?;
-    let report = simulate_operator_plan(&mut context.workspace, &context.plan, &context.simulation)?;
+    let report =
+        simulate_operator_plan(&mut context.workspace, &context.plan, &context.simulation)?;
 
     assert_eq!(report.steps[0].status, SimulatedStepStatus::Blocked);
-    assert_eq!(initial.snapshot_digest, report.final_snapshot.snapshot_digest);
+    assert_eq!(
+        initial.snapshot_digest,
+        report.final_snapshot.snapshot_digest
+    );
     assert!(context.workspace.artifact_content("intermediate").is_none());
     assert!(report.violations.iter().any(|violation| matches!(
         violation,
@@ -289,7 +295,8 @@ fn declared_artifact_mismatch_is_rejected() -> Result<(), Box<dyn Error>> {
     context.simulation.invocations[0]
         .operation
         .declared_output_ids = vec!["other-output".to_owned()];
-    let report = simulate_operator_plan(&mut context.workspace, &context.plan, &context.simulation)?;
+    let report =
+        simulate_operator_plan(&mut context.workspace, &context.plan, &context.simulation)?;
 
     assert_eq!(report.steps[0].status, SimulatedStepStatus::Blocked);
     assert!(report.violations.iter().any(|violation| matches!(
@@ -305,7 +312,8 @@ fn forced_postcondition_failure_rolls_back_and_blocks_dependency() -> Result<(),
     context.simulation.invocations[0].fault = Some(FaultInjection::ForcePostconditionFailure {
         artifact_id: "intermediate".to_owned(),
     });
-    let report = simulate_operator_plan(&mut context.workspace, &context.plan, &context.simulation)?;
+    let report =
+        simulate_operator_plan(&mut context.workspace, &context.plan, &context.simulation)?;
 
     assert_eq!(report.steps[0].status, SimulatedStepStatus::RolledBack);
     assert_eq!(report.steps[1].status, SimulatedStepStatus::Blocked);
@@ -323,7 +331,8 @@ fn corrupt_write_fault_is_detected_by_postcondition() -> Result<(), Box<dyn Erro
     context.simulation.invocations[0].fault = Some(FaultInjection::CorruptFirstWrite {
         replacement_base64url: URL_SAFE_NO_PAD.encode(b"corrupted"),
     });
-    let report = simulate_operator_plan(&mut context.workspace, &context.plan, &context.simulation)?;
+    let report =
+        simulate_operator_plan(&mut context.workspace, &context.plan, &context.simulation)?;
 
     assert_eq!(report.steps[0].status, SimulatedStepStatus::RolledBack);
     assert!(!report.conforms_to_plan);
@@ -344,13 +353,16 @@ fn unexpected_invocation_is_reported() -> Result<(), Box<dyn Error>> {
             b"unknown",
         ),
     ));
-    let report = simulate_operator_plan(&mut context.workspace, &context.plan, &context.simulation)?;
+    let report =
+        simulate_operator_plan(&mut context.workspace, &context.plan, &context.simulation)?;
 
     assert!(!report.conforms_to_plan);
-    assert!(report.violations.iter().any(|violation| matches!(
-        violation,
-        SimulationViolation::UnexpectedInvocation { .. }
-    )));
+    assert!(
+        report
+            .violations
+            .iter()
+            .any(|violation| matches!(violation, SimulationViolation::UnexpectedInvocation { .. }))
+    );
     Ok(())
 }
 
@@ -369,7 +381,8 @@ fn simulation_is_bound_to_exact_plan_digest() -> Result<(), Box<dyn Error>> {
 #[test]
 fn simulation_report_digest_detects_mutation() -> Result<(), Box<dyn Error>> {
     let mut context = context()?;
-    let mut report = simulate_operator_plan(&mut context.workspace, &context.plan, &context.simulation)?;
+    let mut report =
+        simulate_operator_plan(&mut context.workspace, &context.plan, &context.simulation)?;
     assert!(verify_simulation_digest(&report)?);
     report.conforms_to_plan = false;
     assert!(!verify_simulation_digest(&report)?);

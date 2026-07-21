@@ -7,6 +7,4 @@ pub use model::{
     FaultInjection, OperatorSimulationPlan, OperatorSimulationReport, SimulatedStepStatus,
     SimulationStepReport, SimulationViolation, StepInvocation,
 };
-pub use simulator::{
-    SimulationRuntimeError, simulate_operator_plan, verify_simulation_digest,
-};
+pub use simulator::{SimulationRuntimeError, simulate_operator_plan, verify_simulation_digest};

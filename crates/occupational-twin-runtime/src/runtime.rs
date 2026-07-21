@@ -10,10 +10,9 @@ use thiserror::Error;
 use crate::model::{
     ApplicationIdentity, ArtifactMutability, CheckpointDescriptor, EnvironmentIdentity,
     JournalEntry, JournalRecord, OperationOutcome, OperationReceipt, OperationViolation,
-    ReproducedArtifact, ReproducedWorkspace, RollbackReceipt, SealedBlob,
-    SealedWorkspaceManifest, SealedWorkspacePackage, SnapshotArtifact, StateCondition,
-    TwinArtifactRole, TwinTraceEvent, TwinTraceEventKind, TypedOperation, WorkspaceCommand,
-    WorkspaceSnapshot,
+    ReproducedArtifact, ReproducedWorkspace, RollbackReceipt, SealedBlob, SealedWorkspaceManifest,
+    SealedWorkspacePackage, SnapshotArtifact, StateCondition, TwinArtifactRole, TwinTraceEvent,
+    TwinTraceEventKind, TypedOperation, WorkspaceCommand, WorkspaceSnapshot,
 };
 
 const SNAPSHOT_SCHEMA: &str = "0.1.0";
@@ -234,7 +233,10 @@ impl TwinWorkspace {
         let operation_digest = canonical_json_sha256(&operation_value)?;
         let before = self.current_snapshot()?;
         let mut violations = validate_declared_inputs(&self.artifacts, &operation);
-        violations.extend(evaluate_conditions(&self.artifacts, &operation.preconditions));
+        violations.extend(evaluate_conditions(
+            &self.artifacts,
+            &operation.preconditions,
+        ));
         let (prepared_commands, command_violations, changed_artifact_ids) =
             prepare_commands(&self.artifacts, &operation);
         violations.extend(command_violations);
@@ -507,9 +509,7 @@ pub fn reproduce_final_workspace(
             });
         }
         if blobs.insert(sealed_blob.digest.clone(), content).is_some() {
-            return Err(TwinRuntimeError::DuplicateBlob(
-                sealed_blob.digest.clone(),
-            ));
+            return Err(TwinRuntimeError::DuplicateBlob(sealed_blob.digest.clone()));
         }
     }
     let actual_blob_digests: Vec<_> = blobs.keys().cloned().collect();
