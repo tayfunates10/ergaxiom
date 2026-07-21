@@ -89,7 +89,12 @@ fn plan_step(
     })
 }
 
-fn grant(capability: &str, resource: &str, access: PermissionAccess, constraints: Value) -> CapabilityGrant {
+fn grant(
+    capability: &str,
+    resource: &str,
+    access: PermissionAccess,
+    constraints: Value,
+) -> CapabilityGrant {
     CapabilityGrant {
         capability: capability.to_owned(),
         resource: resource.to_owned(),
@@ -212,14 +217,7 @@ fn authorized_trace(context: &Context) -> Result<Value, Box<dyn Error>> {
     let mut events = Vec::new();
     for (step_id, operator_id, token_id, nonce, step_grant) in definitions {
         let token = sign_token(
-            token_payload(
-                context,
-                step_id,
-                operator_id,
-                token_id,
-                nonce,
-                step_grant,
-            ),
+            token_payload(context, step_id, operator_id, token_id, nonce, step_grant),
             &context.signing_key,
         )?;
         let receipt = authorizer.authorize(
@@ -464,7 +462,12 @@ fn recomputes_authorized_trace_and_proof_acceptance() -> Result<(), Box<dyn Erro
     )?;
 
     assert!(assessment.trace_assessment.conforms_to_authorized_plan);
-    assert!(assessment.trace_assessment.authorization_violations.is_empty());
+    assert!(
+        assessment
+            .trace_assessment
+            .authorization_violations
+            .is_empty()
+    );
     assert_eq!(assessment.decision.status, DecisionStatus::Accepted);
     assert_eq!(assessment.mandatory_passed, 8);
     assert_eq!(assessment.mandatory_failed, 0);
@@ -570,8 +573,8 @@ fn detects_a_forged_authorized_trace_claim() -> Result<(), Box<dyn Error>> {
 }
 
 #[test]
-fn nonconforming_authorized_trace_blocks_bundle_when_claimed_honestly()
--> Result<(), Box<dyn Error>> {
+fn nonconforming_authorized_trace_blocks_bundle_when_claimed_honestly() -> Result<(), Box<dyn Error>>
+{
     let context = context()?;
     let mut evidence_bundle = bundle(&context)?;
     evidence_bundle["trace"]["events"]
