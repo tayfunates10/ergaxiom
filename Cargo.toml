@@ -11,7 +11,8 @@ members = [
   "crates/operator-plan-runtime",
   "crates/operator-simulation-runtime",
   "crates/proof-kernel",
-  "crates/windows-bridge-runtime"
+  "crates/windows-bridge-runtime",
+  "crates/windows-uia-client-runtime"
 ]
 resolver = "2"
 

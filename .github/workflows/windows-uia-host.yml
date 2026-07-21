@@ -5,6 +5,7 @@ on:
     paths:
       - "hosts/windows-uia/**"
       - "crates/windows-bridge-runtime/**"
+      - "crates/windows-uia-client-runtime/**"
       - ".github/workflows/windows-uia-host.yml"
   push:
     branches:
@@ -12,6 +13,7 @@ on:
     paths:
       - "hosts/windows-uia/**"
       - "crates/windows-bridge-runtime/**"
+      - "crates/windows-uia-client-runtime/**"
       - ".github/workflows/windows-uia-host.yml"
 
 permissions:
@@ -92,13 +94,21 @@ jobs:
           if (-not (Test-Path $hostExe)) {
             throw "Published Windows host executable was not found: $hostExe"
           }
+          $hostDigest = (Get-FileHash -Algorithm SHA256 $hostExe).Hash.ToLowerInvariant()
           "ERGAXIOM_WINDOWS_UIA_HOST=$hostExe" | Out-File `
             -FilePath $env:GITHUB_ENV `
             -Encoding utf8 `
             -Append
+          "ERGAXIOM_WINDOWS_UIA_HOST_SHA256=$hostDigest" | Out-File `
+            -FilePath $env:GITHUB_ENV `
+            -Encoding utf8 `
+            -Append
 
-      - name: Run Rust-to-host process integration test
+      - name: Run Rust bridge-to-host protocol test
         run: cargo test -p ergaxiom-windows-bridge-runtime --test windows_uia_host_process
+
+      - name: Run digest-pinned Rust UIA client tests
+        run: cargo test -p ergaxiom-windows-uia-client-runtime --test windows_process_transport
 
       - name: Upload published Windows host
         uses: actions/upload-artifact@v4
