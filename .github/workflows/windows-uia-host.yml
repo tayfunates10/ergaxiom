@@ -35,32 +35,13 @@ jobs:
       - name: Restore Windows host
         run: dotnet restore hosts/windows-uia/Ergaxiom.WindowsUiaHost.csproj
 
-      - name: Format C# and capture patch
-        id: format
-        shell: pwsh
-        run: |
-          dotnet format hosts/windows-uia/Ergaxiom.WindowsUiaHost.csproj --no-restore
-          $patch = Join-Path $env:RUNNER_TEMP "dotnet-format.patch"
-          git diff -- hosts/windows-uia | Set-Content -Path $patch -Encoding utf8
-          $changed = (Get-Item $patch).Length -gt 0
-          "changed=$($changed.ToString().ToLowerInvariant())" | Out-File `
-            -FilePath $env:GITHUB_OUTPUT `
-            -Encoding utf8 `
-            -Append
-
-      - name: Upload C# formatting patch
-        if: steps.format.outputs.changed == 'true'
-        uses: actions/upload-artifact@v4
-        with:
-          name: windows-uia-dotnet-format-patch
-          path: ${{ runner.temp }}/dotnet-format.patch
-          if-no-files-found: error
-          retention-days: 1
-
-      - name: Fail on C# formatting drift
-        if: steps.format.outputs.changed == 'true'
-        shell: pwsh
-        run: throw "dotnet format changed checked-in Windows host source"
+      - name: Verify C# formatting
+        run: >-
+          dotnet format hosts/windows-uia/Ergaxiom.WindowsUiaHost.csproj
+          --verify-no-changes
+          --no-restore
+          --exclude hosts/windows-uia/obj
+          --exclude hosts/windows-uia/bin
 
       - name: Build Windows host
         run: dotnet build hosts/windows-uia/Ergaxiom.WindowsUiaHost.csproj --configuration Release --no-restore
