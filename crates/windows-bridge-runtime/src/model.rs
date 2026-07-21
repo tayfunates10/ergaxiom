@@ -82,17 +82,9 @@ pub enum WindowsBridgeAction {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "assertion", rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum WindowsStateAssertion {
-    PropertyEquals {
-        key: String,
-        value: String,
-    },
-    ArtifactDigestEquals {
-        artifact_id: String,
-        digest: String,
-    },
-    TargetStableIdEquals {
-        stable_id: String,
-    },
+    PropertyEquals { key: String, value: String },
+    ArtifactDigestEquals { artifact_id: String, digest: String },
+    TargetStableIdEquals { stable_id: String },
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -142,9 +134,7 @@ pub enum WindowsBridgeStatus {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "code", rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum WindowsBridgeViolation {
-    PostconditionFailed {
-        index: usize,
-    },
+    PostconditionFailed { index: usize },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

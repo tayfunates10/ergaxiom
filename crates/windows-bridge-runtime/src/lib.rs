@@ -7,10 +7,9 @@ mod verifier;
 pub use model::{
     ObservedWindowsState, SignedWindowsBridgeRecord, VerifiedWindowsBridgeRecord,
     WindowsAdapterTransition, WindowsApplicationIdentity, WindowsBridgeAction,
-    WindowsBridgePackage, WindowsBridgeRecordPayload, WindowsBridgeRequest,
-    WindowsBridgeSignature, WindowsBridgeSignatureAlgorithm, WindowsBridgeSignatureEncoding,
-    WindowsBridgeStatus, WindowsBridgeViolation, WindowsControlMethod, WindowsStateAssertion,
-    WindowsTargetSelector,
+    WindowsBridgePackage, WindowsBridgeRecordPayload, WindowsBridgeRequest, WindowsBridgeSignature,
+    WindowsBridgeSignatureAlgorithm, WindowsBridgeSignatureEncoding, WindowsBridgeStatus,
+    WindowsBridgeViolation, WindowsControlMethod, WindowsStateAssertion, WindowsTargetSelector,
 };
 pub use runtime::{
     WindowsBridgeAdapter, WindowsBridgeError, WindowsBridgeExecutionContext,

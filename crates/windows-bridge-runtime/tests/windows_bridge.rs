@@ -14,18 +14,16 @@ use ergaxiom_operator_plan_runtime::{CompiledPlan, compile_plan};
 use ergaxiom_proof_kernel::{canonical_json_bytes, canonical_json_sha256};
 use ergaxiom_windows_bridge_runtime::{
     ObservedWindowsState, WindowsAdapterTransition, WindowsApplicationIdentity,
-    WindowsBridgeAction, WindowsBridgeAdapter, WindowsBridgeError,
-    WindowsBridgeExecutionContext, WindowsBridgeKeyRegistry, WindowsBridgeRequest,
-    WindowsBridgeStatus, WindowsBridgeVerifyError, WindowsControlMethod,
-    WindowsStateAssertion, WindowsTargetSelector, execute_windows_bridge,
+    WindowsBridgeAction, WindowsBridgeAdapter, WindowsBridgeError, WindowsBridgeExecutionContext,
+    WindowsBridgeKeyRegistry, WindowsBridgeRequest, WindowsBridgeStatus, WindowsBridgeVerifyError,
+    WindowsControlMethod, WindowsStateAssertion, WindowsTargetSelector, execute_windows_bridge,
     seal_observed_state, verify_windows_bridge_package,
 };
 use serde_json::{Value, json};
 
 const CONTRACT_SOURCE: &str =
     include_str!("../../../examples/work-contracts/social-media-static-post.json");
-const CAPSULE_SOURCE: &str =
-    include_str!("../../../professions/graphic-designer/profession.json");
+const CAPSULE_SOURCE: &str = include_str!("../../../professions/graphic-designer/profession.json");
 const POLICY_ISSUER: &str = "ergaxiom.policy-authority";
 const POLICY_KEY_ID: &str = "windows-bridge-policy-key";
 const BRIDGE_ISSUER: &str = "ergaxiom.windows-bridge-authority";
@@ -55,14 +53,8 @@ fn context() -> Result<Context, Box<dyn Error>> {
         policy_key.verifying_key().to_bytes(),
     )?;
     let mut authorizer = CapabilityAuthorizer::new(keys);
-    let receipt = authorizer.authorize(
-        &token,
-        &contract,
-        &plan,
-        NOW,
-        EXECUTOR_ID,
-        Some(DEVICE_ID),
-    )?;
+    let receipt =
+        authorizer.authorize(&token, &contract, &plan, NOW, EXECUTOR_ID, Some(DEVICE_ID))?;
     let receipt_value = serde_json::to_value(&receipt)?;
     Ok(Context {
         contract,
@@ -215,10 +207,7 @@ fn state(
     })?)
 }
 
-fn uia_request(
-    context: &Context,
-    pre_state_digest: &str,
-) -> WindowsBridgeRequest {
+fn uia_request(context: &Context, pre_state_digest: &str) -> WindowsBridgeRequest {
     WindowsBridgeRequest {
         schema_version: "0.1.0".to_owned(),
         request_id: "request.windows-bridge-test.0001".to_owned(),
@@ -293,10 +282,7 @@ impl MockAdapter {
 }
 
 impl WindowsBridgeAdapter for MockAdapter {
-    fn observe(
-        &mut self,
-        _request: &WindowsBridgeRequest,
-    ) -> Result<ObservedWindowsState, String> {
+    fn observe(&mut self, _request: &WindowsBridgeRequest) -> Result<ObservedWindowsState, String> {
         let state = if self.observe_calls == 0 {
             self.pre_state.clone()
         } else {
@@ -334,7 +320,10 @@ fn ui_automation_success_is_signed_and_independently_verified() -> Result<(), Bo
         context.authorization.clone(),
     )?;
     assert_eq!(adapter.execute_calls, 1);
-    assert_eq!(package.record.payload.status, WindowsBridgeStatus::Succeeded);
+    assert_eq!(
+        package.record.payload.status,
+        WindowsBridgeStatus::Succeeded
+    );
     let verified = verify_windows_bridge_package(
         &package,
         &bridge_keys(&context)?,
@@ -359,7 +348,7 @@ fn stale_expected_pre_state_blocks_before_action() -> Result<(), Box<dyn Error>>
             &mut adapter,
             bridge_context(&context),
             request,
-            context.authorization,
+            context.authorization.clone(),
         ),
         Err(WindowsBridgeError::TimeOfCheckTimeOfUseMismatch)
     ));
@@ -381,7 +370,7 @@ fn adapter_consuming_another_pre_state_is_rejected() -> Result<(), Box<dyn Error
             &mut adapter,
             bridge_context(&context),
             request,
-            context.authorization,
+            context.authorization.clone(),
         ),
         Err(WindowsBridgeError::TimeOfCheckTimeOfUseMismatch)
     ));
@@ -405,7 +394,7 @@ fn application_identity_mismatch_blocks_before_action() -> Result<(), Box<dyn Er
             &mut adapter,
             bridge_context(&context),
             request,
-            context.authorization,
+            context.authorization.clone(),
         ),
         Err(WindowsBridgeError::ApplicationIdentityMismatch)
     ));
@@ -427,7 +416,7 @@ fn grant_mismatch_blocks_before_observation() -> Result<(), Box<dyn Error>> {
             &mut adapter,
             bridge_context(&context),
             request,
-            context.authorization,
+            context.authorization.clone(),
         ),
         Err(WindowsBridgeError::AuthorizationGrantMismatch)
     ));
@@ -450,7 +439,7 @@ fn method_selector_mismatch_blocks_before_observation() -> Result<(), Box<dyn Er
             &mut adapter,
             bridge_context(&context),
             request,
-            context.authorization,
+            context.authorization.clone(),
         ),
         Err(WindowsBridgeError::SelectorMethodMismatch)
     ));
@@ -506,7 +495,7 @@ fn coordinate_fallback_without_effect_assertion_is_rejected() -> Result<(), Box<
             &mut adapter,
             bridge_context(&context),
             request,
-            context.authorization,
+            context.authorization.clone(),
         ),
         Err(WindowsBridgeError::MissingIndependentEffectPostcondition)
     ));
@@ -534,7 +523,10 @@ fn coordinate_fallback_can_succeed_only_with_observed_effect() -> Result<(), Box
         request,
         context.authorization.clone(),
     )?;
-    assert_eq!(package.record.payload.status, WindowsBridgeStatus::Succeeded);
+    assert_eq!(
+        package.record.payload.status,
+        WindowsBridgeStatus::Succeeded
+    );
     assert_eq!(
         verify_windows_bridge_package(
             &package,
@@ -593,13 +585,15 @@ fn post_state_mutation_is_detected_even_when_record_is_unchanged() -> Result<(),
         .properties
         .insert("text".to_owned(), "TAMPERED".to_owned());
 
-    assert!(verify_windows_bridge_package(
-        &package,
-        &bridge_keys(&context)?,
-        &context.contract,
-        &context.plan,
-    )
-    .is_err());
+    assert!(
+        verify_windows_bridge_package(
+            &package,
+            &bridge_keys(&context)?,
+            &context.contract,
+            &context.plan,
+        )
+        .is_err()
+    );
     Ok(())
 }
 
@@ -620,13 +614,13 @@ fn identical_inputs_produce_identical_signed_bridge_packages() -> Result<(), Box
         &mut left_adapter,
         bridge_context(&left),
         left_request,
-        left.authorization,
+        left.authorization.clone(),
     )?;
     let right_package = execute_windows_bridge(
         &mut right_adapter,
         bridge_context(&right),
         right_request,
-        right.authorization,
+        right.authorization.clone(),
     )?;
     assert_eq!(left_package, right_package);
     Ok(())

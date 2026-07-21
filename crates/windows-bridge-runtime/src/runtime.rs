@@ -9,20 +9,16 @@ use thiserror::Error;
 
 use crate::model::{
     ObservedWindowsState, SignedWindowsBridgeRecord, WindowsAdapterTransition,
-    WindowsBridgePackage, WindowsBridgeRecordPayload, WindowsBridgeRequest,
-    WindowsBridgeSignature, WindowsBridgeSignatureAlgorithm, WindowsBridgeSignatureEncoding,
-    WindowsBridgeStatus, WindowsBridgeViolation, WindowsControlMethod, WindowsStateAssertion,
-    WindowsTargetSelector,
+    WindowsBridgePackage, WindowsBridgeRecordPayload, WindowsBridgeRequest, WindowsBridgeSignature,
+    WindowsBridgeSignatureAlgorithm, WindowsBridgeSignatureEncoding, WindowsBridgeStatus,
+    WindowsBridgeViolation, WindowsControlMethod, WindowsStateAssertion, WindowsTargetSelector,
 };
 
 const REQUEST_SCHEMA: &str = "0.1.0";
 const RECORD_SCHEMA: &str = "0.1.0";
 
 pub trait WindowsBridgeAdapter {
-    fn observe(
-        &mut self,
-        request: &WindowsBridgeRequest,
-    ) -> Result<ObservedWindowsState, String>;
+    fn observe(&mut self, request: &WindowsBridgeRequest) -> Result<ObservedWindowsState, String>;
 
     fn execute(
         &mut self,
@@ -183,13 +179,19 @@ pub(crate) fn validate_request(
         ("step_id", request.step_id.as_str()),
         ("operator_id", request.operator_id.as_str()),
         ("executor_id", request.executor_id.as_str()),
-        ("application_id", request.application.application_id.as_str()),
+        (
+            "application_id",
+            request.application.application_id.as_str(),
+        ),
         ("application.version", request.application.version.as_str()),
         (
             "application.executable_digest",
             request.application.executable_digest.as_str(),
         ),
-        ("application.instance_id", request.application.instance_id.as_str()),
+        (
+            "application.instance_id",
+            request.application.instance_id.as_str(),
+        ),
         (
             "expected_pre_state_digest",
             request.expected_pre_state_digest.as_str(),
@@ -222,8 +224,8 @@ pub(crate) fn validate_request(
         return Err(WindowsBridgeError::OperatorMismatch);
     }
 
-    let receipt_value = serde_json::to_value(&authorization.receipt)
-        .map_err(WindowsBridgeError::Serialization)?;
+    let receipt_value =
+        serde_json::to_value(&authorization.receipt).map_err(WindowsBridgeError::Serialization)?;
     if canonical_json_sha256(&receipt_value)? != authorization.receipt_digest
         || request.authorization_receipt_digest != authorization.receipt_digest
     {
@@ -354,10 +356,7 @@ pub(crate) fn selector_stable_id(selector: &WindowsTargetSelector) -> String {
     }
 }
 
-fn selector_matches_method(
-    method: WindowsControlMethod,
-    selector: &WindowsTargetSelector,
-) -> bool {
+fn selector_matches_method(method: WindowsControlMethod, selector: &WindowsTargetSelector) -> bool {
     matches!(
         (method, selector),
         (

@@ -81,7 +81,9 @@ pub enum WindowsBridgeVerifyError {
     ObservedIdentityMismatch,
     #[error("signed record reports a time-of-check/time-of-use mismatch")]
     TimeOfCheckTimeOfUseMismatch,
-    #[error("signed record status or violations do not match independently evaluated postconditions")]
+    #[error(
+        "signed record status or violations do not match independently evaluated postconditions"
+    )]
     PostconditionAssessmentMismatch,
     #[error("signed record bridge or authorization binding does not match package")]
     RecordBindingMismatch,
@@ -191,9 +193,7 @@ pub fn verify_windows_bridge_package(
     })
 }
 
-fn validate_request_policy(
-    package: &WindowsBridgePackage,
-) -> Result<(), WindowsBridgeVerifyError> {
+fn validate_request_policy(package: &WindowsBridgePackage) -> Result<(), WindowsBridgeVerifyError> {
     let request = &package.request;
     if !selector_matches_method(request.control_method, &request.selector) {
         return Err(WindowsBridgeVerifyError::SelectorMethodMismatch);
@@ -257,10 +257,7 @@ fn validate_package_bindings(
     }
 }
 
-fn selector_matches_method(
-    method: WindowsControlMethod,
-    selector: &WindowsTargetSelector,
-) -> bool {
+fn selector_matches_method(method: WindowsControlMethod, selector: &WindowsTargetSelector) -> bool {
     matches!(
         (method, selector),
         (
