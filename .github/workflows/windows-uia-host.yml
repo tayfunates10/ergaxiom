@@ -1,0 +1,109 @@
+name: Windows UI Automation host
+
+on:
+  pull_request:
+    paths:
+      - "hosts/windows-uia/**"
+      - "crates/windows-bridge-runtime/**"
+      - ".github/workflows/windows-uia-host.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "hosts/windows-uia/**"
+      - "crates/windows-bridge-runtime/**"
+      - ".github/workflows/windows-uia-host.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  build-self-test-and-interop:
+    runs-on: windows-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Install .NET SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Restore Windows host
+        run: dotnet restore hosts/windows-uia/Ergaxiom.WindowsUiaHost.csproj
+
+      - name: Verify C# formatting
+        shell: pwsh
+        run: |
+          dotnet format hosts/windows-uia/Ergaxiom.WindowsUiaHost.csproj --no-restore
+          git diff --exit-code -- `
+            ':(glob)hosts/windows-uia/*.cs' `
+            ':(glob)hosts/windows-uia/*.csproj'
+
+      - name: Build Windows host and capture diagnostics
+        id: build
+        shell: pwsh
+        continue-on-error: true
+        run: |
+          $log = Join-Path $env:RUNNER_TEMP "windows-uia-build.log"
+          dotnet build hosts/windows-uia/Ergaxiom.WindowsUiaHost.csproj `
+            --configuration Release `
+            --no-restore 2>&1 | Tee-Object -FilePath $log
+          "exit_code=$LASTEXITCODE" | Out-File `
+            -FilePath $env:GITHUB_OUTPUT `
+            -Encoding utf8 `
+            -Append
+          exit 0
+
+      - name: Upload Windows host build diagnostics
+        if: steps.build.outputs.exit_code != '0'
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-uia-build-diagnostics
+          path: ${{ runner.temp }}/windows-uia-build.log
+          if-no-files-found: error
+          retention-days: 1
+
+      - name: Fail on Windows host build error
+        if: steps.build.outputs.exit_code != '0'
+        shell: pwsh
+        run: throw "Windows UI Automation host build failed"
+
+      - name: Run Windows host self-tests
+        run: dotnet run --project hosts/windows-uia/Ergaxiom.WindowsUiaHost.csproj --configuration Release --no-build -- --self-test
+
+      - name: Restore win-x64 publish assets
+        run: dotnet restore hosts/windows-uia/Ergaxiom.WindowsUiaHost.csproj --runtime win-x64
+
+      - name: Publish Windows host
+        shell: pwsh
+        run: |
+          $output = Join-Path $env:RUNNER_TEMP "windows-uia-host"
+          dotnet publish hosts/windows-uia/Ergaxiom.WindowsUiaHost.csproj `
+            --configuration Release `
+            --runtime win-x64 `
+            --self-contained false `
+            --no-restore `
+            --output $output
+          $hostExe = Join-Path $output "Ergaxiom.WindowsUiaHost.exe"
+          if (-not (Test-Path $hostExe)) {
+            throw "Published Windows host executable was not found: $hostExe"
+          }
+          "ERGAXIOM_WINDOWS_UIA_HOST=$hostExe" | Out-File `
+            -FilePath $env:GITHUB_ENV `
+            -Encoding utf8 `
+            -Append
+
+      - name: Run Rust-to-host process integration test
+        run: cargo test -p ergaxiom-windows-bridge-runtime --test windows_uia_host_process
+
+      - name: Upload published Windows host
+        uses: actions/upload-artifact@v4
+        with:
+          name: ergaxiom-windows-uia-host-win-x64
+          path: ${{ runner.temp }}/windows-uia-host
+          if-no-files-found: error
+          retention-days: 7
