@@ -8,6 +8,9 @@ use ergaxiom_proof_kernel::{
 use proptest::prelude::*;
 use proptest::test_runner::TestCaseError;
 
+type EvidenceScenario = (u8, u8, u8);
+type ObligationScenario = (u8, Vec<EvidenceScenario>);
+
 fn seal() -> ContractSeal {
     ContractSeal {
         contract_digest: "contract-sha256".to_owned(),
@@ -93,7 +96,7 @@ fn build_kernel(
     )
 }
 
-fn obligation_scenarios() -> impl Strategy<Value = Vec<(u8, Vec<(u8, u8, u8)>)>> {
+fn obligation_scenarios() -> impl Strategy<Value = Vec<ObligationScenario>> {
     prop::collection::vec(
         (
             0_u8..3,
