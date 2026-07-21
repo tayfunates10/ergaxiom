@@ -1,0 +1,78 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ergaxiom.dev/schemas/replay-manifest.schema.json",
+  "title": "Ergaxiom Replay Manifest",
+  "description": "A deterministic digest inventory for replaying and auditing one independently accepted run.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "manifest_id",
+    "contract_digest",
+    "capsule_digest",
+    "plan_id",
+    "plan_digest",
+    "evidence_bundle_id",
+    "run_id",
+    "evidence_bundle_digest",
+    "authorized_trace_digest",
+    "environment_digest",
+    "artifacts",
+    "authorization_receipt_digests",
+    "proof_evidence_ids",
+    "expected_decision",
+    "assurance_level",
+    "mandatory_passed",
+    "mandatory_failed",
+    "mandatory_unknown"
+  ],
+  "properties": {
+    "schema_version": {"const": "0.1.0"},
+    "manifest_id": {"type": "string", "minLength": 1},
+    "contract_digest": {"type": "string", "minLength": 1},
+    "capsule_digest": {"type": "string", "minLength": 1},
+    "plan_id": {"type": "string", "minLength": 1},
+    "plan_digest": {"type": "string", "minLength": 1},
+    "evidence_bundle_id": {"type": "string", "minLength": 1},
+    "run_id": {"type": "string", "minLength": 1},
+    "evidence_bundle_digest": {"type": "string", "minLength": 1},
+    "authorized_trace_digest": {"type": "string", "minLength": 1},
+    "environment_digest": {"type": "string", "minLength": 1},
+    "artifacts": {
+      "type": "array",
+      "minItems": 1,
+      "items": {"$ref": "#/$defs/replayArtifact"}
+    },
+    "authorization_receipt_digests": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {"type": "string", "minLength": 1}
+    },
+    "proof_evidence_ids": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {"type": "string", "minLength": 1}
+    },
+    "expected_decision": {"const": "ACCEPTED"},
+    "assurance_level": {"enum": ["E0", "E1", "E2", "E3", "E4", "E5"]},
+    "mandatory_passed": {"type": "integer", "minimum": 1},
+    "mandatory_failed": {"const": 0},
+    "mandatory_unknown": {"const": 0}
+  },
+  "$defs": {
+    "replayArtifact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["artifact_id", "role", "algorithm", "digest", "size_bytes"],
+      "properties": {
+        "artifact_id": {"type": "string", "minLength": 1},
+        "role": {"enum": ["input", "intermediate", "output", "evidence"]},
+        "algorithm": {"enum": ["sha256", "sha512"]},
+        "digest": {"type": "string", "minLength": 1},
+        "size_bytes": {"type": "integer", "minimum": 0}
+      }
+    }
+  }
+}

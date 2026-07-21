@@ -1,5 +1,6 @@
 [workspace]
 members = [
+  "crates/attestation-runtime",
   "crates/capability-runtime",
   "crates/contract-runtime",
   "crates/evidence-runtime",
