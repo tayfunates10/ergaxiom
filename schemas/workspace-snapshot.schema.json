@@ -1,0 +1,50 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ergaxiom.dev/schemas/workspace-snapshot.schema.json",
+  "title": "Ergaxiom Occupational Twin Workspace Snapshot",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "workspace_id",
+    "revision",
+    "environment_digest",
+    "journal_digest",
+    "artifacts",
+    "snapshot_digest"
+  ],
+  "properties": {
+    "schema_version": {"const": "0.1.0"},
+    "workspace_id": {"type": "string", "minLength": 1},
+    "revision": {"type": "integer", "minimum": 0},
+    "environment_digest": {"type": "string", "minLength": 1},
+    "journal_digest": {"type": "string", "minLength": 1},
+    "artifacts": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/artifact"}
+    },
+    "snapshot_digest": {"type": "string", "minLength": 1}
+  },
+  "$defs": {
+    "artifact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "artifact_id",
+        "role",
+        "mutability",
+        "media_type",
+        "digest",
+        "size_bytes"
+      ],
+      "properties": {
+        "artifact_id": {"type": "string", "minLength": 1},
+        "role": {"enum": ["input", "intermediate", "output"]},
+        "mutability": {"enum": ["immutable", "mutable"]},
+        "media_type": {"type": "string", "minLength": 1},
+        "digest": {"type": "string", "minLength": 1},
+        "size_bytes": {"type": "integer", "minimum": 0}
+      }
+    }
+  }
+}
