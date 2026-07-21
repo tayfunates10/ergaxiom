@@ -1,0 +1,64 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ergaxiom.dev/schemas/operator-simulation-report.schema.json",
+  "title": "Ergaxiom Operator Simulation Report",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "simulation_id",
+    "plan_id",
+    "plan_digest",
+    "initial_snapshot_digest",
+    "final_snapshot",
+    "steps",
+    "violations",
+    "conforms_to_plan",
+    "workspace_trace_digest",
+    "simulation_digest"
+  ],
+  "properties": {
+    "schema_version": {"const": "0.1.0"},
+    "simulation_id": {"type": "string", "minLength": 1},
+    "plan_id": {"type": "string", "minLength": 1},
+    "plan_digest": {"type": "string", "minLength": 1},
+    "initial_snapshot_digest": {"type": "string", "minLength": 1},
+    "final_snapshot": {"$ref": "workspace-snapshot.schema.json"},
+    "steps": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/stepReport"}
+    },
+    "violations": {
+      "type": "array",
+      "items": {"type": "object"}
+    },
+    "conforms_to_plan": {"type": "boolean"},
+    "workspace_trace_digest": {"type": "string", "minLength": 1},
+    "simulation_digest": {"type": "string", "minLength": 1}
+  },
+  "$defs": {
+    "stepReport": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "step_id",
+        "status",
+        "before_snapshot_digest",
+        "after_snapshot_digest",
+        "receipt",
+        "violations"
+      ],
+      "properties": {
+        "step_id": {"type": "string", "minLength": 1},
+        "status": {"enum": ["SUCCEEDED", "REJECTED", "ROLLED_BACK", "BLOCKED", "MISSING"]},
+        "before_snapshot_digest": {"type": "string", "minLength": 1},
+        "after_snapshot_digest": {"type": "string", "minLength": 1},
+        "receipt": {"type": ["object", "null"]},
+        "violations": {
+          "type": "array",
+          "items": {"type": "object"}
+        }
+      }
+    }
+  }
+}
