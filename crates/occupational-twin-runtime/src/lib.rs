@@ -1,6 +1,7 @@
 #![forbid(unsafe_code)]
 
 mod model;
+#[allow(unused_imports, clippy::too_many_arguments)]
 mod runtime;
 
 pub use model::{
