@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("Ergaxiom.WindowsUiaHost")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+802828ca2097d1cd260293d55eb0fe4fe2f599de")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+8c017d48d76c45bfa90fa55562a7bd5058cb99ad")]
 [assembly: System.Reflection.AssemblyProductAttribute("Ergaxiom.WindowsUiaHost")]
 [assembly: System.Reflection.AssemblyTitleAttribute("Ergaxiom.WindowsUiaHost")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]
