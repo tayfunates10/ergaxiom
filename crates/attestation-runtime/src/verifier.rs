@@ -226,10 +226,7 @@ fn validate_manifest_payload_match(
         manifest.mandatory_unknown == payload.mandatory_unknown,
         "mandatory_unknown",
     )?;
-    check_equal(
-        manifest.expected_decision == payload.decision,
-        "decision",
-    )
+    check_equal(manifest.expected_decision == payload.decision, "decision")
 }
 
 fn check_equal(matches: bool, field: &'static str) -> Result<(), AttestationVerifyError> {
