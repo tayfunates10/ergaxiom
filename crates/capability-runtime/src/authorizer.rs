@@ -4,9 +4,7 @@ use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
 use ed25519_dalek::{Signature, VerifyingKey};
 use ergaxiom_contract_runtime::{CompiledContract, ContractPermission};
 use ergaxiom_operator_plan_runtime::{CompiledPlan, PlanStep};
-use ergaxiom_proof_kernel::{
-    HashingError, canonical_json_bytes, canonical_json_sha256,
-};
+use ergaxiom_proof_kernel::{HashingError, canonical_json_bytes, canonical_json_sha256};
 use serde_json::Value;
 use thiserror::Error;
 
@@ -94,8 +92,7 @@ impl TrustedKeyRegistry {
     }
 
     fn get(&self, issuer_id: &str, key_id: &str) -> Option<&VerifyingKey> {
-        self.keys
-            .get(&(issuer_id.to_owned(), key_id.to_owned()))
+        self.keys.get(&(issuer_id.to_owned(), key_id.to_owned()))
     }
 }
 
@@ -130,22 +127,18 @@ impl CapabilityAuthorizer {
         expected_executor_id: &str,
         expected_device_id: Option<&str>,
     ) -> Result<AuthorizationReceipt, CapabilityError> {
-        let token: SignedCapabilityToken = serde_json::from_value(token_value.clone())
-            .map_err(CapabilityError::TokenDecode)?;
+        let token: SignedCapabilityToken =
+            serde_json::from_value(token_value.clone()).map_err(CapabilityError::TokenDecode)?;
         validate_payload_shape(&token.payload)?;
         verify_signature(&self.trusted_keys, &token)?;
         validate_time(&token.payload, trusted_now_epoch_s)?;
         let step = validate_bindings(&token, compiled_contract, compiled_plan)?;
-        validate_subject(
-            &token.payload,
-            expected_executor_id,
-            expected_device_id,
-        )?;
+        validate_subject(&token.payload, expected_executor_id, expected_device_id)?;
         validate_grant(&token.payload.grant, &compiled_contract.permissions)?;
 
         let token_digest = canonical_json_sha256(token_value)?;
-        let payload_value = serde_json::to_value(&token.payload)
-            .map_err(CapabilityError::TokenDecode)?;
+        let payload_value =
+            serde_json::to_value(&token.payload).map_err(CapabilityError::TokenDecode)?;
         let payload_digest = canonical_json_sha256(&payload_value)?;
         let usage_key = (
             token.payload.issuer_id.clone(),
@@ -217,8 +210,8 @@ fn verify_signature(
             issuer_id: token.payload.issuer_id.clone(),
             key_id: token.payload.key_id.clone(),
         })?;
-    let payload_value = serde_json::to_value(&token.payload)
-        .map_err(CapabilityError::TokenDecode)?;
+    let payload_value =
+        serde_json::to_value(&token.payload).map_err(CapabilityError::TokenDecode)?;
     let message = canonical_json_bytes(&payload_value)?;
     let signature_bytes = URL_SAFE_NO_PAD
         .decode(&token.signature.value)
