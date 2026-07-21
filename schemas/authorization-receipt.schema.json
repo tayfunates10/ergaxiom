@@ -1,0 +1,54 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ergaxiom.dev/schemas/authorization-receipt.schema.json",
+  "title": "Ergaxiom Authorization Receipt Record",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["receipt_digest", "receipt"],
+  "properties": {
+    "receipt_digest": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "receipt": {"$ref": "#/$defs/receipt"}
+  },
+  "$defs": {
+    "grant": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["capability", "resource", "access", "constraints"],
+      "properties": {
+        "capability": {"type": "string", "minLength": 1},
+        "resource": {"type": "string", "minLength": 1},
+        "access": {"enum": ["read", "write", "execute", "control", "network", "secret_use"]},
+        "constraints": {"type": "object", "additionalProperties": true}
+      }
+    },
+    "receipt": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "token_id", "token_digest", "payload_digest", "issuer_id", "key_id",
+        "executor_id", "device_id", "contract_digest", "capsule_digest", "plan_id",
+        "plan_digest", "step_id", "operator_id", "grant", "authorized_at_epoch_s",
+        "use_number", "max_uses"
+      ],
+      "properties": {
+        "token_id": {"type": "string", "minLength": 1},
+        "token_digest": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "payload_digest": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "issuer_id": {"type": "string", "minLength": 1},
+        "key_id": {"type": "string", "minLength": 1},
+        "executor_id": {"type": "string", "minLength": 1},
+        "device_id": {"type": ["string", "null"]},
+        "contract_digest": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "capsule_digest": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "plan_id": {"type": "string", "minLength": 1},
+        "plan_digest": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "step_id": {"type": "string", "minLength": 1},
+        "operator_id": {"type": "string", "minLength": 1},
+        "grant": {"$ref": "#/$defs/grant"},
+        "authorized_at_epoch_s": {"type": "integer", "minimum": 0},
+        "use_number": {"type": "integer", "minimum": 1},
+        "max_uses": {"type": "integer", "minimum": 1}
+      }
+    }
+  }
+}

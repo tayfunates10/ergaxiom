@@ -1,0 +1,93 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ergaxiom.dev/schemas/windows-bridge-package.schema.json",
+  "title": "Ergaxiom Signed Windows Bridge Package",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["request", "authorization", "pre_state", "post_state", "record"],
+  "properties": {
+    "request": {"$ref": "windows-bridge-request.schema.json"},
+    "authorization": {"$ref": "authorization-receipt.schema.json"},
+    "pre_state": {"$ref": "#/$defs/observedState"},
+    "post_state": {"$ref": "#/$defs/observedState"},
+    "record": {"$ref": "#/$defs/signedRecord"}
+  },
+  "$defs": {
+    "observedState": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "application", "target_stable_id", "properties", "artifact_digests",
+        "observed_at_epoch_ms", "state_digest"
+      ],
+      "properties": {
+        "application": {"$ref": "windows-bridge-request.schema.json#/$defs/applicationIdentity"},
+        "target_stable_id": {"type": "string", "minLength": 1},
+        "properties": {
+          "type": "object",
+          "additionalProperties": {"type": "string"}
+        },
+        "artifact_digests": {
+          "type": "object",
+          "additionalProperties": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+        },
+        "observed_at_epoch_ms": {"type": "integer", "minimum": 0},
+        "state_digest": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+      }
+    },
+    "violation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["code", "index"],
+      "properties": {
+        "code": {"const": "POSTCONDITION_FAILED"},
+        "index": {"type": "integer", "minimum": 0}
+      }
+    },
+    "recordPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version", "record_id", "bridge_id", "request_digest",
+        "authorization_receipt_digest", "pre_state_digest", "consumed_pre_state_digest",
+        "post_state_digest", "adapter_event_digest", "status", "violations",
+        "recorded_at_epoch_ms"
+      ],
+      "properties": {
+        "schema_version": {"const": "0.1.0"},
+        "record_id": {"type": "string", "minLength": 1},
+        "bridge_id": {"type": "string", "minLength": 1},
+        "request_digest": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "authorization_receipt_digest": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "pre_state_digest": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "consumed_pre_state_digest": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "post_state_digest": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "adapter_event_digest": {"type": "string", "minLength": 1},
+        "status": {"enum": ["SUCCEEDED", "FAILED"]},
+        "violations": {"type": "array", "items": {"$ref": "#/$defs/violation"}},
+        "recorded_at_epoch_ms": {"type": "integer", "minimum": 0}
+      }
+    },
+    "signature": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["issuer_id", "key_id", "algorithm", "encoding", "value"],
+      "properties": {
+        "issuer_id": {"type": "string", "minLength": 1},
+        "key_id": {"type": "string", "minLength": 1},
+        "algorithm": {"const": "ed25519"},
+        "encoding": {"const": "base64url"},
+        "value": {"type": "string", "minLength": 1}
+      }
+    },
+    "signedRecord": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["payload", "signature"],
+      "properties": {
+        "payload": {"$ref": "#/$defs/recordPayload"},
+        "signature": {"$ref": "#/$defs/signature"}
+      }
+    }
+  }
+}
