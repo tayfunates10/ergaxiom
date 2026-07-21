@@ -11,4 +11,9 @@
     <AssemblyName>Ergaxiom.WindowsUiaHost</AssemblyName>
     <RootNamespace>Ergaxiom.WindowsUiaHost</RootNamespace>
   </PropertyGroup>
+
+  <ItemGroup>
+    <Reference Include="UIAutomationClient" />
+    <Reference Include="UIAutomationTypes" />
+  </ItemGroup>
 </Project>
