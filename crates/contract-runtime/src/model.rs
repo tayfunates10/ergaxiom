@@ -2,6 +2,7 @@ use std::collections::BTreeMap;
 
 use ergaxiom_proof_kernel::{AssuranceLevel, IndependenceClass};
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct WorkContract {
@@ -10,6 +11,7 @@ pub struct WorkContract {
     pub profession: ProfessionReference,
     pub job_type: String,
     pub requirements: ContractRequirements,
+    pub permissions: Vec<ContractPermission>,
     pub proof_obligations: Vec<ContractProofObligation>,
     pub acceptance: ContractAcceptance,
 }
@@ -47,6 +49,26 @@ pub enum UnknownResolution {
     TrustedProfile,
     TrustedSource,
     NotRequired,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ContractPermission {
+    pub capability: String,
+    pub resource: String,
+    pub access: PermissionAccess,
+    #[serde(default)]
+    pub constraints: Value,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PermissionAccess {
+    Read,
+    Write,
+    Execute,
+    Control,
+    Network,
+    SecretUse,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

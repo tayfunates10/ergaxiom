@@ -1,0 +1,96 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ergaxiom.dev/schemas/capability-token.schema.json",
+  "title": "Ergaxiom Signed Capability Token",
+  "description": "A short-lived, signed and single-plan authorization for one professional operator step.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["payload", "signature"],
+  "properties": {
+    "payload": {"$ref": "#/$defs/payload"},
+    "signature": {"$ref": "#/$defs/signature"}
+  },
+  "$defs": {
+    "payload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "token_id",
+        "issuer_id",
+        "key_id",
+        "subject",
+        "issued_at_epoch_s",
+        "not_before_epoch_s",
+        "expires_at_epoch_s",
+        "max_uses",
+        "nonce",
+        "bindings",
+        "grant"
+      ],
+      "properties": {
+        "schema_version": {"const": "0.1.0"},
+        "token_id": {"type": "string", "minLength": 1},
+        "issuer_id": {"type": "string", "minLength": 1},
+        "key_id": {"type": "string", "minLength": 1},
+        "subject": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["executor_id"],
+          "properties": {
+            "executor_id": {"type": "string", "minLength": 1},
+            "device_id": {"type": ["string", "null"]}
+          }
+        },
+        "issued_at_epoch_s": {"type": "integer", "minimum": 0},
+        "not_before_epoch_s": {"type": "integer", "minimum": 0},
+        "expires_at_epoch_s": {"type": "integer", "minimum": 1},
+        "max_uses": {"type": "integer", "minimum": 1, "maximum": 1000},
+        "nonce": {"type": "string", "minLength": 16},
+        "bindings": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "contract_digest",
+            "capsule_digest",
+            "plan_id",
+            "plan_digest",
+            "step_id",
+            "operator_id"
+          ],
+          "properties": {
+            "contract_digest": {"type": "string", "minLength": 1},
+            "capsule_digest": {"type": "string", "minLength": 1},
+            "plan_id": {"type": "string", "minLength": 1},
+            "plan_digest": {"type": "string", "minLength": 1},
+            "step_id": {"type": "string", "minLength": 1},
+            "operator_id": {"type": "string", "minLength": 1}
+          }
+        },
+        "grant": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["capability", "resource", "access", "constraints"],
+          "properties": {
+            "capability": {"type": "string", "minLength": 1},
+            "resource": {"type": "string", "minLength": 1},
+            "access": {
+              "enum": ["read", "write", "execute", "control", "network", "secret_use"]
+            },
+            "constraints": {"type": "object", "additionalProperties": true}
+          }
+        }
+      }
+    },
+    "signature": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["algorithm", "encoding", "value"],
+      "properties": {
+        "algorithm": {"const": "ed25519"},
+        "encoding": {"const": "base64url"},
+        "value": {"type": "string", "minLength": 1}
+      }
+    }
+  }
+}

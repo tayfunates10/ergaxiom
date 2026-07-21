@@ -8,14 +8,18 @@ pub enum HashingError {
     Serialization(#[from] serde_json::Error),
 }
 
-/// Produces a deterministic SHA-256 digest for a JSON value.
+/// Produces deterministic canonical JSON bytes for signing and hashing.
 ///
 /// Object keys are recursively sorted before serialization. Array order is
-/// preserved because it can be semantically significant in a work contract.
-pub fn canonical_json_sha256(value: &Value) -> Result<String, HashingError> {
+/// preserved because it can be semantically significant in sealed documents.
+pub fn canonical_json_bytes(value: &Value) -> Result<Vec<u8>, HashingError> {
     let canonical = canonicalize(value);
-    let bytes = serde_json::to_vec(&canonical)?;
-    let digest = Sha256::digest(bytes);
+    Ok(serde_json::to_vec(&canonical)?)
+}
+
+/// Produces a deterministic SHA-256 digest for a JSON value.
+pub fn canonical_json_sha256(value: &Value) -> Result<String, HashingError> {
+    let digest = Sha256::digest(canonical_json_bytes(value)?);
     Ok(format!("{digest:x}"))
 }
 
