@@ -5,6 +5,7 @@ members = [
   "crates/contract-runtime",
   "crates/evidence-runtime",
   "crates/execution-runtime",
+  "crates/graphic-designer-twin-runtime",
   "crates/occupational-twin-runtime",
   "crates/operator-plan-runtime",
   "crates/proof-kernel"
