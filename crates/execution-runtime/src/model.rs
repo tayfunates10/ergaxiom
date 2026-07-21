@@ -52,6 +52,9 @@ pub enum AuthorizationTraceViolation {
         event_id: String,
         receipt_digest: String,
     },
+    UnusedAuthorizationReceipt {
+        receipt_digest: String,
+    },
     ReceiptContractDigestMismatch {
         receipt_digest: String,
     },
