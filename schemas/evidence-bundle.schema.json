@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://ergaxiom.dev/schemas/evidence-bundle.schema.json",
   "title": "Ergaxiom Evidence Bundle",
-  "description": "A sealed evidence transport whose claimed decision and trace conformance must be independently recomputed.",
+  "description": "A sealed evidence transport whose authorized execution and claimed decision must be independently recomputed.",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -18,7 +18,7 @@
     "claimed_decision"
   ],
   "properties": {
-    "schema_version": {"const": "0.3.0"},
+    "schema_version": {"const": "0.4.0"},
     "bundle_id": {"type": "string", "minLength": 1},
     "run_id": {"type": "string", "minLength": 1},
     "created_at": {"type": "string", "format": "date-time"},
@@ -63,29 +63,7 @@
       "items": {"$ref": "#/$defs/artifactEvidence"}
     },
     "trace": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["events", "claimed_conforms_to_plan"],
-      "properties": {
-        "events": {
-          "type": "array",
-          "items": {"$ref": "#/$defs/traceEvent"}
-        },
-        "claimed_conforms_to_plan": {"type": "boolean"},
-        "deviations": {
-          "type": "array",
-          "items": {
-            "type": "object",
-            "additionalProperties": false,
-            "required": ["event_id", "reason", "authorization"],
-            "properties": {
-              "event_id": {"type": "string"},
-              "reason": {"type": "string"},
-              "authorization": {"type": ["string", "null"]}
-            }
-          }
-        }
-      }
+      "$ref": "authorized-execution-trace.schema.json"
     },
     "proof_results": {
       "type": "array",
@@ -118,29 +96,6 @@
         "algorithm": {"enum": ["sha256", "sha512"]},
         "digest": {"type": "string", "minLength": 1},
         "size_bytes": {"type": "integer", "minimum": 0}
-      }
-    },
-    "traceEvent": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["event_id", "step_id", "sequence", "timestamp", "operator_id", "status", "input_digests", "output_digests"],
-      "properties": {
-        "event_id": {"type": "string", "minLength": 1},
-        "step_id": {"type": "string", "minLength": 1},
-        "sequence": {"type": "integer", "minimum": 0},
-        "timestamp": {"type": "string", "format": "date-time"},
-        "operator_id": {"type": "string", "minLength": 1},
-        "status": {"enum": ["STARTED", "SUCCEEDED", "FAILED", "ROLLED_BACK", "SKIPPED"]},
-        "input_digests": {
-          "type": "array",
-          "items": {"type": "string"}
-        },
-        "output_digests": {
-          "type": "array",
-          "items": {"type": "string"}
-        },
-        "capability_token_id": {"type": ["string", "null"]},
-        "details": {"type": "object", "additionalProperties": true}
       }
     },
     "proofResult": {

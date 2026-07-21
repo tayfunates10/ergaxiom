@@ -1,6 +1,6 @@
 [package]
 name = "ergaxiom-evidence-runtime"
-version = "0.2.0"
+version = "0.3.0"
 edition.workspace = true
 rust-version.workspace = true
 repository.workspace = true
@@ -8,11 +8,17 @@ publish = false
 
 [dependencies]
 ergaxiom-contract-runtime = { path = "../contract-runtime" }
+ergaxiom-execution-runtime = { path = "../execution-runtime" }
 ergaxiom-operator-plan-runtime = { path = "../operator-plan-runtime" }
 ergaxiom-proof-kernel = { path = "../proof-kernel" }
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
+
+[dev-dependencies]
+base64.workspace = true
+ed25519-dalek = { workspace = true, features = ["rand_core"] }
+ergaxiom-capability-runtime = { path = "../capability-runtime" }
 
 [lints]
 workspace = true

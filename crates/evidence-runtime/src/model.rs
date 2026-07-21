@@ -1,4 +1,4 @@
-use ergaxiom_operator_plan_runtime::TraceEvent;
+use ergaxiom_execution_runtime::AuthorizedExecutionTrace;
 use ergaxiom_proof_kernel::{AssuranceLevel, DecisionStatus, IndependenceClass};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -12,7 +12,7 @@ pub struct EvidenceBundle {
     pub bindings: BundleBindings,
     pub environment: EnvironmentEvidence,
     pub artifacts: Vec<ArtifactEvidence>,
-    pub trace: TraceEvidence,
+    pub trace: AuthorizedExecutionTrace,
     pub proof_results: Vec<ProofResult>,
     pub claimed_decision: ClaimedDecision,
 }
@@ -74,14 +74,6 @@ pub enum ArtifactRole {
     Intermediate,
     Output,
     Evidence,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct TraceEvidence {
-    pub events: Vec<TraceEvent>,
-    pub claimed_conforms_to_plan: bool,
-    #[serde(default)]
-    pub deviations: Vec<Value>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
