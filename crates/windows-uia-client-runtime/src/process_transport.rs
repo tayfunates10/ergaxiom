@@ -22,11 +22,7 @@ impl ChildJsonLineTransport {
         host_path: impl AsRef<Path>,
         trusted_host_sha256: &str,
     ) -> Result<Self, WindowsUiaClientError> {
-        Self::spawn_with_limit(
-            host_path,
-            trusted_host_sha256,
-            DEFAULT_MAX_RESPONSE_BYTES,
-        )
+        Self::spawn_with_limit(host_path, trusted_host_sha256, DEFAULT_MAX_RESPONSE_BYTES)
     }
 
     pub fn spawn_with_limit(
