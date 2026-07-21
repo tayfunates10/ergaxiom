@@ -93,8 +93,7 @@ fn build_kernel(
     )
 }
 
-fn obligation_scenarios()
--> impl Strategy<Value = Vec<(u8, Vec<(u8, u8, u8)>)>> {
+fn obligation_scenarios() -> impl Strategy<Value = Vec<(u8, Vec<(u8, u8, u8)>)>> {
     prop::collection::vec(
         (
             0_u8..3,
@@ -151,9 +150,10 @@ proptest! {
         prop_assert_eq!(decision.status == DecisionStatus::Accepted, should_accept);
         if decision.status == DecisionStatus::Accepted {
             prop_assert!(decision.reasons.is_empty());
-            prop_assert!(decision.obligation_reports.iter().all(|report| {
+            let all_accepted_reports_satisfied = decision.obligation_reports.iter().all(|report| {
                 !report.mandatory || report.state == ObligationState::Satisfied
-            }));
+            });
+            prop_assert!(all_accepted_reports_satisfied);
         }
     }
 
@@ -192,10 +192,11 @@ proptest! {
         }
 
         let decision = kernel.evaluate();
-        prop_assert_ne!(decision.status, DecisionStatus::Accepted);
-        prop_assert!(decision.reasons.contains(&DecisionReason::MandatoryProofPending {
+        let expected_reason = DecisionReason::MandatoryProofPending {
             obligation_id: format!("proof.{missing_index}"),
-        }));
+        };
+        prop_assert_ne!(decision.status, DecisionStatus::Accepted);
+        prop_assert!(decision.reasons.contains(&expected_reason));
     }
 
     #[test]
@@ -300,10 +301,9 @@ proptest! {
         prop_assert!(ingestion.is_ok());
 
         let decision = kernel.evaluate();
+        let expected_reason = DecisionReason::UnresolvedUnknowns { count: unknowns };
         prop_assert_eq!(decision.status, DecisionStatus::Blocked);
-        prop_assert!(decision.reasons.contains(&DecisionReason::UnresolvedUnknowns {
-            count: unknowns,
-        }));
+        prop_assert!(decision.reasons.contains(&expected_reason));
     }
 
     #[test]
@@ -336,11 +336,12 @@ proptest! {
         prop_assert!(ingestion.is_ok());
 
         let decision = kernel.evaluate();
-        prop_assert_eq!(decision.status, DecisionStatus::Blocked);
-        prop_assert!(decision.reasons.contains(&DecisionReason::AssuranceBelowMinimum {
+        let expected_reason = DecisionReason::AssuranceBelowMinimum {
             actual,
             required: minimum,
-        }));
+        };
+        prop_assert_eq!(decision.status, DecisionStatus::Blocked);
+        prop_assert!(decision.reasons.contains(&expected_reason));
     }
 
     #[test]
