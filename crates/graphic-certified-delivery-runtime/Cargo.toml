@@ -7,6 +7,7 @@ repository.workspace = true
 publish = false
 
 [dependencies]
+base64.workspace = true
 ergaxiom-attestation-runtime = { path = "../attestation-runtime" }
 ergaxiom-capability-runtime = { path = "../capability-runtime" }
 ergaxiom-contract-runtime = { path = "../contract-runtime" }
@@ -15,6 +16,7 @@ ergaxiom-execution-runtime = { path = "../execution-runtime" }
 ergaxiom-graphic-designer-twin-runtime = { path = "../graphic-designer-twin-runtime" }
 ergaxiom-occupational-twin-runtime = { path = "../occupational-twin-runtime" }
 ergaxiom-operator-plan-runtime = { path = "../operator-plan-runtime" }
+ergaxiom-operator-simulation-runtime = { path = "../operator-simulation-runtime" }
 ergaxiom-proof-kernel = { path = "../proof-kernel" }
 ed25519-dalek.workspace = true
 serde.workspace = true
