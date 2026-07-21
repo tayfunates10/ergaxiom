@@ -68,6 +68,7 @@ pub struct BrandProfile {
 pub struct GraphicDesignJob {
     pub schema_version: String,
     pub job_id: String,
+    pub evaluated_at: String,
     pub canvas: CanvasSpecification,
     pub safe_area: PixelRect,
     pub logo_bounds: PixelRect,
