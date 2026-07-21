@@ -2,7 +2,7 @@ use std::collections::VecDeque;
 use std::error::Error;
 
 use ergaxiom_windows_bridge_runtime::{
-    WindowsBridgeAdapter, WindowsBridgeRequest, WindowsControlMethod,
+    ObservedWindowsState, WindowsBridgeAdapter, WindowsBridgeRequest, WindowsControlMethod,
 };
 use ergaxiom_windows_uia_client_runtime::{
     JsonLineTransport, WindowsUiaClient, WindowsUiaClientError,
@@ -38,9 +38,9 @@ fn primed_observation_is_delivered_once_before_execute() -> Result<(), Box<dyn E
     let pre = observed_state("pre-digest", "BEFORE");
     let post = observed_state("post-digest", "APPROVED");
     let transport = FakeTransport::with_responses(vec![
-        Ok(success_observe(pre.clone())),
+        Ok(success_observe(&pre)),
         Ok(success_execute("pre-digest", "event-digest")),
-        Ok(success_observe(post.clone())),
+        Ok(success_observe(&post)),
     ]);
     let mut client = WindowsUiaClient::new(transport);
     let mut request = request();
@@ -48,11 +48,8 @@ fn primed_observation_is_delivered_once_before_execute() -> Result<(), Box<dyn E
     let primed = client.prime(&request)?;
     request.expected_pre_state_digest = primed.state_digest.clone();
     let runtime_pre = WindowsBridgeAdapter::observe(&mut client, &request)?;
-    let transition = WindowsBridgeAdapter::execute(
-        &mut client,
-        &request,
-        &runtime_pre.state_digest,
-    )?;
+    let transition =
+        WindowsBridgeAdapter::execute(&mut client, &request, &runtime_pre.state_digest)?;
     let runtime_post = WindowsBridgeAdapter::observe(&mut client, &request)?;
     let transport = client.into_transport();
 
@@ -72,18 +69,17 @@ fn runtime_observe_without_prime_fails_without_transport_use() {
     let mut client = WindowsUiaClient::new(transport);
     let error = WindowsBridgeAdapter::observe(&mut client, &request());
 
-    assert!(error
-        .as_deref()
-        .is_err_and(|message| message.contains("has not been primed")));
+    assert!(matches!(
+        error,
+        Err(message) if message.contains("has not been primed")
+    ));
     assert!(client.into_transport().commands.is_empty());
 }
 
 #[test]
 fn request_identity_change_after_prime_fails_closed() -> Result<(), Box<dyn Error>> {
-    let transport = FakeTransport::with_responses(vec![Ok(success_observe(observed_state(
-        "pre-digest",
-        "BEFORE",
-    )))]);
+    let pre = observed_state("pre-digest", "BEFORE");
+    let transport = FakeTransport::with_responses(vec![Ok(success_observe(&pre))]);
     let mut client = WindowsUiaClient::new(transport);
     let mut request = request();
     let primed = client.prime(&request)?;
@@ -91,9 +87,10 @@ fn request_identity_change_after_prime_fails_closed() -> Result<(), Box<dyn Erro
     request.request_id = "request.other".to_owned();
 
     let error = WindowsBridgeAdapter::observe(&mut client, &request);
-    assert!(error
-        .as_deref()
-        .is_err_and(|message| message.contains("identity changed")));
+    assert!(matches!(
+        error,
+        Err(message) if message.contains("identity changed")
+    ));
     Ok(())
 }
 
@@ -121,8 +118,9 @@ fn host_rejection_is_preserved_as_typed_error() {
 
 #[test]
 fn host_consuming_another_digest_fails_closed() -> Result<(), Box<dyn Error>> {
+    let pre = observed_state("pre-digest", "BEFORE");
     let transport = FakeTransport::with_responses(vec![
-        Ok(success_observe(observed_state("pre-digest", "BEFORE"))),
+        Ok(success_observe(&pre)),
         Ok(success_execute("another-digest", "event-digest")),
     ]);
     let mut client = WindowsUiaClient::new(transport);
@@ -132,9 +130,10 @@ fn host_consuming_another_digest_fails_closed() -> Result<(), Box<dyn Error>> {
     WindowsBridgeAdapter::observe(&mut client, &request)?;
 
     let error = WindowsBridgeAdapter::execute(&mut client, &request, &primed.state_digest);
-    assert!(error
-        .as_deref()
-        .is_err_and(|message| message.contains("consumed a different")));
+    assert!(matches!(
+        error,
+        Err(message) if message.contains("consumed a different")
+    ));
     Ok(())
 }
 
@@ -196,8 +195,8 @@ fn request() -> WindowsBridgeRequest {
     .unwrap_or_else(|error| panic!("test request must deserialize: {error}"))
 }
 
-fn observed_state(digest: &str, value: &str) -> Value {
-    json!({
+fn observed_state(digest: &str, value: &str) -> ObservedWindowsState {
+    serde_json::from_value(json!({
         "application": {
             "application_id": "editor",
             "version": "1.0.0",
@@ -209,10 +208,11 @@ fn observed_state(digest: &str, value: &str) -> Value {
         "artifact_digests": {},
         "observed_at_epoch_ms": 1000,
         "state_digest": digest
-    })
+    }))
+    .unwrap_or_else(|error| panic!("test state must deserialize: {error}"))
 }
 
-fn success_observe(state: Value) -> Value {
+fn success_observe(state: &ObservedWindowsState) -> Value {
     json!({
         "ok": true,
         "kind": "observe",
