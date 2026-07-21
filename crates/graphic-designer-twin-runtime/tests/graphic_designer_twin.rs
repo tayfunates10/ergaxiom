@@ -6,9 +6,7 @@ use ergaxiom_graphic_designer_twin_runtime::{
     GraphicTwinError, PixelRect, Rgba8, ValidationError, decode_rgba_png,
     execute_graphic_design_twin, validate_graphic_artifacts, verify_validation_report_digest,
 };
-use ergaxiom_occupational_twin_runtime::{
-    ApplicationIdentity, EnvironmentIdentity, TwinWorkspace,
-};
+use ergaxiom_occupational_twin_runtime::{ApplicationIdentity, EnvironmentIdentity, TwinWorkspace};
 use ergaxiom_operator_plan_runtime::{CompiledPlan, compile_plan};
 use ergaxiom_proof_kernel::{AssuranceLevel, DecisionStatus};
 use serde_json::{Value, json};
@@ -16,8 +14,7 @@ use sha2::{Digest, Sha256};
 
 const CONTRACT_SOURCE: &str =
     include_str!("../../../examples/work-contracts/social-media-static-post.json");
-const CAPSULE_SOURCE: &str =
-    include_str!("../../../professions/graphic-designer/profession.json");
+const CAPSULE_SOURCE: &str = include_str!("../../../professions/graphic-designer/profession.json");
 
 struct Context {
     contract_value: Value,
@@ -209,8 +206,8 @@ fn workspace() -> Result<TwinWorkspace, Box<dyn Error>> {
 }
 
 #[test]
-fn accepted_static_post_runs_through_contract_plan_twin_and_proof_kernel(
-) -> Result<(), Box<dyn Error>> {
+fn accepted_static_post_runs_through_contract_plan_twin_and_proof_kernel()
+-> Result<(), Box<dyn Error>> {
     let context = context()?;
     let mut workspace = workspace()?;
     let run = execute_graphic_design_twin(
@@ -231,10 +228,7 @@ fn accepted_static_post_runs_through_contract_plan_twin_and_proof_kernel(
     assert_eq!(decoded.profile_description, "sRGB IEC61966-2.1");
     assert!(decoded.has_srgb_chunk);
 
-    let mut session = ContractSession::new(
-        context.compiled_contract.clone(),
-        AssuranceLevel::E3,
-    )?;
+    let mut session = ContractSession::new(context.compiled_contract.clone(), AssuranceLevel::E3)?;
     for evidence in run.proof_evidence {
         session.ingest_evidence(evidence)?;
     }
@@ -290,7 +284,10 @@ fn raw_contract_mutation_after_compilation_is_rejected() -> Result<(), Box<dyn E
         &context.compiled_plan,
         &context.job,
     );
-    assert!(matches!(result, Err(GraphicTwinError::ContractDigestMismatch)));
+    assert!(matches!(
+        result,
+        Err(GraphicTwinError::ContractDigestMismatch)
+    ));
     Ok(())
 }
 
@@ -358,10 +355,7 @@ fn low_contrast_output_executes_but_proof_kernel_rejects_it() -> Result<(), Box<
         observation.claim_id == "minimum_text_contrast" && !observation.passed
     }));
 
-    let mut session = ContractSession::new(
-        context.compiled_contract,
-        AssuranceLevel::E3,
-    )?;
+    let mut session = ContractSession::new(context.compiled_contract, AssuranceLevel::E3)?;
     for evidence in run.proof_evidence {
         session.ingest_evidence(evidence)?;
     }
@@ -413,10 +407,7 @@ fn png_chunk_tampering_is_detected_independently() -> Result<(), Box<dyn Error>>
         .artifact_content(&context.job.editable_master_id)
         .ok_or("editable master missing")?;
     let result = validate_graphic_artifacts(&context.job, editable_master, &tampered);
-    assert!(matches!(
-        result,
-        Err(ValidationError::Png(_))
-    ));
+    assert!(matches!(result, Err(ValidationError::Png(_))));
     Ok(())
 }
 

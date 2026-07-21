@@ -22,9 +22,7 @@ use crate::model::{
 };
 use crate::png::{PngError, encode_rgba_png};
 use crate::render::{RenderError, measure_text_bounds, render_document};
-use crate::validate::{
-    ValidationError, proof_evidence_from_report, validate_graphic_artifacts,
-};
+use crate::validate::{ValidationError, proof_evidence_from_report, validate_graphic_artifacts};
 
 const JOB_SCHEMA: &str = "0.1.0";
 const DOCUMENT_SCHEMA: &str = "0.1.0";
@@ -69,7 +67,9 @@ pub enum GraphicTwinError {
     InputIntegrityMismatch(String),
     #[error("contract output binding mismatch for {0}")]
     OutputBindingMismatch(String),
-    #[error("compiled plan must contain the four Graphic Designer operators exactly once and in order")]
+    #[error(
+        "compiled plan must contain the four Graphic Designer operators exactly once and in order"
+    )]
     InvalidOperatorSet,
     #[error("plan step {step_id} has invalid artifact bindings for operator {operator_id}")]
     InvalidStepBinding {
@@ -115,8 +115,8 @@ pub fn stage_graphic_design_inputs(
         &job.approved_copy.media_type,
         job.approved_copy.text.as_bytes().to_vec(),
     )?;
-    let brand_profile = serde_json::to_vec(&job.brand_profile)
-        .map_err(GraphicTwinError::Serialization)?;
+    let brand_profile =
+        serde_json::to_vec(&job.brand_profile).map_err(GraphicTwinError::Serialization)?;
     stage_input(
         workspace,
         &job.brand_profile.artifact_id,
@@ -271,12 +271,8 @@ pub fn execute_graphic_design_twin(
     job: &GraphicDesignJob,
 ) -> Result<GraphicDesignTwinRun, GraphicTwinError> {
     stage_graphic_design_inputs(workspace, compiled_contract, contract_value, job)?;
-    let simulation_plan = compile_graphic_design_simulation(
-        compiled_contract,
-        contract_value,
-        compiled_plan,
-        job,
-    )?;
+    let simulation_plan =
+        compile_graphic_design_simulation(compiled_contract, contract_value, compiled_plan, job)?;
     let simulation = simulate_operator_plan(workspace, compiled_plan, &simulation_plan)?;
     if !simulation.conforms_to_plan {
         return Err(GraphicTwinError::SimulationNonConformance);
@@ -288,11 +284,8 @@ pub fn execute_graphic_design_twin(
         .artifact_content(&job.delivery_raster_id)
         .ok_or_else(|| GraphicTwinError::MissingArtifact(job.delivery_raster_id.clone()))?;
     let (document, validation) = validate_graphic_artifacts(job, editable_master, raster_png)?;
-    let proof_evidence = proof_evidence_from_report(
-        job,
-        &validation,
-        &compiled_contract.seal.contract_digest,
-    );
+    let proof_evidence =
+        proof_evidence_from_report(job, &validation, &compiled_contract.seal.contract_digest);
     Ok(GraphicDesignTwinRun {
         simulation,
         document,
@@ -311,9 +304,7 @@ fn validate_job_and_contract(
     if canonical_json_sha256(contract_value)? != compiled_contract.seal.contract_digest {
         return Err(GraphicTwinError::ContractDigestMismatch);
     }
-    if contract_value
-        .get("contract_id")
-        .and_then(Value::as_str)
+    if contract_value.get("contract_id").and_then(Value::as_str)
         != Some(compiled_contract.contract_id.as_str())
         || compiled_contract.job_type != "social_media_static_post"
     {
@@ -329,7 +320,11 @@ fn validate_job_and_contract(
     }
 
     require_u64_constraint(contract_value, "canvas_width", u64::from(job.canvas.width))?;
-    require_u64_constraint(contract_value, "canvas_height", u64::from(job.canvas.height))?;
+    require_u64_constraint(
+        contract_value,
+        "canvas_height",
+        u64::from(job.canvas.height),
+    )?;
     require_string_constraint(contract_value, "color_profile", &job.canvas.color_profile)?;
     require_u64_constraint(contract_value, "logo_aspect_ratio", 0)?;
     let ratio_preserved = u64::from(job.approved_logo.source_width)
@@ -409,9 +404,18 @@ fn validate_job(job: &GraphicDesignJob) -> Result<(), GraphicTwinError> {
         ("job_id", job.job_id.as_str()),
         ("evaluated_at", job.evaluated_at.as_str()),
         ("color_profile", job.canvas.color_profile.as_str()),
-        ("approved_logo.artifact_id", job.approved_logo.artifact_id.as_str()),
-        ("approved_copy.artifact_id", job.approved_copy.artifact_id.as_str()),
-        ("brand_profile.artifact_id", job.brand_profile.artifact_id.as_str()),
+        (
+            "approved_logo.artifact_id",
+            job.approved_logo.artifact_id.as_str(),
+        ),
+        (
+            "approved_copy.artifact_id",
+            job.approved_copy.artifact_id.as_str(),
+        ),
+        (
+            "brand_profile.artifact_id",
+            job.brand_profile.artifact_id.as_str(),
+        ),
         ("editable_master_id", job.editable_master_id.as_str()),
         ("delivery_raster_id", job.delivery_raster_id.as_str()),
     ] {
@@ -480,7 +484,11 @@ fn validate_step_binding(
     job: &GraphicDesignJob,
     target_id: &str,
 ) -> Result<(), GraphicTwinError> {
-    let output_set: BTreeSet<_> = step.output_artifact_ids.iter().map(String::as_str).collect();
+    let output_set: BTreeSet<_> = step
+        .output_artifact_ids
+        .iter()
+        .map(String::as_str)
+        .collect();
     if step.output_artifact_ids.len() != 1 || output_set != BTreeSet::from([target_id]) {
         return Err(GraphicTwinError::InvalidStepBinding {
             step_id: step.step_id.clone(),

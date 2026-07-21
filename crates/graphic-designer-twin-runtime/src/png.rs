@@ -151,11 +151,15 @@ pub fn decode_rgba_png(bytes: &[u8]) -> Result<DecodedPng, PngError> {
                 has_srgb_chunk = true;
             }
             b"iCCP" => {
-                let zero = data.iter().position(|byte| *byte == 0).ok_or(PngError::InvalidIccProfile)?;
+                let zero = data
+                    .iter()
+                    .position(|byte| *byte == 0)
+                    .ok_or(PngError::InvalidIccProfile)?;
                 if zero == 0 || data.get(zero + 1) != Some(&0) {
                     return Err(PngError::InvalidIccProfile);
                 }
-                let name = std::str::from_utf8(&data[..zero]).map_err(|_| PngError::InvalidIccProfile)?;
+                let name =
+                    std::str::from_utf8(&data[..zero]).map_err(|_| PngError::InvalidIccProfile)?;
                 let compressed = data.get(zero + 2..).ok_or(PngError::InvalidIccProfile)?;
                 let profile = zlib_unstore(compressed)?;
                 profile_name = Some(name.to_owned());
@@ -280,12 +284,15 @@ fn zlib_unstore(bytes: &[u8]) -> Result<Vec<u8>, PngError> {
         }
         let final_block = header & 1 == 1;
         let length_bytes = bytes.get(cursor..cursor + 2).ok_or(PngError::InvalidZlib)?;
-        let inverse_bytes = bytes.get(cursor + 2..cursor + 4).ok_or(PngError::InvalidZlib)?;
-        let length = u16::from_le_bytes(
-            length_bytes.try_into().map_err(|_| PngError::InvalidZlib)?,
-        );
+        let inverse_bytes = bytes
+            .get(cursor + 2..cursor + 4)
+            .ok_or(PngError::InvalidZlib)?;
+        let length =
+            u16::from_le_bytes(length_bytes.try_into().map_err(|_| PngError::InvalidZlib)?);
         let inverse = u16::from_le_bytes(
-            inverse_bytes.try_into().map_err(|_| PngError::InvalidZlib)?,
+            inverse_bytes
+                .try_into()
+                .map_err(|_| PngError::InvalidZlib)?,
         );
         if inverse != !length {
             return Err(PngError::InvalidZlib);
@@ -403,7 +410,9 @@ fn parse_icc_description(profile: &[u8]) -> Result<String, PngError> {
                 .try_into()
                 .map_err(|_| PngError::InvalidIccProfile)?,
         ) as usize;
-        let text = data.get(12..12 + count).ok_or(PngError::InvalidIccProfile)?;
+        let text = data
+            .get(12..12 + count)
+            .ok_or(PngError::InvalidIccProfile)?;
         let text = text.strip_suffix(&[0]).unwrap_or(text);
         return std::str::from_utf8(text)
             .map(str::to_owned)

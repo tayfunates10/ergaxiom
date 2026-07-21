@@ -40,10 +40,19 @@ pub enum SimulatedStepStatus {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "code", rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum SimulationViolation {
-    DuplicateInvocation { step_id: String },
-    UnexpectedInvocation { step_id: String },
-    MissingMandatoryInvocation { step_id: String },
-    DependencyNotSucceeded { step_id: String, dependency_id: String },
+    DuplicateInvocation {
+        step_id: String,
+    },
+    UnexpectedInvocation {
+        step_id: String,
+    },
+    MissingMandatoryInvocation {
+        step_id: String,
+    },
+    DependencyNotSucceeded {
+        step_id: String,
+        dependency_id: String,
+    },
     InvocationOperatorMismatch {
         step_id: String,
         actual: String,
@@ -59,11 +68,21 @@ pub enum SimulationViolation {
         actual: String,
         expected: String,
     },
-    DeclaredInputMismatch { step_id: String },
-    DeclaredOutputMismatch { step_id: String },
-    FaultNotApplicable { step_id: String },
-    OperationRejected { step_id: String },
-    OperationRolledBack { step_id: String },
+    DeclaredInputMismatch {
+        step_id: String,
+    },
+    DeclaredOutputMismatch {
+        step_id: String,
+    },
+    FaultNotApplicable {
+        step_id: String,
+    },
+    OperationRejected {
+        step_id: String,
+    },
+    OperationRolledBack {
+        step_id: String,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

@@ -118,7 +118,10 @@ fn immutable_input_requires_exact_digest() -> Result<(), Box<dyn Error>> {
         "wrong-digest",
     );
 
-    assert!(matches!(result, Err(TwinRuntimeError::InputDigestMismatch { .. })));
+    assert!(matches!(
+        result,
+        Err(TwinRuntimeError::InputDigestMismatch { .. })
+    ));
     assert!(workspace.current_snapshot()?.artifacts.is_empty());
     Ok(())
 }
@@ -147,7 +150,10 @@ fn immutable_input_cannot_be_overwritten() -> Result<(), Box<dyn Error>> {
     let after = workspace.current_snapshot()?;
     assert_eq!(receipt.outcome, OperationOutcome::Rejected);
     assert_eq!(before.snapshot_digest, after.snapshot_digest);
-    assert_eq!(workspace.artifact_content("input"), Some(b"approved-input".as_slice()));
+    assert_eq!(
+        workspace.artifact_content("input"),
+        Some(b"approved-input".as_slice())
+    );
     assert!(receipt.violations.iter().any(|violation| matches!(
         violation,
         OperationViolation::ImmutableArtifactMutation { .. }
@@ -171,8 +177,14 @@ fn successful_operation_commits_atomically() -> Result<(), Box<dyn Error>> {
 
     assert_eq!(receipt.outcome, OperationOutcome::Succeeded);
     assert!(receipt.violations.is_empty());
-    assert_eq!(workspace.artifact_content("output"), Some(output.as_slice()));
-    assert_ne!(receipt.before_snapshot_digest, receipt.after_snapshot_digest);
+    assert_eq!(
+        workspace.artifact_content("output"),
+        Some(output.as_slice())
+    );
+    assert_ne!(
+        receipt.before_snapshot_digest,
+        receipt.after_snapshot_digest
+    );
     Ok(())
 }
 
@@ -242,7 +254,10 @@ fn checkpoint_rollback_restores_artifacts_and_records_journal() -> Result<(), Bo
     ))?;
 
     let receipt = workspace.rollback_to_checkpoint("rollback.v1", "checkpoint.v1")?;
-    assert_eq!(workspace.artifact_content("output"), Some(b"version-one".as_slice()));
+    assert_eq!(
+        workspace.artifact_content("output"),
+        Some(b"version-one".as_slice())
+    );
     assert_eq!(receipt.restored_snapshot_digest, checkpoint.snapshot_digest);
     assert_ne!(receipt.before_snapshot_digest, receipt.new_snapshot_digest);
     assert_eq!(workspace.journal().len(), 3);
@@ -287,12 +302,7 @@ fn tampered_sealed_blob_is_rejected() -> Result<(), Box<dyn Error>> {
 fn operation_identifier_cannot_be_replayed() -> Result<(), Box<dyn Error>> {
     let mut workspace = workspace()?;
     stage_input(&mut workspace)?;
-    let operation = write_operation(
-        "operation.once",
-        "output",
-        b"output",
-        &sha256(b"output"),
-    );
+    let operation = write_operation("operation.once", "output", b"output", &sha256(b"output"));
     workspace.apply_operation(operation.clone())?;
 
     assert!(matches!(

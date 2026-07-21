@@ -42,8 +42,7 @@ pub fn validate_graphic_artifacts(
 ) -> Result<(GraphicDesignDocument, GraphicValidationReport), ValidationError> {
     let document: GraphicDesignDocument =
         serde_json::from_slice(editable_master).map_err(ValidationError::DocumentDecode)?;
-    let document_value =
-        serde_json::to_value(&document).map_err(ValidationError::Serialization)?;
+    let document_value = serde_json::to_value(&document).map_err(ValidationError::Serialization)?;
     let document_digest = canonical_json_sha256(&document_value)?;
     let raster_digest = sha256_hex(raster_png);
     let decoded = decode_rgba_png(raster_png)?;
@@ -117,7 +116,10 @@ pub fn validate_graphic_artifacts(
         logo.bounds,
         document.canvas.width,
         document.canvas.height,
-        &text_layers.iter().map(|layer| layer.bounds).collect::<Vec<_>>(),
+        &text_layers
+            .iter()
+            .map(|layer| layer.bounds)
+            .collect::<Vec<_>>(),
     );
     observations.push(observation(
         "document.logo_geometry",
@@ -146,7 +148,12 @@ pub fn validate_graphic_artifacts(
         "document.approved_copy",
         "approved_copy_integrity",
         copy_matches,
-        json!(text_layers.iter().map(|layer| &layer.approved_copy).collect::<Vec<_>>()),
+        json!(
+            text_layers
+                .iter()
+                .map(|layer| &layer.approved_copy)
+                .collect::<Vec<_>>()
+        ),
         json!(job.approved_copy.text),
     )?);
 
@@ -363,17 +370,13 @@ fn rect_gap(left: PixelRect, right: PixelRect) -> u32 {
     let right_bottom = right.y.saturating_add(right.height);
     let horizontal = if left_right <= right.x {
         right.x - left_right
-    } else if right_right <= left.x {
-        left.x - right_right
     } else {
-        0
+        left.x.saturating_sub(right_right)
     };
     let vertical = if left_bottom <= right.y {
         right.y - left_bottom
-    } else if right_bottom <= left.y {
-        left.y - right_bottom
     } else {
-        0
+        left.y.saturating_sub(right_bottom)
     };
     match (horizontal, vertical) {
         (0, 0) => 0,
