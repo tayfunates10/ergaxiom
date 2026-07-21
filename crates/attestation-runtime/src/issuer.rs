@@ -1,9 +1,7 @@
 use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
 use ed25519_dalek::{Signer, SigningKey};
 use ergaxiom_contract_runtime::CompiledContract;
-use ergaxiom_evidence_runtime::{
-    EvidenceBundle, EvidenceBundleError, assess_bundle,
-};
+use ergaxiom_evidence_runtime::{EvidenceBundle, EvidenceBundleError, assess_bundle};
 use ergaxiom_operator_plan_runtime::CompiledPlan;
 use ergaxiom_proof_kernel::{
     AssuranceLevel, DecisionStatus, HashingError, canonical_json_bytes, canonical_json_sha256,
@@ -84,8 +82,8 @@ pub fn issue_attestation(
         assessment.mandatory_failed,
         assessment.mandatory_unknown,
     )?;
-    let manifest_value = serde_json::to_value(&replay_manifest)
-        .map_err(AttestationIssueError::Serialization)?;
+    let manifest_value =
+        serde_json::to_value(&replay_manifest).map_err(AttestationIssueError::Serialization)?;
     let replay_manifest_digest = canonical_json_sha256(&manifest_value)?;
     let authorized_trace_digest = replay_manifest.authorized_trace_digest.clone();
 
