@@ -61,6 +61,7 @@ pub enum SimulationViolation {
     },
     DeclaredInputMismatch { step_id: String },
     DeclaredOutputMismatch { step_id: String },
+    FaultNotApplicable { step_id: String },
     OperationRejected { step_id: String },
     OperationRolledBack { step_id: String },
 }
