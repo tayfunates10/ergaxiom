@@ -1,0 +1,106 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ergaxiom.dev/schemas/typed-operation.schema.json",
+  "title": "Ergaxiom Occupational Twin Typed Operation",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "operation_id",
+    "operator_id",
+    "declared_input_ids",
+    "declared_output_ids",
+    "preconditions",
+    "commands",
+    "postconditions"
+  ],
+  "properties": {
+    "operation_id": {"type": "string", "minLength": 1},
+    "operator_id": {"type": "string", "minLength": 1},
+    "declared_input_ids": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {"type": "string", "minLength": 1}
+    },
+    "declared_output_ids": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {"type": "string", "minLength": 1}
+    },
+    "preconditions": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/condition"}
+    },
+    "commands": {
+      "type": "array",
+      "minItems": 1,
+      "items": {"$ref": "#/$defs/command"}
+    },
+    "postconditions": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/condition"}
+    }
+  },
+  "$defs": {
+    "condition": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["condition", "artifact_id"],
+          "properties": {
+            "condition": {
+              "enum": [
+                "ARTIFACT_EXISTS",
+                "ARTIFACT_ABSENT",
+                "ARTIFACT_IMMUTABLE",
+                "ARTIFACT_MUTABLE"
+              ]
+            },
+            "artifact_id": {"type": "string", "minLength": 1}
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["condition", "artifact_id", "digest"],
+          "properties": {
+            "condition": {"const": "ARTIFACT_DIGEST_EQUALS"},
+            "artifact_id": {"type": "string", "minLength": 1},
+            "digest": {"type": "string", "minLength": 1}
+          }
+        }
+      ]
+    },
+    "command": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "command",
+            "artifact_id",
+            "role",
+            "media_type",
+            "content_base64url"
+          ],
+          "properties": {
+            "command": {"const": "WRITE_ARTIFACT"},
+            "artifact_id": {"type": "string", "minLength": 1},
+            "role": {"enum": ["input", "intermediate", "output"]},
+            "media_type": {"type": "string", "minLength": 1},
+            "content_base64url": {"type": "string"}
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["command", "artifact_id"],
+          "properties": {
+            "command": {"const": "DELETE_ARTIFACT"},
+            "artifact_id": {"type": "string", "minLength": 1}
+          }
+        }
+      ]
+    }
+  }
+}

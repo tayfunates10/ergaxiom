@@ -1,0 +1,55 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ergaxiom.dev/schemas/sealed-workspace-run.schema.json",
+  "title": "Ergaxiom Sealed Occupational Twin Run",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["manifest", "blobs"],
+  "properties": {
+    "manifest": {"$ref": "#/$defs/manifest"},
+    "blobs": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/blob"}
+    }
+  },
+  "$defs": {
+    "manifest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "package_id",
+        "workspace_id",
+        "environment_digest",
+        "final_snapshot",
+        "trace_digest",
+        "journal_digest",
+        "blob_digests"
+      ],
+      "properties": {
+        "schema_version": {"const": "0.1.0"},
+        "package_id": {"type": "string", "minLength": 1},
+        "workspace_id": {"type": "string", "minLength": 1},
+        "environment_digest": {"type": "string", "minLength": 1},
+        "final_snapshot": {"$ref": "workspace-snapshot.schema.json"},
+        "trace_digest": {"type": "string", "minLength": 1},
+        "journal_digest": {"type": "string", "minLength": 1},
+        "blob_digests": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {"type": "string", "minLength": 1}
+        }
+      }
+    },
+    "blob": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["digest", "encoding", "content_base64url"],
+      "properties": {
+        "digest": {"type": "string", "minLength": 1},
+        "encoding": {"const": "base64url"},
+        "content_base64url": {"type": "string"}
+      }
+    }
+  }
+}
