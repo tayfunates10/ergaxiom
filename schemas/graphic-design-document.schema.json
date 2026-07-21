@@ -1,0 +1,56 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ergaxiom.dev/schemas/graphic-design-document.schema.json",
+  "title": "Ergaxiom Graphic Design Document",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "document_id", "canvas", "safe_area", "layers"],
+  "properties": {
+    "schema_version": {"const": "0.1.0"},
+    "document_id": {"type": "string", "minLength": 1},
+    "canvas": {"$ref": "graphic-design-job.schema.json#/$defs/canvas"},
+    "safe_area": {"$ref": "graphic-design-job.schema.json#/$defs/rect"},
+    "layers": {
+      "type": "array",
+      "items": {
+        "oneOf": [
+          {"$ref": "#/$defs/logoLayer"},
+          {"$ref": "#/$defs/textLayer"}
+        ]
+      }
+    }
+  },
+  "$defs": {
+    "logoLayer": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["layer_type", "layer_id", "source_artifact_id", "source_width", "source_height", "bounds", "primary_color", "secondary_color"],
+      "properties": {
+        "layer_type": {"const": "LOGO"},
+        "layer_id": {"type": "string", "minLength": 1},
+        "source_artifact_id": {"type": "string", "minLength": 1},
+        "source_width": {"type": "integer", "minimum": 1},
+        "source_height": {"type": "integer", "minimum": 1},
+        "bounds": {"$ref": "graphic-design-job.schema.json#/$defs/rect"},
+        "primary_color": {"$ref": "graphic-design-job.schema.json#/$defs/color"},
+        "secondary_color": {"$ref": "graphic-design-job.schema.json#/$defs/color"}
+      }
+    },
+    "textLayer": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["layer_type", "layer_id", "source_artifact_id", "approved_copy", "bounds", "origin_x", "origin_y", "glyph_scale", "color"],
+      "properties": {
+        "layer_type": {"const": "TEXT"},
+        "layer_id": {"type": "string", "minLength": 1},
+        "source_artifact_id": {"type": "string", "minLength": 1},
+        "approved_copy": {"type": "string"},
+        "bounds": {"$ref": "graphic-design-job.schema.json#/$defs/rect"},
+        "origin_x": {"type": "integer", "minimum": 0},
+        "origin_y": {"type": "integer", "minimum": 0},
+        "glyph_scale": {"type": "integer", "minimum": 1},
+        "color": {"$ref": "graphic-design-job.schema.json#/$defs/color"}
+      }
+    }
+  }
+}
