@@ -67,18 +67,14 @@ pub fn verify_authorized_trace(
             });
         }
         if record.receipt.contract_digest != plan.contract_digest {
-            violations.push(
-                AuthorizationTraceViolation::ReceiptContractDigestMismatch {
-                    receipt_digest: record.receipt_digest.clone(),
-                },
-            );
+            violations.push(AuthorizationTraceViolation::ReceiptContractDigestMismatch {
+                receipt_digest: record.receipt_digest.clone(),
+            });
         }
         if record.receipt.capsule_digest != plan.capsule_digest {
-            violations.push(
-                AuthorizationTraceViolation::ReceiptCapsuleDigestMismatch {
-                    receipt_digest: record.receipt_digest.clone(),
-                },
-            );
+            violations.push(AuthorizationTraceViolation::ReceiptCapsuleDigestMismatch {
+                receipt_digest: record.receipt_digest.clone(),
+            });
         }
         if record.receipt.plan_id != plan.plan_id {
             violations.push(AuthorizationTraceViolation::ReceiptPlanIdMismatch {
@@ -122,10 +118,12 @@ pub fn verify_authorized_trace(
         };
 
         if !authorization_required {
-            violations.push(AuthorizationTraceViolation::UnexpectedAuthorizationReceipt {
-                event_id: event.event_id.clone(),
-                step_id: event.step_id.clone(),
-            });
+            violations.push(
+                AuthorizationTraceViolation::UnexpectedAuthorizationReceipt {
+                    event_id: event.event_id.clone(),
+                    step_id: event.step_id.clone(),
+                },
+            );
             continue;
         }
 
@@ -200,13 +198,8 @@ pub fn verify_authorized_trace(
         .iter()
         .map(|bound_event| bound_event.event.clone())
         .collect();
-    let plan_trace = verify_trace(
-        plan,
-        &events,
-        trace.claimed_conforms_to_authorized_plan,
-    );
-    let conforms_to_authorized_plan =
-        plan_trace.conforms_to_plan && violations.is_empty();
+    let plan_trace = verify_trace(plan, &events, trace.claimed_conforms_to_authorized_plan);
+    let conforms_to_authorized_plan = plan_trace.conforms_to_plan && violations.is_empty();
 
     Ok(ExecutionTraceAssessment {
         trace_id: trace.trace_id.clone(),
