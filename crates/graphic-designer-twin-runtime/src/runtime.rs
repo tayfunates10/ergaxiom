@@ -1,6 +1,7 @@
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeSet;
 
 use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
+use ergaxiom_contract_runtime::CompiledContract;
 use ergaxiom_occupational_twin_runtime::{
     StateCondition, TwinArtifactRole, TwinRuntimeError, TwinWorkspace, TypedOperation,
     WorkspaceCommand,
@@ -9,7 +10,9 @@ use ergaxiom_operator_plan_runtime::{CompiledPlan, PlanStep};
 use ergaxiom_operator_simulation_runtime::{
     OperatorSimulationPlan, SimulationRuntimeError, StepInvocation, simulate_operator_plan,
 };
+use ergaxiom_proof_kernel::{HashingError, canonical_json_sha256};
 use serde::Serialize;
+use serde_json::Value;
 use sha2::{Digest, Sha256};
 use thiserror::Error;
 
@@ -28,6 +31,12 @@ const DOCUMENT_SCHEMA: &str = "0.1.0";
 const SIMULATION_SCHEMA: &str = "0.1.0";
 const EDITABLE_MASTER_MEDIA_TYPE: &str = "application/x-ergaxiom-design-document";
 const PNG_MEDIA_TYPE: &str = "image/png";
+const REQUIRED_OPERATORS: [&str; 4] = [
+    "design.create_canvas",
+    "design.place_asset",
+    "design.compose_text",
+    "design.export_raster",
+];
 
 #[derive(Debug, Error)]
 pub enum GraphicTwinError {
@@ -44,7 +53,23 @@ pub enum GraphicTwinError {
     NonOpaqueColor,
     #[error("the functional twin currently supports only sRGB IEC61966-2.1")]
     UnsupportedColorProfile,
-    #[error("compiled plan must contain each required Graphic Designer operator exactly once")]
+    #[error("raw Work Contract digest does not match CompiledContract")]
+    ContractDigestMismatch,
+    #[error("compiled Operator Plan is bound to another Work Contract")]
+    PlanContractMismatch,
+    #[error("required Work Contract value is missing: {0}")]
+    MissingContractValue(&'static str),
+    #[error("Work Contract value mismatch for {field}: expected {expected}, actual {actual}")]
+    ContractValueMismatch {
+        field: &'static str,
+        expected: String,
+        actual: String,
+    },
+    #[error("contract input integrity mismatch for {0}")]
+    InputIntegrityMismatch(String),
+    #[error("contract output binding mismatch for {0}")]
+    OutputBindingMismatch(String),
+    #[error("compiled plan must contain the four Graphic Designer operators exactly once and in order")]
     InvalidOperatorSet,
     #[error("plan step {step_id} has invalid artifact bindings for operator {operator_id}")]
     InvalidStepBinding {
@@ -57,6 +82,8 @@ pub enum GraphicTwinError {
     SimulationNonConformance,
     #[error("workspace is missing artifact {0}")]
     MissingArtifact(String),
+    #[error(transparent)]
+    Hashing(#[from] HashingError),
     #[error(transparent)]
     Twin(#[from] TwinRuntimeError),
     #[error(transparent)]
@@ -71,9 +98,11 @@ pub enum GraphicTwinError {
 
 pub fn stage_graphic_design_inputs(
     workspace: &mut TwinWorkspace,
+    compiled_contract: &CompiledContract,
+    contract_value: &Value,
     job: &GraphicDesignJob,
 ) -> Result<(), GraphicTwinError> {
-    validate_job(job)?;
+    validate_job_and_contract(compiled_contract, contract_value, job)?;
     stage_input(
         workspace,
         &job.approved_logo.artifact_id,
@@ -98,11 +127,13 @@ pub fn stage_graphic_design_inputs(
 }
 
 pub fn compile_graphic_design_simulation(
+    compiled_contract: &CompiledContract,
+    contract_value: &Value,
     compiled_plan: &CompiledPlan,
     job: &GraphicDesignJob,
 ) -> Result<OperatorSimulationPlan, GraphicTwinError> {
-    validate_job(job)?;
-    let operator_steps = required_operator_steps(compiled_plan)?;
+    validate_job_and_contract(compiled_contract, contract_value, job)?;
+    validate_plan(compiled_contract, compiled_plan)?;
 
     let canvas_document = GraphicDesignDocument {
         schema_version: DOCUMENT_SCHEMA.to_owned(),
@@ -151,17 +182,19 @@ pub fn compile_graphic_design_simulation(
     let canvas_bytes = canonical_struct_bytes(&canvas_document)?;
     let logo_bytes = canonical_struct_bytes(&logo_document)?;
     let text_bytes = canonical_struct_bytes(&final_document)?;
-
-    let contents = BTreeMap::from([
+    let contents: [(&str, Vec<u8>); 4] = [
         ("design.create_canvas", canvas_bytes),
         ("design.place_asset", logo_bytes),
         ("design.compose_text", text_bytes),
         ("design.export_raster", raster_png),
-    ]);
+    ];
+
     let mut invocations = Vec::with_capacity(compiled_plan.steps.len());
     for step in &compiled_plan.steps {
         let content = contents
-            .get(step.operator_id.as_str())
+            .iter()
+            .find(|(operator_id, _)| *operator_id == step.operator_id)
+            .map(|(_, content)| content)
             .ok_or(GraphicTwinError::InvalidOperatorSet)?;
         let (target_id, role, media_type) = match step.operator_id.as_str() {
             "design.create_canvas" | "design.place_asset" | "design.compose_text" => (
@@ -177,7 +210,6 @@ pub fn compile_graphic_design_simulation(
             _ => return Err(GraphicTwinError::InvalidOperatorSet),
         };
         validate_step_binding(step, job, target_id)?;
-        let digest = sha256_hex(content);
         let mut preconditions = step
             .input_artifact_ids
             .iter()
@@ -215,16 +247,13 @@ pub fn compile_graphic_design_simulation(
                 }],
                 postconditions: vec![StateCondition::ArtifactDigestEquals {
                     artifact_id: target_id.to_owned(),
-                    digest,
+                    digest: sha256_hex(content),
                 }],
             },
             fault: None,
         });
     }
 
-    if operator_steps.len() != invocations.len() {
-        return Err(GraphicTwinError::InvalidOperatorSet);
-    }
     Ok(OperatorSimulationPlan {
         schema_version: SIMULATION_SCHEMA.to_owned(),
         simulation_id: format!("simulation.{}", job.job_id),
@@ -236,12 +265,18 @@ pub fn compile_graphic_design_simulation(
 
 pub fn execute_graphic_design_twin(
     workspace: &mut TwinWorkspace,
+    compiled_contract: &CompiledContract,
+    contract_value: &Value,
     compiled_plan: &CompiledPlan,
     job: &GraphicDesignJob,
-    contract_digest: &str,
 ) -> Result<GraphicDesignTwinRun, GraphicTwinError> {
-    stage_graphic_design_inputs(workspace, job)?;
-    let simulation_plan = compile_graphic_design_simulation(compiled_plan, job)?;
+    stage_graphic_design_inputs(workspace, compiled_contract, contract_value, job)?;
+    let simulation_plan = compile_graphic_design_simulation(
+        compiled_contract,
+        contract_value,
+        compiled_plan,
+        job,
+    )?;
     let simulation = simulate_operator_plan(workspace, compiled_plan, &simulation_plan)?;
     if !simulation.conforms_to_plan {
         return Err(GraphicTwinError::SimulationNonConformance);
@@ -253,7 +288,11 @@ pub fn execute_graphic_design_twin(
         .artifact_content(&job.delivery_raster_id)
         .ok_or_else(|| GraphicTwinError::MissingArtifact(job.delivery_raster_id.clone()))?;
     let (document, validation) = validate_graphic_artifacts(job, editable_master, raster_png)?;
-    let proof_evidence = proof_evidence_from_report(job, &validation, contract_digest);
+    let proof_evidence = proof_evidence_from_report(
+        job,
+        &validation,
+        &compiled_contract.seal.contract_digest,
+    );
     Ok(GraphicDesignTwinRun {
         simulation,
         document,
@@ -261,6 +300,102 @@ pub fn execute_graphic_design_twin(
         validation,
         proof_evidence,
     })
+}
+
+fn validate_job_and_contract(
+    compiled_contract: &CompiledContract,
+    contract_value: &Value,
+    job: &GraphicDesignJob,
+) -> Result<(), GraphicTwinError> {
+    validate_job(job)?;
+    if canonical_json_sha256(contract_value)? != compiled_contract.seal.contract_digest {
+        return Err(GraphicTwinError::ContractDigestMismatch);
+    }
+    if contract_value
+        .get("contract_id")
+        .and_then(Value::as_str)
+        != Some(compiled_contract.contract_id.as_str())
+        || compiled_contract.job_type != "social_media_static_post"
+    {
+        return Err(GraphicTwinError::ContractValueMismatch {
+            field: "contract identity",
+            expected: compiled_contract.contract_id.clone(),
+            actual: contract_value
+                .get("contract_id")
+                .and_then(Value::as_str)
+                .unwrap_or("missing")
+                .to_owned(),
+        });
+    }
+
+    require_u64_constraint(contract_value, "canvas_width", u64::from(job.canvas.width))?;
+    require_u64_constraint(contract_value, "canvas_height", u64::from(job.canvas.height))?;
+    require_string_constraint(contract_value, "color_profile", &job.canvas.color_profile)?;
+    require_u64_constraint(contract_value, "logo_aspect_ratio", 0)?;
+    let ratio_preserved = u64::from(job.approved_logo.source_width)
+        * u64::from(job.logo_bounds.height)
+        == u64::from(job.approved_logo.source_height) * u64::from(job.logo_bounds.width);
+    if !ratio_preserved {
+        return Err(GraphicTwinError::ContractValueMismatch {
+            field: "logo_aspect_ratio",
+            expected: "0 ratio delta".to_owned(),
+            actual: "distorted placement".to_owned(),
+        });
+    }
+    require_u64_constraint(
+        contract_value,
+        "logo_clear_space",
+        u64::from(job.brand_profile.minimum_logo_clear_space_px),
+    )?;
+    require_u64_constraint(contract_value, "text_within_safe_area", 0)?;
+    let expected_contrast = constraint_expected(contract_value, "minimum_text_contrast")?
+        .as_f64()
+        .ok_or(GraphicTwinError::MissingContractValue(
+            "minimum_text_contrast.expected",
+        ))?;
+    let expected_contrast_milli = (expected_contrast * 1000.0).round() as u32;
+    if expected_contrast_milli != job.brand_profile.minimum_text_contrast_milli {
+        return Err(GraphicTwinError::ContractValueMismatch {
+            field: "minimum_text_contrast",
+            expected: expected_contrast_milli.to_string(),
+            actual: job.brand_profile.minimum_text_contrast_milli.to_string(),
+        });
+    }
+    require_string_constraint(contract_value, "export_media_type", PNG_MEDIA_TYPE)?;
+
+    let brand_profile_bytes =
+        serde_json::to_vec(&job.brand_profile).map_err(GraphicTwinError::Serialization)?;
+    verify_contract_input(
+        contract_value,
+        &job.approved_logo.artifact_id,
+        &job.approved_logo.media_type,
+        &job.approved_logo.content,
+    )?;
+    verify_contract_input(
+        contract_value,
+        &job.approved_copy.artifact_id,
+        &job.approved_copy.media_type,
+        job.approved_copy.text.as_bytes(),
+    )?;
+    verify_contract_input(
+        contract_value,
+        &job.brand_profile.artifact_id,
+        &job.brand_profile.media_type,
+        &brand_profile_bytes,
+    )?;
+    verify_contract_output(
+        contract_value,
+        "editable_master",
+        &job.editable_master_id,
+        EDITABLE_MASTER_MEDIA_TYPE,
+    )?;
+    verify_contract_output(
+        contract_value,
+        "delivery_raster",
+        &job.delivery_raster_id,
+        PNG_MEDIA_TYPE,
+    )?;
+    Ok(())
 }
 
 fn validate_job(job: &GraphicDesignJob) -> Result<(), GraphicTwinError> {
@@ -322,34 +457,22 @@ fn validate_job(job: &GraphicDesignJob) -> Result<(), GraphicTwinError> {
     Ok(())
 }
 
-fn required_operator_steps<'a>(
-    compiled_plan: &'a CompiledPlan,
-) -> Result<BTreeMap<&'static str, &'a PlanStep>, GraphicTwinError> {
-    let required = [
-        "design.create_canvas",
-        "design.place_asset",
-        "design.compose_text",
-        "design.export_raster",
-    ];
-    let mut steps = BTreeMap::new();
-    for step in &compiled_plan.steps {
-        if !required.contains(&step.operator_id.as_str())
-            || steps.insert(step.operator_id.as_str(), step).is_some()
-        {
-            return Err(GraphicTwinError::InvalidOperatorSet);
-        }
+fn validate_plan(
+    compiled_contract: &CompiledContract,
+    compiled_plan: &CompiledPlan,
+) -> Result<(), GraphicTwinError> {
+    if compiled_plan.contract_digest != compiled_contract.seal.contract_digest {
+        return Err(GraphicTwinError::PlanContractMismatch);
     }
-    if steps.len() != required.len() || required.iter().any(|operator| !steps.contains_key(operator)) {
+    let operators: Vec<_> = compiled_plan
+        .steps
+        .iter()
+        .map(|step| step.operator_id.as_str())
+        .collect();
+    if operators != REQUIRED_OPERATORS {
         return Err(GraphicTwinError::InvalidOperatorSet);
     }
-    Ok(steps.into_iter().map(|(key, value)| {
-        let stable_key = required
-            .iter()
-            .copied()
-            .find(|required_key| *required_key == key)
-            .unwrap_or("invalid");
-        (stable_key, value)
-    }).collect())
+    Ok(())
 }
 
 fn validate_step_binding(
@@ -365,8 +488,14 @@ fn validate_step_binding(
         });
     }
     let input_set: BTreeSet<_> = step.input_artifact_ids.iter().map(String::as_str).collect();
+    if input_set.len() != step.input_artifact_ids.len() {
+        return Err(GraphicTwinError::InvalidStepBinding {
+            step_id: step.step_id.clone(),
+            operator_id: step.operator_id.clone(),
+        });
+    }
     let valid = match step.operator_id.as_str() {
-        "design.create_canvas" => true,
+        "design.create_canvas" => input_set.contains(job.brand_profile.artifact_id.as_str()),
         "design.place_asset" => {
             input_set.contains(job.editable_master_id.as_str())
                 && input_set.contains(job.approved_logo.artifact_id.as_str())
@@ -385,6 +514,126 @@ fn validate_step_binding(
             step_id: step.step_id.clone(),
             operator_id: step.operator_id.clone(),
         })
+    }
+}
+
+fn constraint_expected<'a>(
+    contract_value: &'a Value,
+    constraint_id: &str,
+) -> Result<&'a Value, GraphicTwinError> {
+    contract_value
+        .get("requirements")
+        .and_then(|value| value.get("hard"))
+        .and_then(Value::as_array)
+        .and_then(|constraints| {
+            constraints.iter().find(|constraint| {
+                constraint.get("id").and_then(Value::as_str) == Some(constraint_id)
+                    && constraint.get("mandatory").and_then(Value::as_bool) == Some(true)
+            })
+        })
+        .and_then(|constraint| constraint.get("expected"))
+        .ok_or(GraphicTwinError::MissingContractValue(
+            "requirements.hard.expected",
+        ))
+}
+
+fn require_u64_constraint(
+    contract_value: &Value,
+    constraint_id: &'static str,
+    actual: u64,
+) -> Result<(), GraphicTwinError> {
+    let expected = constraint_expected(contract_value, constraint_id)?
+        .as_u64()
+        .ok_or(GraphicTwinError::MissingContractValue(constraint_id))?;
+    if expected == actual {
+        Ok(())
+    } else {
+        Err(GraphicTwinError::ContractValueMismatch {
+            field: constraint_id,
+            expected: expected.to_string(),
+            actual: actual.to_string(),
+        })
+    }
+}
+
+fn require_string_constraint(
+    contract_value: &Value,
+    constraint_id: &'static str,
+    actual: &str,
+) -> Result<(), GraphicTwinError> {
+    let expected = constraint_expected(contract_value, constraint_id)?
+        .as_str()
+        .ok_or(GraphicTwinError::MissingContractValue(constraint_id))?;
+    if expected == actual {
+        Ok(())
+    } else {
+        Err(GraphicTwinError::ContractValueMismatch {
+            field: constraint_id,
+            expected: expected.to_owned(),
+            actual: actual.to_owned(),
+        })
+    }
+}
+
+fn verify_contract_input(
+    contract_value: &Value,
+    artifact_id: &str,
+    media_type: &str,
+    content: &[u8],
+) -> Result<(), GraphicTwinError> {
+    let input = contract_value
+        .get("inputs")
+        .and_then(Value::as_array)
+        .and_then(|inputs| {
+            inputs
+                .iter()
+                .find(|input| input.get("id").and_then(Value::as_str) == Some(artifact_id))
+        })
+        .ok_or_else(|| GraphicTwinError::InputIntegrityMismatch(artifact_id.to_owned()))?;
+    let expected_digest = input
+        .get("integrity")
+        .and_then(|value| value.get("digest"))
+        .and_then(Value::as_str)
+        .ok_or_else(|| GraphicTwinError::InputIntegrityMismatch(artifact_id.to_owned()))?;
+    let valid = input.get("media_type").and_then(Value::as_str) == Some(media_type)
+        && input.get("immutable").and_then(Value::as_bool) == Some(true)
+        && input
+            .get("integrity")
+            .and_then(|value| value.get("algorithm"))
+            .and_then(Value::as_str)
+            == Some("sha256")
+        && expected_digest == sha256_hex(content);
+    if valid {
+        Ok(())
+    } else {
+        Err(GraphicTwinError::InputIntegrityMismatch(
+            artifact_id.to_owned(),
+        ))
+    }
+}
+
+fn verify_contract_output(
+    contract_value: &Value,
+    kind: &str,
+    artifact_id: &str,
+    media_type: &str,
+) -> Result<(), GraphicTwinError> {
+    let output = contract_value
+        .get("outputs")
+        .and_then(Value::as_array)
+        .and_then(|outputs| {
+            outputs
+                .iter()
+                .find(|output| output.get("kind").and_then(Value::as_str) == Some(kind))
+        })
+        .ok_or_else(|| GraphicTwinError::OutputBindingMismatch(kind.to_owned()))?;
+    let valid = output.get("id").and_then(Value::as_str) == Some(artifact_id)
+        && output.get("media_type").and_then(Value::as_str) == Some(media_type)
+        && output.get("required").and_then(Value::as_bool) == Some(true);
+    if valid {
+        Ok(())
+    } else {
+        Err(GraphicTwinError::OutputBindingMismatch(kind.to_owned()))
     }
 }
 
