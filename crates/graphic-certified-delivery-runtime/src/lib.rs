@@ -7,9 +7,7 @@ use ergaxiom_attestation_runtime::{
     AttestationIssueError, AttestationKeyRegistry, AttestationPackage, AttestationVerifyError,
     VerifiedAttestation, issue_attestation, verify_attestation_against_bundle,
 };
-use ergaxiom_capability_runtime::{
-    AuthorizationReceipt, CapabilityAuthorizer, CapabilityError,
-};
+use ergaxiom_capability_runtime::{CapabilityAuthorizer, CapabilityError};
 use ergaxiom_contract_runtime::{CompiledContract, ContractRuntimeError, ContractSession};
 use ergaxiom_evidence_runtime::{
     ApplicationEvidence, ArtifactEvidence, ArtifactRole, BundleBindings, ClaimedDecision,
@@ -109,14 +107,14 @@ pub enum GraphicCertificationError {
 }
 
 pub fn certify_graphic_delivery(
-    request: GraphicCertificationRequest<'_>,
+    mut request: GraphicCertificationRequest<'_>,
 ) -> Result<CertifiedGraphicDelivery, GraphicCertificationError> {
     validate_request(&request)?;
     if request.signed_capability_tokens.len() != request.compiled_plan.steps.len() {
         return Err(GraphicCertificationError::CapabilityTokenCountMismatch);
     }
 
-    let receipt_records = authorize_plan_steps(&request)?;
+    let receipt_records = authorize_plan_steps(&mut request)?;
     let twin_run = execute_graphic_design_twin(
         request.workspace,
         request.compiled_contract,
@@ -139,7 +137,9 @@ pub fn certify_graphic_delivery(
             &twin_run,
         )?;
     if decision != DecisionStatus::Accepted {
-        return Err(GraphicCertificationError::ProofDecisionNotAccepted(decision));
+        return Err(GraphicCertificationError::ProofDecisionNotAccepted(
+            decision,
+        ));
     }
 
     let authorized_trace = build_authorized_trace(
@@ -149,11 +149,12 @@ pub fn certify_graphic_delivery(
         request.trace_id,
         &request.job.evaluated_at,
     )?;
-    let trace_assessment = verify_authorized_trace(
-        request.compiled_plan,
-        &authorized_trace,
-    )
-    .map_err(|error| GraphicCertificationError::Evidence(EvidenceBundleError::ClaimedDecisionMismatch(error.to_string())))?;
+    let trace_assessment = verify_authorized_trace(request.compiled_plan, &authorized_trace)
+        .map_err(|error| {
+            GraphicCertificationError::Evidence(EvidenceBundleError::ClaimedDecisionMismatch(
+                error.to_string(),
+            ))
+        })?;
     if !trace_assessment.conforms_to_authorized_plan || !trace_assessment.claim_matches {
         return Err(GraphicCertificationError::AuthorizedTraceNonConformance);
     }
@@ -237,7 +238,7 @@ fn validate_request(
 }
 
 fn authorize_plan_steps(
-    request: &GraphicCertificationRequest<'_>,
+    request: &mut GraphicCertificationRequest<'_>,
 ) -> Result<Vec<AuthorizationReceiptRecord>, GraphicCertificationError> {
     let mut receipts_by_step = BTreeMap::new();
     for token in request.signed_capability_tokens {
@@ -322,9 +323,9 @@ fn build_authorized_trace(
         let receipt = receipt_by_step
             .get(step.step_id.as_str())
             .ok_or_else(|| GraphicCertificationError::MissingStepReceipt(step.step_id.clone()))?;
-        let report = report_by_step
-            .get(step.step_id.as_str())
-            .ok_or_else(|| GraphicCertificationError::TwinStepDidNotSucceed(step.step_id.clone()))?;
+        let report = report_by_step.get(step.step_id.as_str()).ok_or_else(|| {
+            GraphicCertificationError::TwinStepDidNotSucceed(step.step_id.clone())
+        })?;
         let started_sequence = events.len();
         events.push(ReceiptBoundTraceEvent {
             event: TraceEvent {
@@ -424,7 +425,10 @@ fn build_evidence_bundle(
         .iter()
         .map(|observation| {
             (
-                (observation.validator_id.as_str(), observation.claim_id.as_str()),
+                (
+                    observation.validator_id.as_str(),
+                    observation.claim_id.as_str(),
+                ),
                 observation,
             )
         })
@@ -433,20 +437,23 @@ fn build_evidence_bundle(
     let mut evidence_artifact_ids = BTreeSet::new();
     for evidence in &twin_run.proof_evidence {
         let observation = observations
-            .get(&(evidence.validator_id.as_str(), evidence.constraint_id.as_str()))
+            .get(&(
+                evidence.validator_id.as_str(),
+                evidence.constraint_id.as_str(),
+            ))
             .ok_or_else(|| {
-                GraphicCertificationError::MissingValidationObservation(evidence.evidence_id.clone())
+                GraphicCertificationError::MissingValidationObservation(
+                    evidence.evidence_id.clone(),
+                )
             })?;
         let requirement = requirements
             .get(evidence.obligation_id.as_str())
             .ok_or_else(|| {
-                GraphicCertificationError::MissingProofRequirement(
-                    evidence.obligation_id.clone(),
-                )
+                GraphicCertificationError::MissingProofRequirement(evidence.obligation_id.clone())
             })?;
         let evidence_artifact_id = format!("artifact.{}", evidence.evidence_id);
-        let observation_bytes = serde_json::to_vec(observation)
-            .map_err(GraphicCertificationError::Serialization)?;
+        let observation_bytes =
+            serde_json::to_vec(observation).map_err(GraphicCertificationError::Serialization)?;
         artifacts.push(artifact(
             &evidence_artifact_id,
             ArtifactRole::Evidence,
@@ -491,10 +498,7 @@ fn build_evidence_bundle(
         },
         environment: EnvironmentEvidence {
             os: environment.os.clone(),
-            kernel_version: format!(
-                "{}/{}",
-                environment.runtime_id, environment.runtime_version
-            ),
+            kernel_version: format!("{}/{}", environment.runtime_id, environment.runtime_version),
             applications: environment
                 .applications
                 .iter()

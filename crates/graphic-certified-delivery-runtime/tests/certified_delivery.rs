@@ -19,9 +19,7 @@ use ergaxiom_graphic_designer_twin_runtime::{
     ApprovedCopy, ApprovedLogo, BrandProfile, CanvasSpecification, GraphicDesignJob, PixelRect,
     Rgba8,
 };
-use ergaxiom_occupational_twin_runtime::{
-    ApplicationIdentity, EnvironmentIdentity, TwinWorkspace,
-};
+use ergaxiom_occupational_twin_runtime::{ApplicationIdentity, EnvironmentIdentity, TwinWorkspace};
 use ergaxiom_operator_plan_runtime::{CompiledPlan, compile_plan};
 use ergaxiom_proof_kernel::{AssuranceLevel, DecisionStatus, canonical_json_bytes};
 use serde_json::{Value, json};
@@ -29,8 +27,7 @@ use sha2::{Digest, Sha256};
 
 const CONTRACT_SOURCE: &str =
     include_str!("../../../examples/work-contracts/social-media-static-post.json");
-const CAPSULE_SOURCE: &str =
-    include_str!("../../../professions/graphic-designer/profession.json");
+const CAPSULE_SOURCE: &str = include_str!("../../../professions/graphic-designer/profession.json");
 const POLICY_ISSUER: &str = "ergaxiom.policy-authority";
 const POLICY_KEY_ID: &str = "graphic-policy-key";
 const EXECUTOR_ID: &str = "executor.graphic-certified-test";
@@ -305,7 +302,8 @@ fn permission_for_step<'a>(
     context: &'a Context,
     operator_id: &str,
 ) -> Result<&'a ergaxiom_contract_runtime::ContractPermission, Box<dyn Error>> {
-    let predicate = |permission: &&ergaxiom_contract_runtime::ContractPermission| match operator_id {
+    let predicate = |permission: &&ergaxiom_contract_runtime::ContractPermission| match operator_id
+    {
         "design.create_canvas" | "design.compose_text" => {
             permission.capability == "design-editor"
                 && permission.resource == "isolated-workspace"
@@ -363,8 +361,7 @@ fn request<'a>(
 }
 
 #[test]
-fn accepted_graphic_delivery_is_authorized_evidenced_and_certified(
-) -> Result<(), Box<dyn Error>> {
+fn accepted_graphic_delivery_is_authorized_evidenced_and_certified() -> Result<(), Box<dyn Error>> {
     let context = context()?;
     let tokens = signed_tokens(&context)?;
     let mut workspace = workspace()?;
@@ -377,13 +374,28 @@ fn accepted_graphic_delivery_is_authorized_evidenced_and_certified(
         &context.job,
     ))?;
 
-    assert_eq!(delivery.evidence_bundle.claimed_decision.status, DecisionStatus::Accepted);
-    assert_eq!(delivery.evidence_bundle.claimed_decision.mandatory_passed, 8);
-    assert_eq!(delivery.evidence_bundle.trace.authorization_receipts.len(), 4);
+    assert_eq!(
+        delivery.evidence_bundle.claimed_decision.status,
+        DecisionStatus::Accepted
+    );
+    assert_eq!(
+        delivery.evidence_bundle.claimed_decision.mandatory_passed,
+        8
+    );
+    assert_eq!(
+        delivery.evidence_bundle.trace.authorization_receipts.len(),
+        4
+    );
     assert_eq!(delivery.evidence_bundle.trace.events.len(), 8);
     assert_eq!(delivery.evidence_bundle.proof_results.len(), 9);
-    assert_eq!(delivery.verified_attestation.decision, DecisionStatus::Accepted);
-    assert_eq!(delivery.verified_attestation.evidence_bundle_digest, delivery.evidence_bundle_digest);
+    assert_eq!(
+        delivery.verified_attestation.decision,
+        DecisionStatus::Accepted
+    );
+    assert_eq!(
+        delivery.verified_attestation.evidence_bundle_digest,
+        delivery.evidence_bundle_digest
+    );
     assert_eq!(authorizer.usage_count(POLICY_ISSUER, "token.canvas"), 1);
     assert_eq!(authorizer.usage_count(POLICY_ISSUER, "token.logo"), 1);
     assert_eq!(authorizer.usage_count(POLICY_ISSUER, "token.text"), 1);
@@ -420,8 +432,7 @@ fn invalid_capability_signature_fails_before_workspace_staging() -> Result<(), B
 fn grant_outside_contract_fails_before_workspace_staging() -> Result<(), Box<dyn Error>> {
     let context = context()?;
     let mut tokens = signed_tokens(&context)?;
-    let mut payload: CapabilityTokenPayload =
-        serde_json::from_value(tokens[0]["payload"].clone())?;
+    let mut payload: CapabilityTokenPayload = serde_json::from_value(tokens[0]["payload"].clone())?;
     payload.grant.resource = "host://unsealed".to_owned();
     let payload_value = serde_json::to_value(&payload)?;
     let signature = context
@@ -495,8 +506,7 @@ fn mutating_authorized_trace_invalidates_bundle_acceptance() -> Result<(), Box<d
         &context.job,
     ))?;
     let mut bundle_value = serde_json::to_value(&delivery.evidence_bundle)?;
-    bundle_value["trace"]["events"][1]["event"]["capability_token_id"] =
-        json!("token.other");
+    bundle_value["trace"]["events"][1]["event"]["capability_token_id"] = json!("token.other");
 
     assert!(matches!(
         assess_bundle(
