@@ -3,9 +3,9 @@ use std::error::Error;
 use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
 use ed25519_dalek::{Signer, SigningKey};
 use ergaxiom_capability_runtime::{
-    CapabilityAuthorizer, CapabilityBindings, CapabilityError, CapabilityGrant,
-    CapabilitySubject, CapabilityTokenPayload, SignatureAlgorithm, SignatureEncoding,
-    SignedCapabilityToken, TokenSignature, TrustedKeyRegistry,
+    CapabilityAuthorizer, CapabilityBindings, CapabilityError, CapabilityGrant, CapabilitySubject,
+    CapabilityTokenPayload, SignatureAlgorithm, SignatureEncoding, SignedCapabilityToken,
+    TokenSignature, TrustedKeyRegistry,
 };
 use ergaxiom_contract_runtime::{CompiledContract, PermissionAccess, compile_contract};
 use ergaxiom_operator_plan_runtime::{CompiledPlan, compile_plan};
