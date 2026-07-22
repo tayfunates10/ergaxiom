@@ -426,12 +426,8 @@ fn execution_fixture() -> Result<ExecutionFixture, Box<dyn Error>> {
     };
     record.record_digest = execution_record_digest(&record)?;
     let execution_key = SigningKey::from_bytes(&[73_u8; 32]);
-    let package = sign_execution_record(
-        &record,
-        EXECUTION_ISSUER,
-        EXECUTION_KEY_ID,
-        &execution_key,
-    )?;
+    let package =
+        sign_execution_record(&record, EXECUTION_ISSUER, EXECUTION_KEY_ID, &execution_key)?;
     let mut keys = InkscapeExecutionKeyRegistry::default();
     keys.insert_ed25519(
         EXECUTION_ISSUER,
@@ -508,11 +504,16 @@ fn signed_inkscape_evidence_is_required_and_attested() -> Result<(), Box<dyn Err
                 .any(|artifact| artifact.artifact_id == artifact_id)
         );
     }
-    assert!(delivery.evidence_bundle.environment.applications.iter().any(
-        |application| application.id == "org.inkscape.Inkscape"
-            && application.version == "Inkscape 1.4"
-            && application.digest == "c".repeat(64)
-    ));
+    assert!(
+        delivery
+            .evidence_bundle
+            .environment
+            .applications
+            .iter()
+            .any(|application| application.id == "org.inkscape.Inkscape"
+                && application.version == "Inkscape 1.4"
+                && application.digest == "c".repeat(64))
+    );
     assert_eq!(authorizer.usage_count(POLICY_ISSUER, "token.canvas"), 1);
     assert_eq!(authorizer.usage_count(POLICY_ISSUER, "token.export"), 1);
     Ok(())
