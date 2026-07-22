@@ -1,6 +1,6 @@
 use std::error::Error;
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use ergaxiom_inkscape_adapter_runtime::{
@@ -150,16 +150,11 @@ fn png_ihdr_dimensions_are_read_independently() -> Result<(), Box<dyn Error>> {
 
 fn simple_svg(headline: &str) -> String {
     format!(
-        r#"<?xml version="1.0" encoding="UTF-8"?>
+        r##"<?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" width="1080" height="1080" viewBox="0 0 1080 1080" id="root">
   <rect id="background" x="0" y="0" width="1080" height="1080" fill="#111827" />
   <text id="headline" x="540" y="540">{headline}</text>
 </svg>
-"#
+"##
     )
-}
-
-#[allow(dead_code)]
-fn assert_file_exists(path: &Path) {
-    assert!(path.is_file());
 }
