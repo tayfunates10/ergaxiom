@@ -6,6 +6,9 @@ rust-version.workspace = true
 repository.workspace = true
 publish = false
 
+[features]
+real-inkscape-certified-delivery-tests = []
+
 [dependencies]
 ed25519-dalek.workspace = true
 ergaxiom-attestation-runtime = { path = "../attestation-runtime" }
