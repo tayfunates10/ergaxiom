@@ -1,0 +1,42 @@
+name: Temporary PNG validator rustfmt
+
+on:
+  push:
+    branches:
+      - agent/png-artifact-validator-v1
+    paths:
+      - ".github/workflows/temp-png-validator-rustfmt.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  format:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Check out branch
+        uses: actions/checkout@v4
+        with:
+          ref: agent/png-artifact-validator-v1
+          fetch-depth: 0
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+
+      - name: Format workspace
+        run: cargo fmt --all
+
+      - name: Commit formatter output
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add crates/png-artifact-validator-runtime
+          if git diff --cached --quiet; then
+            exit 0
+          fi
+          git commit -m "Format PNG artifact validator sources"
+          git push origin HEAD:agent/png-artifact-validator-v1
