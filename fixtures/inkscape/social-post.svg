@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg
+  xmlns="http://www.w3.org/2000/svg"
+  xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+  width="1080"
+  height="1080"
+  viewBox="0 0 1080 1080"
+  id="document-root">
+  <rect id="background" x="0" y="0" width="1080" height="1080" fill="#111827" />
+  <rect id="panel" x="120" y="220" width="840" height="640" rx="48" fill="#f9fafb" />
+  <text
+    id="headline"
+    x="540"
+    y="560"
+    text-anchor="middle"
+    font-family="DejaVu Sans"
+    font-size="88"
+    font-weight="700"
+    fill="#111827">BEFORE</text>
+  <text
+    id="footer"
+    x="540"
+    y="760"
+    text-anchor="middle"
+    font-family="DejaVu Sans"
+    font-size="32"
+    fill="#4b5563">ERGAXIOM CONTROLLED FIXTURE</text>
+</svg>
