@@ -64,7 +64,11 @@ fn fixture(undeclared_change: bool) -> Result<Fixture, Box<dyn Error>> {
         &editable,
         svg(
             "APPROVED",
-            if undeclared_change { "#991b1b" } else { "#111827" },
+            if undeclared_change {
+                "#991b1b"
+            } else {
+                "#111827"
+            },
         ),
     )?;
     write_png(&raster, 240, 300)?;
@@ -160,8 +164,7 @@ fn signed_material_is_independently_verified() -> Result<(), Box<dyn Error>> {
 #[test]
 fn signature_mutation_is_rejected() -> Result<(), Box<dyn Error>> {
     let fixture = fixture(false)?;
-    let mut package =
-        sign_execution_record(&fixture.record, ISSUER, KEY_ID, &fixture.signing_key)?;
+    let mut package = sign_execution_record(&fixture.record, ISSUER, KEY_ID, &fixture.signing_key)?;
     package.record.replacement_text = "TAMPERED".to_owned();
 
     assert!(matches!(

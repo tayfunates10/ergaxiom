@@ -206,7 +206,11 @@ pub fn certify_inkscape_graphic_delivery(
                 &execution_binding_bytes,
             ),
             artifact(SOURCE_SVG_ARTIFACT_ID, "image/svg+xml", &source_svg_bytes),
-            artifact(EDITABLE_SVG_ARTIFACT_ID, "image/svg+xml", &editable_svg_bytes),
+            artifact(
+                EDITABLE_SVG_ARTIFACT_ID,
+                "image/svg+xml",
+                &editable_svg_bytes,
+            ),
             artifact(RASTER_PNG_ARTIFACT_ID, "image/png", &raster_png_bytes),
         ],
     )?;
@@ -305,9 +309,9 @@ fn add_evidence_artifacts<const N: usize>(
         .collect();
     for artifact in artifacts {
         if !ids.insert(artifact.artifact_id.clone()) {
-            return Err(InkscapeGraphicCertificationError::DuplicateEvidenceArtifact(
-                artifact.artifact_id,
-            ));
+            return Err(
+                InkscapeGraphicCertificationError::DuplicateEvidenceArtifact(artifact.artifact_id),
+            );
         }
         bundle.artifacts.push(artifact);
     }

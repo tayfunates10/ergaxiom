@@ -238,8 +238,8 @@ pub fn verify_execution_material(
         return Err(InkscapeEvidenceError::RasterDigestMismatch);
     }
 
-    let package_value = serde_json::to_value(material.package)
-        .map_err(InkscapeEvidenceError::Serialization)?;
+    let package_value =
+        serde_json::to_value(material.package).map_err(InkscapeEvidenceError::Serialization)?;
     Ok(VerifiedInkscapeExecution {
         package_digest: canonical_json_sha256(&package_value)?,
         record_digest: record.record_digest.clone(),
