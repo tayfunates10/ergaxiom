@@ -226,7 +226,8 @@ impl VerifiedInkscape {
         let source = canonical_existing_file(&request.source_svg)?;
         let editable_output = resolve_new_output(&request.editable_output_svg)?;
         let raster_output = resolve_new_output(&request.raster_output_png)?;
-        if source == editable_output || source == raster_output || editable_output == raster_output {
+        if source == editable_output || source == raster_output || editable_output == raster_output
+        {
             return Err(InkscapeAdapterError::PathCollision);
         }
 
@@ -465,8 +466,8 @@ pub fn rewrite_direct_text(
                 if target_depth.is_some() {
                     return Err(InkscapeAdapterError::NestedTargetContent);
                 }
-                let is_target = element_id(&start, reader.decoder())?
-                    .is_some_and(|id| id == target_element_id);
+                let is_target =
+                    element_id(&start, reader.decoder())?.is_some_and(|id| id == target_element_id);
                 writer
                     .write_event(Event::Start(start.into_owned()))
                     .map_err(|error| InkscapeAdapterError::Xml(error.to_string()))?;
@@ -482,8 +483,8 @@ pub fn rewrite_direct_text(
                 }
             }
             Event::Empty(empty) => {
-                let is_target = element_id(&empty, reader.decoder())?
-                    .is_some_and(|id| id == target_element_id);
+                let is_target =
+                    element_id(&empty, reader.decoder())?.is_some_and(|id| id == target_element_id);
                 if is_target {
                     return Err(InkscapeAdapterError::InvalidTargetTextShape);
                 }
@@ -557,8 +558,11 @@ pub fn read_png_info(path: impl AsRef<Path>) -> Result<PngInfo, InkscapeAdapterE
     if bytes.len() < 24
         || &bytes[..8] != PNG_SIGNATURE
         || &bytes[12..16] != b"IHDR"
-        || u32::from_be_bytes(bytes[8..12].try_into().map_err(|_| InkscapeAdapterError::InvalidPng)?)
-            != 13
+        || u32::from_be_bytes(
+            bytes[8..12]
+                .try_into()
+                .map_err(|_| InkscapeAdapterError::InvalidPng)?,
+        ) != 13
     {
         return Err(InkscapeAdapterError::InvalidPng);
     }
@@ -595,7 +599,10 @@ fn validate_request(request: &SetTextAndExportRequest) -> Result<(), InkscapeAda
     }
     for (name, value) in [
         ("request_id", request.request_id.as_str()),
-        ("expected_source_digest", request.expected_source_digest.as_str()),
+        (
+            "expected_source_digest",
+            request.expected_source_digest.as_str(),
+        ),
         ("target_element_id", request.target_element_id.as_str()),
     ] {
         if value.is_empty() {
@@ -637,17 +644,24 @@ fn validate_sha256(digest: &str) -> Result<(), InkscapeAdapterError> {
 
 fn parse_inkscape_version(text: &str) -> Result<(u32, u32, u32), InkscapeAdapterError> {
     for token in text.split_whitespace() {
-        let candidate = token.trim_matches(|character: char| {
-            !character.is_ascii_digit() && character != '.'
-        });
-        if candidate.is_empty() || !candidate.starts_with(|character: char| character.is_ascii_digit()) {
+        let candidate =
+            token.trim_matches(|character: char| !character.is_ascii_digit() && character != '.');
+        if candidate.is_empty()
+            || !candidate.starts_with(|character: char| character.is_ascii_digit())
+        {
             continue;
         }
         let mut components = candidate.split('.');
-        let Some(major) = components.next().and_then(|value| value.parse::<u32>().ok()) else {
+        let Some(major) = components
+            .next()
+            .and_then(|value| value.parse::<u32>().ok())
+        else {
             continue;
         };
-        let Some(minor) = components.next().and_then(|value| value.parse::<u32>().ok()) else {
+        let Some(minor) = components
+            .next()
+            .and_then(|value| value.parse::<u32>().ok())
+        else {
             continue;
         };
         let patch = components
@@ -738,7 +752,10 @@ fn resolve_new_output(path: &Path) -> Result<PathBuf, InkscapeAdapterError> {
             path.display().to_string(),
         ));
     }
-    if path.components().any(|component| component == Component::ParentDir) {
+    if path
+        .components()
+        .any(|component| component == Component::ParentDir)
+    {
         return Err(InkscapeAdapterError::ParentTraversal);
     }
     let file_name = path

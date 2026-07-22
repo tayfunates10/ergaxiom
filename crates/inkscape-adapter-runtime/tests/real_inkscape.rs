@@ -33,12 +33,12 @@ impl Drop for TestDirectory {
 }
 
 #[test]
-fn real_inkscape_text_edit_and_png_export_are_independently_verified(
-) -> Result<(), Box<dyn Error>> {
+fn real_inkscape_text_edit_and_png_export_are_independently_verified() -> Result<(), Box<dyn Error>>
+{
     let executable = env::var("ERGAXIOM_INKSCAPE")?;
     let executable_digest = env::var("ERGAXIOM_INKSCAPE_SHA256")?;
-    let fixture = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../../fixtures/inkscape/social-post.svg");
+    let fixture =
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/inkscape/social-post.svg");
     let directory = TestDirectory::create()?;
     let editable_output = directory.path.join("approved.svg");
     let raster_output = directory.path.join("approved.png");

@@ -72,7 +72,10 @@ fn rewrites_only_the_declared_direct_text_target() -> Result<(), Box<dyn Error>>
             .map(|element| element.direct_text.as_str()),
         Some("APPROVED")
     );
-    assert_eq!(before.elements.get("background"), after.elements.get("background"));
+    assert_eq!(
+        before.elements.get("background"),
+        after.elements.get("background")
+    );
     assert_ne!(before.source_digest, after.source_digest);
     Ok(())
 }
