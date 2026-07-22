@@ -5,10 +5,13 @@ on:
     paths:
       - "Cargo.toml"
       - "Cargo.lock"
+      - "crates/graphic-inkscape-certified-delivery-runtime/**"
       - "crates/inkscape-adapter-runtime/**"
+      - "crates/inkscape-execution-evidence-runtime/**"
       - "fixtures/inkscape/**"
       - "professions/graphic-designer/adapters/**"
       - "docs/architecture/19-inkscape-adapter.md"
+      - "docs/architecture/20-inkscape-certified-delivery.md"
       - ".github/workflows/inkscape-adapter.yml"
   push:
     branches:
@@ -16,17 +19,20 @@ on:
     paths:
       - "Cargo.toml"
       - "Cargo.lock"
+      - "crates/graphic-inkscape-certified-delivery-runtime/**"
       - "crates/inkscape-adapter-runtime/**"
+      - "crates/inkscape-execution-evidence-runtime/**"
       - "fixtures/inkscape/**"
       - "professions/graphic-designer/adapters/**"
       - "docs/architecture/19-inkscape-adapter.md"
+      - "docs/architecture/20-inkscape-certified-delivery.md"
       - ".github/workflows/inkscape-adapter.yml"
 
 permissions:
   contents: read
 
 jobs:
-  verify-document-model-and-real-export:
+  verify-document-model-real-export-and-certification:
     runs-on: ubuntu-24.04
     steps:
       - name: Check out repository
@@ -56,11 +62,26 @@ jobs:
       - name: Check Rust formatting
         run: cargo fmt --all -- --check
 
-      - name: Run Clippy
+      - name: Run adapter Clippy
         run: cargo clippy -p ergaxiom-inkscape-adapter-runtime --all-targets --all-features -- -D warnings
+
+      - name: Run certified-delivery Clippy
+        run: >-
+          cargo clippy
+          -p ergaxiom-inkscape-execution-evidence-runtime
+          -p ergaxiom-graphic-inkscape-certified-delivery-runtime
+          --all-targets
+          --all-features
+          -- -D warnings
 
       - name: Run deterministic document-model tests
         run: cargo test -p ergaxiom-inkscape-adapter-runtime
+
+      - name: Run signed execution evidence tests
+        run: cargo test -p ergaxiom-inkscape-execution-evidence-runtime
+
+      - name: Run deterministic certified-delivery tests
+        run: cargo test -p ergaxiom-graphic-inkscape-certified-delivery-runtime
 
       - name: Run real Inkscape edit and export test
         run: >-
@@ -68,4 +89,13 @@ jobs:
           -p ergaxiom-inkscape-adapter-runtime
           --features real-inkscape-tests
           --test real_inkscape
+          -- --nocapture
+
+      - name: Run real Inkscape certified delivery test
+        run: >-
+          cargo test
+          -p ergaxiom-graphic-inkscape-certified-delivery-runtime
+          --features real-inkscape-certified-delivery-tests
+          --test certified_inkscape_delivery
+          real_inkscape_execution_produces_final_attestation
           -- --nocapture
