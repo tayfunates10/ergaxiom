@@ -22,10 +22,7 @@ fn valid_srgb_png_is_structurally_verified_and_accepted() -> Result<(), Box<dyn 
     assert_eq!(report.idat_chunk_count, 1);
     assert_eq!(report.report_digest.len(), 64);
 
-    let result = validate_report(
-        report,
-        &policy(240, 300, PngProfileRequirement::SrgbChunk),
-    )?;
+    let result = validate_report(report, &policy(240, 300, PngProfileRequirement::SrgbChunk))?;
     assert!(result.accepted);
     assert!(result.violations.is_empty());
     assert_eq!(result.decision_digest.len(), 64);
@@ -53,14 +50,22 @@ fn dimension_and_profile_mismatches_are_explicit_violations() -> Result<(), Box<
     )?;
 
     assert!(!result.accepted);
-    assert!(result.violations.contains(&PngPolicyViolation::WidthMismatch {
-        expected: 240,
-        actual: 200,
-    }));
-    assert!(result.violations.contains(&PngPolicyViolation::HeightMismatch {
-        expected: 300,
-        actual: 100,
-    }));
+    assert!(
+        result
+            .violations
+            .contains(&PngPolicyViolation::WidthMismatch {
+                expected: 240,
+                actual: 200,
+            })
+    );
+    assert!(
+        result
+            .violations
+            .contains(&PngPolicyViolation::HeightMismatch {
+                expected: 300,
+                actual: 100,
+            })
+    );
     assert!(
         result
             .violations

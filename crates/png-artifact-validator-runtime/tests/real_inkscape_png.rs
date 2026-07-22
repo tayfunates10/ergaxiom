@@ -6,9 +6,7 @@ use std::fs;
 use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use ergaxiom_inkscape_adapter_runtime::{
-    SetTextAndExportRequest, VerifiedInkscape, sha256_file,
-};
+use ergaxiom_inkscape_adapter_runtime::{SetTextAndExportRequest, VerifiedInkscape, sha256_file};
 use ergaxiom_png_artifact_validator_runtime::{
     PngColorProfileEvidence, PngColorType, PngPolicyViolation, PngProfileRequirement,
     PngValidationPolicy, inspect_png, validate_report,
@@ -76,10 +74,7 @@ fn real_inkscape_png_is_structurally_verified_and_profile_status_is_explicit()
             expected_width: 512,
             expected_height: 512,
             expected_bit_depth: Some(8),
-            allowed_color_types: vec![
-                PngColorType::Truecolor,
-                PngColorType::TruecolorAlpha,
-            ],
+            allowed_color_types: vec![PngColorType::Truecolor, PngColorType::TruecolorAlpha],
             profile_requirement: PngProfileRequirement::NotRequired,
         },
     )?;
@@ -91,10 +86,7 @@ fn real_inkscape_png_is_structurally_verified_and_profile_status_is_explicit()
             expected_width: 512,
             expected_height: 512,
             expected_bit_depth: Some(8),
-            allowed_color_types: vec![
-                PngColorType::Truecolor,
-                PngColorType::TruecolorAlpha,
-            ],
+            allowed_color_types: vec![PngColorType::Truecolor, PngColorType::TruecolorAlpha],
             profile_requirement: PngProfileRequirement::AnyEmbedded,
         },
     )?;
@@ -111,6 +103,9 @@ fn real_inkscape_png_is_structurally_verified_and_profile_status_is_explicit()
             assert!(profiled.violations.is_empty());
         }
     }
-    eprintln!("real Inkscape PNG profile evidence: {:?}", report.color_profile);
+    eprintln!(
+        "real Inkscape PNG profile evidence: {:?}",
+        report.color_profile
+    );
     Ok(())
 }

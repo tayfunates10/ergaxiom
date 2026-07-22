@@ -422,7 +422,11 @@ pub fn validate_report(
             actual: report.color_type,
         });
     }
-    evaluate_profile_requirement(&report.color_profile, &policy.profile_requirement, &mut violations);
+    evaluate_profile_requirement(
+        &report.color_profile,
+        &policy.profile_requirement,
+        &mut violations,
+    );
 
     let mut result = PngValidationResult {
         schema_version: "0.1.0".to_owned(),
@@ -553,9 +557,9 @@ fn parse_ihdr(data: &[u8]) -> Result<Ihdr, PngArtifactError> {
 fn valid_bit_depth(bit_depth: u8, color_type: PngColorType) -> bool {
     match color_type {
         PngColorType::Grayscale => matches!(bit_depth, 1 | 2 | 4 | 8 | 16),
-        PngColorType::Truecolor
-        | PngColorType::GrayscaleAlpha
-        | PngColorType::TruecolorAlpha => matches!(bit_depth, 8 | 16),
+        PngColorType::Truecolor | PngColorType::GrayscaleAlpha | PngColorType::TruecolorAlpha => {
+            matches!(bit_depth, 8 | 16)
+        }
         PngColorType::Indexed => matches!(bit_depth, 1 | 2 | 4 | 8),
     }
 }
