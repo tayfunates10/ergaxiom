@@ -14,7 +14,6 @@ permissions:
 
 jobs:
   patch-and-format:
-    if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-24.04
     steps:
       - name: Check out branch
@@ -40,18 +39,26 @@ jobs:
           let value = unescape(&decoded)
               .map_err(|error| InkscapeAdapterError::Xml(error.to_string()))?
               .into_owned();'''
-          if old not in text:
+          if old in text:
+              text = text.replace(old, new, 1)
+          elif new not in text:
               raise SystemExit("quick-xml replacement target not found")
-          lib.write_text(text.replace(old, new, 1), encoding="utf-8")
+          lib.write_text(text, encoding="utf-8")
 
           tests = Path("crates/inkscape-adapter-runtime/tests/document_model.rs")
           text = tests.read_text(encoding="utf-8")
-          start = '        r#"<?xml version="1.0" encoding="UTF-8"?>'
-          end = '</svg>\n"#\n'
-          if start not in text or end not in text:
-              raise SystemExit("raw-string replacement target not found")
-          text = text.replace(start, '        r##"<?xml version="1.0" encoding="UTF-8"?>', 1)
-          text = text.replace(end, '</svg>\n"##\n', 1)
+          start_old = '        r#"<?xml version="1.0" encoding="UTF-8"?>'
+          start_new = '        r##"<?xml version="1.0" encoding="UTF-8"?>'
+          end_old = '</svg>\n"#\n'
+          end_new = '</svg>\n"##\n'
+          if start_old in text:
+              text = text.replace(start_old, start_new, 1)
+          elif start_new not in text:
+              raise SystemExit("raw-string start target not found")
+          if end_old in text:
+              text = text.replace(end_old, end_new, 1)
+          elif end_new not in text:
+              raise SystemExit("raw-string end target not found")
           tests.write_text(text, encoding="utf-8")
 
       - name: Format Rust sources
