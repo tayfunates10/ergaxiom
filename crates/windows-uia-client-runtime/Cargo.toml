@@ -13,5 +13,14 @@ serde_json.workspace = true
 sha2.workspace = true
 thiserror.workspace = true
 
+[dev-dependencies]
+base64.workspace = true
+ed25519-dalek.workspace = true
+ergaxiom-capability-runtime = { path = "../capability-runtime" }
+ergaxiom-contract-runtime = { path = "../contract-runtime" }
+ergaxiom-execution-runtime = { path = "../execution-runtime" }
+ergaxiom-operator-plan-runtime = { path = "../operator-plan-runtime" }
+ergaxiom-proof-kernel = { path = "../proof-kernel" }
+
 [lints]
 workspace = true
