@@ -111,9 +111,20 @@ jobs:
           -- --nocapture
 
       - name: Run real Inkscape PNG validator test
-        run: >-
-          cargo test
-          -p ergaxiom-png-artifact-validator-runtime
-          --features real-inkscape-tests
-          --test real_inkscape_png
-          -- --nocapture
+        shell: bash
+        run: |
+          set -o pipefail
+          cargo test \
+            -p ergaxiom-png-artifact-validator-runtime \
+            --features real-inkscape-tests \
+            --test real_inkscape_png \
+            -- --nocapture 2>&1 | tee "$RUNNER_TEMP/real-inkscape-png-validator.log"
+
+      - name: Upload real PNG validator log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: real-inkscape-png-validator-log
+          path: ${{ runner.temp }}/real-inkscape-png-validator.log
+          if-no-files-found: error
+          retention-days: 1
