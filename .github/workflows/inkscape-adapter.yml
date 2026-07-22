@@ -8,10 +8,13 @@ on:
       - "crates/graphic-inkscape-certified-delivery-runtime/**"
       - "crates/inkscape-adapter-runtime/**"
       - "crates/inkscape-execution-evidence-runtime/**"
+      - "crates/png-artifact-validator-runtime/**"
       - "fixtures/inkscape/**"
       - "professions/graphic-designer/adapters/**"
       - "docs/architecture/19-inkscape-adapter.md"
       - "docs/architecture/20-inkscape-certified-delivery.md"
+      - "docs/architecture/21-real-inkscape-certified-delivery.md"
+      - "docs/architecture/22-png-artifact-validator.md"
       - ".github/workflows/inkscape-adapter.yml"
   push:
     branches:
@@ -22,10 +25,13 @@ on:
       - "crates/graphic-inkscape-certified-delivery-runtime/**"
       - "crates/inkscape-adapter-runtime/**"
       - "crates/inkscape-execution-evidence-runtime/**"
+      - "crates/png-artifact-validator-runtime/**"
       - "fixtures/inkscape/**"
       - "professions/graphic-designer/adapters/**"
       - "docs/architecture/19-inkscape-adapter.md"
       - "docs/architecture/20-inkscape-certified-delivery.md"
+      - "docs/architecture/21-real-inkscape-certified-delivery.md"
+      - "docs/architecture/22-png-artifact-validator.md"
       - ".github/workflows/inkscape-adapter.yml"
 
 permissions:
@@ -65,11 +71,12 @@ jobs:
       - name: Run adapter Clippy
         run: cargo clippy -p ergaxiom-inkscape-adapter-runtime --all-targets --all-features -- -D warnings
 
-      - name: Run certified-delivery Clippy
+      - name: Run certified-delivery and PNG validator Clippy
         run: >-
           cargo clippy
           -p ergaxiom-inkscape-execution-evidence-runtime
           -p ergaxiom-graphic-inkscape-certified-delivery-runtime
+          -p ergaxiom-png-artifact-validator-runtime
           --all-targets
           --all-features
           -- -D warnings
@@ -82,6 +89,9 @@ jobs:
 
       - name: Run deterministic certified-delivery tests
         run: cargo test -p ergaxiom-graphic-inkscape-certified-delivery-runtime
+
+      - name: Run deterministic PNG validator tests
+        run: cargo test -p ergaxiom-png-artifact-validator-runtime
 
       - name: Run real Inkscape edit and export test
         run: >-
@@ -99,3 +109,22 @@ jobs:
           --test certified_inkscape_delivery
           real_inkscape_execution_produces_final_attestation
           -- --nocapture
+
+      - name: Run real Inkscape PNG validator test
+        shell: bash
+        run: |
+          set -o pipefail
+          cargo test \
+            -p ergaxiom-png-artifact-validator-runtime \
+            --features real-inkscape-tests \
+            --test real_inkscape_png \
+            -- --nocapture 2>&1 | tee "$RUNNER_TEMP/real-inkscape-png-validator.log"
+
+      - name: Upload real PNG validator log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: real-inkscape-png-validator-log
+          path: ${{ runner.temp }}/real-inkscape-png-validator.log
+          if-no-files-found: error
+          retention-days: 1
