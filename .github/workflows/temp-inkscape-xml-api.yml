@@ -1,0 +1,65 @@
+name: Temporary Inkscape XML API migration
+
+on:
+  push:
+    branches:
+      - agent/inkscape-adapter-v1
+    paths:
+      - ".github/workflows/temp-inkscape-xml-api.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  migrate-and-commit:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out branch
+        uses: actions/checkout@v4
+        with:
+          ref: agent/inkscape-adapter-v1
+          fetch-depth: 0
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+
+      - name: Apply exact quick-xml API migration
+        shell: python
+        run: |
+          from pathlib import Path
+
+          path = Path("crates/inkscape-adapter-runtime/src/lib.rs")
+          text = path.read_text(encoding="utf-8")
+          old_import = "use quick_xml::{Reader, Writer};"
+          new_import = "use quick_xml::{Reader, Writer, XmlVersion};"
+          if old_import in text:
+              text = text.replace(old_import, new_import, 1)
+          elif new_import not in text:
+              raise SystemExit("quick-xml import target not found")
+
+          old_call = ".decode_and_unescape_value(decoder)"
+          new_call = ".decoded_and_normalized_value(XmlVersion::Implicit1_0, decoder)"
+          if old_call in text:
+              text = text.replace(old_call, new_call, 1)
+          elif new_call not in text:
+              raise SystemExit("quick-xml call target not found")
+          path.write_text(text, encoding="utf-8")
+
+      - name: Format workspace
+        run: cargo fmt --all
+
+      - name: Commit migration
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add crates/inkscape-adapter-runtime
+          if git diff --cached --quiet; then
+            echo "No migration changes"
+            exit 0
+          fi
+          git commit -m "Use normalized quick-xml attribute API"
+          git push origin HEAD:agent/inkscape-adapter-v1
