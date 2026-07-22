@@ -13,6 +13,7 @@ members = [
   "crates/occupational-twin-runtime",
   "crates/operator-plan-runtime",
   "crates/operator-simulation-runtime",
+  "crates/png-artifact-validator-runtime",
   "crates/proof-kernel",
   "crates/windows-bridge-runtime",
   "crates/windows-uia-client-runtime"
