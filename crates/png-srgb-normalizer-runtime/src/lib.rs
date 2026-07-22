@@ -11,8 +11,8 @@ use ergaxiom_png_artifact_validator_runtime::{
     inspect_png_bytes, validate_report,
 };
 use ergaxiom_proof_kernel::{HashingError, canonical_json_sha256};
-use quick_xml::Reader;
 use quick_xml::events::{BytesStart, Event};
+use quick_xml::{Reader, XmlVersion};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use thiserror::Error;
@@ -185,9 +185,7 @@ pub fn inspect_svg_srgb(
     inspect_svg_srgb_bytes(&bytes)
 }
 
-pub fn inspect_svg_srgb_bytes(
-    bytes: &[u8],
-) -> Result<SrgbSvgEvidence, PngSrgbNormalizationError> {
+pub fn inspect_svg_srgb_bytes(bytes: &[u8]) -> Result<SrgbSvgEvidence, PngSrgbNormalizationError> {
     if bytes.len() > MAX_SVG_BYTES {
         return Err(PngSrgbNormalizationError::SvgTooLarge);
     }
@@ -298,10 +296,8 @@ pub fn normalize_png_srgb(
     }
 
     let input_idat_payload_digest = idat_payload_digest(&input_bytes)?;
-    let (output_bytes, inserted_srgb_crc32) = insert_srgb_chunk(
-        &input_bytes,
-        request.rendering_intent.png_value(),
-    )?;
+    let (output_bytes, inserted_srgb_crc32) =
+        insert_srgb_chunk(&input_bytes, request.rendering_intent.png_value())?;
     let output_report = inspect_png_bytes(&output_bytes)?;
     if output_report.color_profile
         != (PngColorProfileEvidence::Srgb {
@@ -361,9 +357,7 @@ fn inspect_element(
 ) -> Result<(), PngSrgbNormalizationError> {
     let element_name = local_name_bytes(start.name().as_ref())?;
     if FORBIDDEN_ELEMENTS.contains(&element_name.as_str()) {
-        return Err(PngSrgbNormalizationError::ForbiddenSvgElement(
-            element_name,
-        ));
+        return Err(PngSrgbNormalizationError::ForbiddenSvgElement(element_name));
     }
 
     for attribute in start.attributes().with_checks(true) {
@@ -371,16 +365,17 @@ fn inspect_element(
             attribute.map_err(|error| PngSrgbNormalizationError::InvalidSvg(error.to_string()))?;
         let key = local_name_bytes(attribute.key.as_ref())?.to_ascii_lowercase();
         let value = attribute
-            .decode_and_unescape_value(decoder)
+            .decoded_and_normalized_value(XmlVersion::Implicit1_0, decoder)
             .map_err(|error| PngSrgbNormalizationError::InvalidSvg(error.to_string()))?
             .into_owned();
         let trimmed = value.trim();
         let lower = trimmed.to_ascii_lowercase();
 
-        if lower
-            .split_whitespace()
-            .any(|token| DANGEROUS_COLOR_TOKENS.iter().any(|danger| token.contains(danger)))
-        {
+        if lower.split_whitespace().any(|token| {
+            DANGEROUS_COLOR_TOKENS
+                .iter()
+                .any(|danger| token.contains(danger))
+        }) {
             return Err(PngSrgbNormalizationError::UnsupportedSvgColorSpace(
                 trimmed.to_owned(),
             ));
@@ -422,9 +417,9 @@ fn inspect_style(
     paint_server_count: &mut u64,
 ) -> Result<(), PngSrgbNormalizationError> {
     for declaration in style.split(';').filter(|part| !part.trim().is_empty()) {
-        let (property, value) = declaration
-            .split_once(':')
-            .ok_or_else(|| PngSrgbNormalizationError::UnsupportedSvgStyle(declaration.to_owned()))?;
+        let (property, value) = declaration.split_once(':').ok_or_else(|| {
+            PngSrgbNormalizationError::UnsupportedSvgStyle(declaration.to_owned())
+        })?;
         let property = property.trim().to_ascii_lowercase();
         let value = value.trim();
         let lower = value.to_ascii_lowercase();
@@ -448,12 +443,12 @@ fn inspect_style(
                     return Err(PngSrgbNormalizationError::NonSrgbInterpolation);
                 }
             }
-            "filter" | "mix-blend-mode" | "isolation" | "background" => {
-                if lower != "none" && lower != "normal" {
-                    return Err(PngSrgbNormalizationError::UnsupportedSvgStyle(
-                        declaration.to_owned(),
-                    ));
-                }
+            "filter" | "mix-blend-mode" | "isolation" | "background"
+                if lower != "none" && lower != "normal" =>
+            {
+                return Err(PngSrgbNormalizationError::UnsupportedSvgStyle(
+                    declaration.to_owned(),
+                ));
             }
             _ => {}
         }
@@ -504,7 +499,10 @@ fn is_rgb_function(value: &str) -> bool {
         && value.ends_with(')')
         && value[prefix_len..value.len() - 1].bytes().all(|byte| {
             byte.is_ascii_digit()
-                || matches!(byte, b' ' | b'\t' | b'\r' | b'\n' | b',' | b'.' | b'%' | b'/' | b'+' | b'-')
+                || matches!(
+                    byte,
+                    b' ' | b'\t' | b'\r' | b'\n' | b',' | b'.' | b'%' | b'/' | b'+' | b'-'
+                )
         })
 }
 
@@ -624,7 +622,10 @@ fn validate_sha256(value: &str, field: &'static str) -> Result<(), PngSrgbNormal
 }
 
 fn resolve_output(path: &Path) -> Result<PathBuf, PngSrgbNormalizationError> {
-    if path.components().any(|component| component == Component::ParentDir) {
+    if path
+        .components()
+        .any(|component| component == Component::ParentDir)
+    {
         return Err(PngSrgbNormalizationError::ParentTraversal);
     }
     if path.exists() {
@@ -641,12 +642,13 @@ fn resolve_output(path: &Path) -> Result<PathBuf, PngSrgbNormalizationError> {
 fn local_name_bytes(bytes: &[u8]) -> Result<String, PngSrgbNormalizationError> {
     let name = str::from_utf8(bytes)
         .map_err(|error| PngSrgbNormalizationError::InvalidSvg(error.to_string()))?;
-    Ok(name.rsplit_once(':').map_or(name, |(_, local)| local).to_owned())
+    Ok(name
+        .rsplit_once(':')
+        .map_or(name, |(_, local)| local)
+        .to_owned())
 }
 
-fn svg_evidence_digest(
-    evidence: &SrgbSvgEvidence,
-) -> Result<String, PngSrgbNormalizationError> {
+fn svg_evidence_digest(evidence: &SrgbSvgEvidence) -> Result<String, PngSrgbNormalizationError> {
     let mut value = serde_json::to_value(evidence)?;
     let object = value
         .as_object_mut()

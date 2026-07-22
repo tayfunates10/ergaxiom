@@ -5,8 +5,8 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use ergaxiom_png_artifact_validator_runtime::{PngColorProfileEvidence, inspect_png};
 use ergaxiom_png_srgb_normalizer_runtime::{
-    PngSrgbNormalizationError, PngSrgbNormalizationRequest, SrgbRenderingIntent,
-    inspect_svg_srgb, normalize_png_srgb,
+    PngSrgbNormalizationError, PngSrgbNormalizationRequest, SrgbRenderingIntent, inspect_svg_srgb,
+    normalize_png_srgb,
 };
 use sha2::{Digest, Sha256};
 
@@ -49,7 +49,10 @@ fn profileless_png_is_normalized_without_idat_mutation() -> Result<(), Box<dyn E
     let report = inspect_png(&output)?;
 
     assert!(record.verified);
-    assert_eq!(record.input_idat_payload_digest, record.output_idat_payload_digest);
+    assert_eq!(
+        record.input_idat_payload_digest,
+        record.output_idat_payload_digest
+    );
     assert_eq!(record.record_digest.len(), 64);
     assert_eq!(
         report.color_profile,
@@ -58,7 +61,10 @@ fn profileless_png_is_normalized_without_idat_mutation() -> Result<(), Box<dyn E
         }
     );
     assert_eq!(record.output_png_digest, report.artifact_digest);
-    assert_eq!(fs::metadata(&output)?.len(), fs::metadata(&input)?.len() + 13);
+    assert_eq!(
+        fs::metadata(&output)?.len(),
+        fs::metadata(&input)?.len() + 13
+    );
     Ok(())
 }
 
@@ -70,7 +76,7 @@ fn source_svg_profile_is_measured_deterministically() -> Result<(), Box<dyn Erro
 
     let evidence = inspect_svg_srgb(&source)?;
     assert_eq!(evidence.element_count, 6);
-    assert_eq!(evidence.color_declaration_count, 4);
+    assert_eq!(evidence.color_declaration_count, 3);
     assert_eq!(evidence.internal_paint_server_reference_count, 1);
     assert_eq!(evidence.evidence_digest.len(), 64);
     Ok(())

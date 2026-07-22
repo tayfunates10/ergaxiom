@@ -6,9 +6,7 @@ use std::fs;
 use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use ergaxiom_inkscape_adapter_runtime::{
-    SetTextAndExportRequest, VerifiedInkscape, sha256_file,
-};
+use ergaxiom_inkscape_adapter_runtime::{SetTextAndExportRequest, VerifiedInkscape, sha256_file};
 use ergaxiom_png_artifact_validator_runtime::{PngColorProfileEvidence, inspect_png};
 use ergaxiom_png_srgb_normalizer_runtime::{
     PngSrgbNormalizationRequest, SrgbRenderingIntent, normalize_png_srgb,
@@ -80,7 +78,10 @@ fn real_profileless_inkscape_png_is_normalized_without_pixel_payload_change()
     let normalized_report = inspect_png(&normalized_png)?;
 
     assert!(record.verified);
-    assert_eq!(record.input_idat_payload_digest, record.output_idat_payload_digest);
+    assert_eq!(
+        record.input_idat_payload_digest,
+        record.output_idat_payload_digest
+    );
     assert_eq!((record.width, record.height), (512, 512));
     assert_eq!(
         normalized_report.color_profile,
