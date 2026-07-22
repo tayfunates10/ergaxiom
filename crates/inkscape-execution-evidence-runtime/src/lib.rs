@@ -2,7 +2,7 @@
 
 use std::collections::BTreeMap;
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
 use ed25519_dalek::{Signature, Signer, SigningKey, VerifyingKey};
@@ -130,7 +130,7 @@ pub enum InkscapeEvidenceError {
     UnsupportedApplicationIdentity,
     #[error("Inkscape material path does not match the signed request path: {0}")]
     MaterialPathMismatch(&'static str),
-    #[error("source SVG digest does not match the signed request and record")]
+    #[error("source SVG digest does not match the signed request")]
     SourceDigestMismatch,
     #[error("editable SVG digest does not match the execution record")]
     EditableDigestMismatch,
@@ -160,6 +160,7 @@ pub fn sign_execution_record(
     key_id: impl Into<String>,
     signing_key: &SigningKey,
 ) -> Result<SignedInkscapeExecutionRecord, InkscapeEvidenceError> {
+    validate_record_shape(record)?;
     validate_record_self_digest(record)?;
     let issuer_id = issuer_id.into();
     let key_id = key_id.into();
@@ -202,9 +203,7 @@ pub fn verify_execution_material(
     validate_material_paths(material)?;
 
     let source_svg_digest = sha256_file(material.source_svg)?;
-    if source_svg_digest != material.request.expected_source_digest
-        || source_svg_digest != record.pre_source_digest()
-    {
+    if source_svg_digest != material.request.expected_source_digest {
         return Err(InkscapeEvidenceError::SourceDigestMismatch);
     }
     let editable_svg_digest = sha256_file(material.editable_svg)?;
@@ -260,26 +259,6 @@ pub fn verify_execution_material(
         issuer_id: material.package.signature.issuer_id.clone(),
         key_id: material.package.signature.key_id.clone(),
     })
-}
-
-trait RecordSourceDigest {
-    fn pre_source_digest(&self) -> &str;
-}
-
-impl RecordSourceDigest for InkscapeExecutionRecord {
-    fn pre_source_digest(&self) -> &str {
-        &self.request_source_digest_fallback()
-    }
-}
-
-trait RecordSourceDigestFallback {
-    fn request_source_digest_fallback(&self) -> String;
-}
-
-impl RecordSourceDigestFallback for InkscapeExecutionRecord {
-    fn request_source_digest_fallback(&self) -> String {
-        String::new()
-    }
 }
 
 fn validate_record_shape(record: &InkscapeExecutionRecord) -> Result<(), InkscapeEvidenceError> {
@@ -338,11 +317,11 @@ fn validate_record_self_digest(
     record: &InkscapeExecutionRecord,
 ) -> Result<(), InkscapeEvidenceError> {
     let mut value = serde_json::to_value(record).map_err(InkscapeEvidenceError::Serialization)?;
-    let object = value
-        .as_object_mut()
-        .ok_or_else(|| InkscapeEvidenceError::Serialization(serde_json::Error::io(
-            std::io::Error::other("record did not serialize to an object"),
-        )))?;
+    let object = value.as_object_mut().ok_or_else(|| {
+        InkscapeEvidenceError::Serialization(serde_json::Error::io(std::io::Error::other(
+            "record did not serialize to an object",
+        )))
+    })?;
     object.insert("record_digest".to_owned(), Value::String(String::new()));
     if canonical_json_sha256(&value)? != record.record_digest {
         return Err(InkscapeEvidenceError::RecordDigestMismatch);
@@ -441,12 +420,4 @@ fn is_sha256(value: &str) -> bool {
         && value
             .bytes()
             .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
-}
-
-pub fn material_paths(material: &InkscapeExecutionMaterial<'_>) -> [PathBuf; 3] {
-    [
-        material.source_svg.to_path_buf(),
-        material.editable_svg.to_path_buf(),
-        material.raster_png.to_path_buf(),
-    ]
 }
