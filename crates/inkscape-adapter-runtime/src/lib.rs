@@ -12,7 +12,7 @@ use ergaxiom_proof_kernel::{HashingError, canonical_json_sha256};
 use quick_xml::encoding::Decoder;
 use quick_xml::escape::unescape;
 use quick_xml::events::{BytesStart, BytesText, Event};
-use quick_xml::{Reader, Writer};
+use quick_xml::{Reader, Writer, XmlVersion};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
@@ -811,7 +811,7 @@ fn decode_attributes(
         let attribute = attribute.map_err(|error| InkscapeAdapterError::Xml(error.to_string()))?;
         let key = decode_utf8(attribute.key.as_ref())?;
         let value = attribute
-            .decode_and_unescape_value(decoder)
+            .decoded_and_normalized_value(XmlVersion::Implicit1_0, decoder)
             .map_err(|error| InkscapeAdapterError::Xml(error.to_string()))?
             .into_owned();
         attributes.insert(key, value);
