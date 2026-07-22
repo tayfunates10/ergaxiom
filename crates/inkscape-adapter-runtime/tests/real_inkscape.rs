@@ -35,7 +35,11 @@ impl Drop for TestDirectory {
 #[test]
 fn real_inkscape_text_edit_and_png_export_are_independently_verified() -> Result<(), Box<dyn Error>>
 {
-    let executable = env::var("ERGAXIOM_INKSCAPE")?;
+    let executable = match env::var("ERGAXIOM_INKSCAPE") {
+        Ok(value) => value,
+        Err(env::VarError::NotPresent) => return Ok(()),
+        Err(error) => return Err(error.into()),
+    };
     let executable_digest = env::var("ERGAXIOM_INKSCAPE_SHA256")?;
     let fixture =
         PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/inkscape/social-post.svg");
