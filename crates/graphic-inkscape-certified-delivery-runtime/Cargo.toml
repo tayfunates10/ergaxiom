@@ -1,0 +1,31 @@
+[package]
+name = "ergaxiom-graphic-inkscape-certified-delivery-runtime"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+publish = false
+
+[dependencies]
+ed25519-dalek.workspace = true
+ergaxiom-attestation-runtime = { path = "../attestation-runtime" }
+ergaxiom-evidence-runtime = { path = "../evidence-runtime" }
+ergaxiom-graphic-certified-delivery-runtime = { path = "../graphic-certified-delivery-runtime" }
+ergaxiom-inkscape-execution-evidence-runtime = { path = "../inkscape-execution-evidence-runtime" }
+ergaxiom-proof-kernel = { path = "../proof-kernel" }
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+base64.workspace = true
+ergaxiom-capability-runtime = { path = "../capability-runtime" }
+ergaxiom-contract-runtime = { path = "../contract-runtime" }
+ergaxiom-graphic-designer-twin-runtime = { path = "../graphic-designer-twin-runtime" }
+ergaxiom-inkscape-adapter-runtime = { path = "../inkscape-adapter-runtime" }
+ergaxiom-occupational-twin-runtime = { path = "../occupational-twin-runtime" }
+ergaxiom-operator-plan-runtime = { path = "../operator-plan-runtime" }
+
+[lints]
+workspace = true
