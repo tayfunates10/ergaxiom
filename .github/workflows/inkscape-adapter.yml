@@ -1,0 +1,71 @@
+name: Inkscape adapter
+
+on:
+  pull_request:
+    paths:
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "crates/inkscape-adapter-runtime/**"
+      - "fixtures/inkscape/**"
+      - "professions/graphic-designer/adapters/**"
+      - "docs/architecture/19-inkscape-adapter.md"
+      - ".github/workflows/inkscape-adapter.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "crates/inkscape-adapter-runtime/**"
+      - "fixtures/inkscape/**"
+      - "professions/graphic-designer/adapters/**"
+      - "docs/architecture/19-inkscape-adapter.md"
+      - ".github/workflows/inkscape-adapter.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  verify-document-model-and-real-export:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Install Inkscape
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends inkscape
+          inkscape --version
+
+      - name: Bind trusted Inkscape executable
+        shell: bash
+        run: |
+          set -euo pipefail
+          executable="$(command -v inkscape)"
+          digest="$(sha256sum "$executable" | awk '{print $1}')"
+          echo "ERGAXIOM_INKSCAPE=$executable" >> "$GITHUB_ENV"
+          echo "ERGAXIOM_INKSCAPE_SHA256=$digest" >> "$GITHUB_ENV"
+          echo "Trusted Inkscape SHA-256: $digest"
+
+      - name: Check Rust formatting
+        run: cargo fmt --all -- --check
+
+      - name: Run Clippy
+        run: cargo clippy -p ergaxiom-inkscape-adapter-runtime --all-targets --all-features -- -D warnings
+
+      - name: Run deterministic document-model tests
+        run: cargo test -p ergaxiom-inkscape-adapter-runtime
+
+      - name: Run real Inkscape edit and export test
+        run: >-
+          cargo test
+          -p ergaxiom-inkscape-adapter-runtime
+          --features real-inkscape-tests
+          --test real_inkscape
+          -- --nocapture
