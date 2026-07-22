@@ -616,3 +616,91 @@ fn set_input_digest(
 fn sha256_hex(bytes: &[u8]) -> String {
     format!("{:x}", Sha256::digest(bytes))
 }
+
+#[cfg(feature = "real-inkscape-certified-delivery-tests")]
+#[test]
+fn real_inkscape_execution_produces_final_attestation() -> Result<(), Box<dyn Error>> {
+    let context = context()?;
+    let tokens = signed_tokens(&context)?;
+    let directory = TestDirectory::create("real-inkscape-execution")?;
+    let source = directory.join("source.svg");
+    let editable = directory.join("editable.svg");
+    let raster = directory.join("delivery.png");
+    fs::write(&source, svg("BEFORE"))?;
+
+    let executable = std::env::var("ERGAXIOM_INKSCAPE")?;
+    let executable_digest = std::env::var("ERGAXIOM_INKSCAPE_SHA256")?;
+    let inkscape =
+        ergaxiom_inkscape_adapter_runtime::VerifiedInkscape::open(executable, &executable_digest)?;
+    let execution_request = SetTextAndExportRequest {
+        schema_version: "0.1.0".to_owned(),
+        request_id: "request.graphic-real-inkscape-certified.0001".to_owned(),
+        source_svg: source.clone(),
+        expected_source_digest: sha256_file(&source)?,
+        target_element_id: "headline".to_owned(),
+        replacement_text: context.job.approved_copy.text.clone(),
+        editable_output_svg: editable.clone(),
+        raster_output_png: raster.clone(),
+        export_width: context.job.canvas.width,
+        export_height: context.job.canvas.height,
+    };
+    let execution_record = inkscape.execute_set_text_and_export(&execution_request)?;
+    let execution_key = SigningKey::from_bytes(&[83_u8; 32]);
+    let execution_package = sign_execution_record(
+        &execution_record,
+        EXECUTION_ISSUER,
+        EXECUTION_KEY_ID,
+        &execution_key,
+    )?;
+    let mut execution_keys = InkscapeExecutionKeyRegistry::default();
+    execution_keys.insert_ed25519(
+        EXECUTION_ISSUER,
+        EXECUTION_KEY_ID,
+        execution_key.verifying_key().to_bytes(),
+    )?;
+
+    let mut workspace = workspace()?;
+    let mut authorizer = authorizer(&context)?;
+    let execution_material = InkscapeExecutionMaterial {
+        request: &execution_request,
+        package: &execution_package,
+        source_svg: &source,
+        editable_svg: &editable,
+        raster_png: &raster,
+    };
+    let delivery = certify_inkscape_graphic_delivery(InkscapeGraphicCertificationRequest {
+        base: base_request(&mut workspace, &mut authorizer, &context, &tokens),
+        execution_material,
+        execution_keys: &execution_keys,
+        final_manifest_id: "manifest.graphic-real-inkscape-final.0001",
+        final_certificate_id: "certificate.graphic-real-inkscape-final.0001",
+    })?;
+
+    assert_eq!(execution_record.binary.executable_digest, executable_digest);
+    assert_eq!(
+        delivery.verified_inkscape_execution.application_digest,
+        executable_digest
+    );
+    assert_eq!(
+        delivery.verified_inkscape_execution.raster_png_digest,
+        execution_record.raster_output_digest
+    );
+    assert_eq!(
+        delivery.verified_attestation.evidence_bundle_digest,
+        delivery.evidence_bundle_digest
+    );
+    assert_eq!(
+        delivery.evidence_bundle.claimed_decision.status,
+        DecisionStatus::Accepted
+    );
+    assert!(
+        delivery
+            .evidence_bundle
+            .artifacts
+            .iter()
+            .any(|artifact| artifact.artifact_id == "evidence.inkscape.raster-png")
+    );
+    assert_eq!(authorizer.usage_count(POLICY_ISSUER, "token.canvas"), 1);
+    assert_eq!(authorizer.usage_count(POLICY_ISSUER, "token.export"), 1);
+    Ok(())
+}
