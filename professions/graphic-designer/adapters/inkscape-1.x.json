@@ -1,0 +1,63 @@
+{
+  "schema_version": "0.1.0",
+  "adapter_id": "ergaxiom.adapter.graphic-designer.inkscape-1.x",
+  "version": "0.1.0",
+  "profession_capsule_id": "ergaxiom.profession.graphic-designer",
+  "application": {
+    "application_id": "org.inkscape.Inkscape",
+    "name": "Inkscape",
+    "certified_version_range": ">=1.2.0 <1.5.0",
+    "executable_digest_required": true
+  },
+  "control_priority": [
+    "document_model",
+    "cli"
+  ],
+  "supported_operators": [
+    {
+      "operator_id": "design.compose_text",
+      "execution": {
+        "method": "document_model",
+        "action": "replace_exact_direct_text_by_svg_id"
+      },
+      "preconditions": [
+        "source_svg_digest_matches_request",
+        "target_svg_id_is_unique",
+        "target_contains_exactly_one_direct_text_segment",
+        "target_has_no_nested_elements",
+        "editable_output_is_new_and_isolated"
+      ],
+      "postconditions": [
+        "target_text_equals_approved_copy",
+        "all_non_target_svg_elements_are_semantically_unchanged",
+        "canvas_attributes_are_unchanged"
+      ]
+    },
+    {
+      "operator_id": "design.export_raster",
+      "execution": {
+        "method": "cli",
+        "action": "inkscape_png_page_export"
+      },
+      "preconditions": [
+        "inkscape_executable_sha256_matches_trusted_digest",
+        "inkscape_version_is_certified",
+        "editable_svg_digest_is_measured",
+        "raster_output_is_new_and_isolated"
+      ],
+      "postconditions": [
+        "png_signature_is_valid",
+        "png_ihdr_dimensions_match_request",
+        "raster_output_digest_is_measured"
+      ]
+    }
+  ],
+  "forbidden_behaviors": [
+    "editing_the_source_svg_in_place",
+    "accepting_duplicate_svg_ids",
+    "rewriting_nested_text_or_tspan_content",
+    "using_an_unpinned_inkscape_executable",
+    "accepting_export_success_without_independent_png_validation",
+    "accepting_any_undeclared_svg_semantic_change"
+  ]
+}
