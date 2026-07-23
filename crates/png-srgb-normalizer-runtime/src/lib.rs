@@ -1,5 +1,8 @@
 #![forbid(unsafe_code)]
 
+pub mod evidence;
+pub use evidence::*;
+
 use std::collections::BTreeSet;
 use std::fs;
 use std::io::BufReader;
