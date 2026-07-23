@@ -1,0 +1,26 @@
+[package]
+name = "ergaxiom-png-pixel-decoder-runtime"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+publish = false
+
+[features]
+real-inkscape-tests = []
+
+[dependencies]
+flate2.workspace = true
+ergaxiom-png-artifact-validator-runtime = { path = "../png-artifact-validator-runtime" }
+ergaxiom-proof-kernel = { path = "../proof-kernel" }
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+ergaxiom-inkscape-adapter-runtime = { path = "../inkscape-adapter-runtime" }
+ergaxiom-png-srgb-normalizer-runtime = { path = "../png-srgb-normalizer-runtime" }
+
+[lints]
+workspace = true
