@@ -170,12 +170,12 @@ fn validate_inputs(
     Ok(())
 }
 
-fn extract_target_text<'a>(
-    svg_text: &'a str,
+fn extract_target_text(
+    svg_text: &str,
     target_id: &str,
-) -> Result<&'a str, ApprovedCopyError> {
-    let document =
-        Document::parse(svg_text).map_err(|error| ApprovedCopyError::SvgParse(error.to_string()))?;
+) -> Result<String, ApprovedCopyError> {
+    let document = Document::parse(svg_text)
+        .map_err(|error| ApprovedCopyError::SvgParse(error.to_string()))?;
     let root = document.root_element();
     if root.tag_name().name() != "svg" {
         return Err(ApprovedCopyError::MissingSvgRoot);
@@ -212,7 +212,7 @@ fn extract_target_text<'a>(
         match child.node_type() {
             NodeType::Text => {
                 text_segments = text_segments.saturating_add(1);
-                direct_text = child.text();
+                direct_text = child.text().map(|text| text.to_owned());
             }
             NodeType::Element => return Err(ApprovedCopyError::NestedTargetContent),
             NodeType::Comment => {}
