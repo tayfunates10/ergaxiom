@@ -138,9 +138,13 @@ pub enum LogoGeometryError {
     InvalidAspectRatioThreshold,
     #[error("foreground color-distance threshold must be non-zero")]
     InvalidForegroundDistanceThreshold,
-    #[error("approved logo alpha mask contains too few foreground pixels: required {required}, actual {actual}")]
+    #[error(
+        "approved logo alpha mask contains too few foreground pixels: required {required}, actual {actual}"
+    )]
     ApprovedMaskTooSparse { required: u32, actual: u64 },
-    #[error("approved logo alpha-mask share is outside policy: minimum {minimum_milli}, maximum {maximum_milli}, actual {actual_milli}")]
+    #[error(
+        "approved logo alpha-mask share is outside policy: minimum {minimum_milli}, maximum {maximum_milli}, actual {actual_milli}"
+    )]
     ApprovedMaskShareOutOfRange {
         minimum_milli: u16,
         maximum_milli: u16,
@@ -193,8 +197,7 @@ pub fn validate_logo_geometry(
             actual: background.max_deviation,
         });
     }
-    if measurement.rendered_foreground_count
-        < u64::from(policy.minimum_rendered_foreground_pixels)
+    if measurement.rendered_foreground_count < u64::from(policy.minimum_rendered_foreground_pixels)
     {
         violations.push(
             LogoGeometryViolation::InsufficientRenderedForegroundPixels {
@@ -215,9 +218,7 @@ pub fn validate_logo_geometry(
             actual_error_ppm: measurement.aspect_ratio_error_ppm,
         });
     }
-    if measurement.clear_space_intrusions
-        > u64::from(policy.maximum_clear_space_intrusion_pixels)
-    {
+    if measurement.clear_space_intrusions > u64::from(policy.maximum_clear_space_intrusion_pixels) {
         violations.push(LogoGeometryViolation::ClearSpaceIntrusion {
             maximum_pixels: policy.maximum_clear_space_intrusion_pixels,
             actual_pixels: measurement.clear_space_intrusions,
@@ -458,8 +459,10 @@ fn validate_policy(
         return Err(LogoGeometryError::ImagePixelLimitExceeded);
     }
     let clear_pixels = pixel_count(clear.right - clear.left, clear.bottom - clear.top)?;
-    let background_pixels =
-        pixel_count(background.right - background.left, background.bottom - background.top)?;
+    let background_pixels = pixel_count(
+        background.right - background.left,
+        background.bottom - background.top,
+    )?;
     let background_sample_pixels = background_pixels
         .checked_sub(clear_pixels)
         .ok_or(LogoGeometryError::SizeOverflow)?;
@@ -477,7 +480,8 @@ fn validate_policy(
 }
 
 fn validate_decoded(decoded: &DecodedPng) -> Result<(), LogoGeometryError> {
-    let width = usize::try_from(decoded.report.width).map_err(|_| LogoGeometryError::SizeOverflow)?;
+    let width =
+        usize::try_from(decoded.report.width).map_err(|_| LogoGeometryError::SizeOverflow)?;
     let height =
         usize::try_from(decoded.report.height).map_err(|_| LogoGeometryError::SizeOverflow)?;
     let pixels = pixel_count(width, height)?;
