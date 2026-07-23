@@ -1,0 +1,46 @@
+name: Real final support warning fix
+
+on:
+  push:
+    branches:
+      - agent/real-final-artifact-ci-v1
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/real-final-artifact-ci-v1
+          fetch-depth: 0
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.85.0
+          components: rustfmt
+
+      - name: Limit dead-code allowance to imported test support
+        shell: python
+        run: |
+          from pathlib import Path
+          path = Path("crates/graphic-inkscape-final-certified-delivery-runtime/tests/real_final_certified_delivery.rs")
+          text = path.read_text(encoding="utf-8")
+          old = '#[path = "../../graphic-inkscape-srgb-certified-delivery-runtime/tests/support/mod.rs"]\nmod support;'
+          new = '#[allow(dead_code)]\n#[path = "../../graphic-inkscape-srgb-certified-delivery-runtime/tests/support/mod.rs"]\nmod support;'
+          if old not in text:
+              raise SystemExit("support module declaration not found")
+          path.write_text(text.replace(old, new, 1), encoding="utf-8")
+
+      - run: cargo fmt --all
+
+      - name: Remove workflow and push
+        run: |
+          rm .github/workflows/real-final-dead-code-fix.yml
+          git config user.name "ergaxiom-ci"
+          git config user.email "actions@users.noreply.github.com"
+          git add -A
+          git commit -m "Scope support-module dead-code allowance [skip ci]"
+          git push origin HEAD:agent/real-final-artifact-ci-v1
