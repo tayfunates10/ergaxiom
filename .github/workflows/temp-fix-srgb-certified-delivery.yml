@@ -13,7 +13,7 @@ permissions:
 jobs:
   fix:
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    timeout-minutes: 16
     steps:
       - name: Check out branch
         uses: actions/checkout@v4
