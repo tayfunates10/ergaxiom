@@ -297,12 +297,14 @@ impl BoundsTracker {
         self.any = true;
         self.left = self.left.min(x);
         self.top = self.top.min(y);
-        self.right = self
-            .right
-            .max(x.checked_add(1).ok_or(RenderedTextBoundsError::SizeOverflow)?);
-        self.bottom = self
-            .bottom
-            .max(y.checked_add(1).ok_or(RenderedTextBoundsError::SizeOverflow)?);
+        self.right = self.right.max(
+            x.checked_add(1)
+                .ok_or(RenderedTextBoundsError::SizeOverflow)?,
+        );
+        self.bottom = self.bottom.max(
+            y.checked_add(1)
+                .ok_or(RenderedTextBoundsError::SizeOverflow)?,
+        );
         Ok(())
     }
 
@@ -327,8 +329,8 @@ fn validate_policy(
 ) -> Result<Geometry, RenderedTextBoundsError> {
     let image_width =
         usize::try_from(decoded.report.width).map_err(|_| RenderedTextBoundsError::SizeOverflow)?;
-    let image_height =
-        usize::try_from(decoded.report.height).map_err(|_| RenderedTextBoundsError::SizeOverflow)?;
+    let image_height = usize::try_from(decoded.report.height)
+        .map_err(|_| RenderedTextBoundsError::SizeOverflow)?;
     let image_pixels = pixel_count(image_width, image_height)?;
     let expected_rgba = usize::try_from(image_pixels)
         .ok()
@@ -648,9 +650,7 @@ fn share_milli(numerator: u64, denominator: u64) -> u16 {
     u16::try_from(rounded.min(1000)).unwrap_or(1000)
 }
 
-fn report_digest(
-    report: &RenderedTextBoundsReport,
-) -> Result<String, RenderedTextBoundsError> {
+fn report_digest(report: &RenderedTextBoundsReport) -> Result<String, RenderedTextBoundsError> {
     let mut value = serde_json::to_value(report)?;
     let object = value.as_object_mut().ok_or_else(|| {
         serde_json::Error::io(std::io::Error::other("text bounds report is not an object"))
@@ -662,9 +662,7 @@ fn report_digest(
     Ok(canonical_json_sha256(&value)?)
 }
 
-fn decision_digest(
-    result: &RenderedTextBoundsResult,
-) -> Result<String, RenderedTextBoundsError> {
+fn decision_digest(result: &RenderedTextBoundsResult) -> Result<String, RenderedTextBoundsError> {
     let mut value = serde_json::to_value(result)?;
     let object = value.as_object_mut().ok_or_else(|| {
         serde_json::Error::io(std::io::Error::other("text bounds result is not an object"))
