@@ -13,6 +13,7 @@ members = [
   "crates/graphic-inkscape-srgb-certified-delivery-runtime",
   "crates/inkscape-adapter-runtime",
   "crates/inkscape-execution-evidence-runtime",
+  "crates/intent-contract-compiler-runtime",
   "crates/occupational-twin-runtime",
   "crates/operator-plan-runtime",
   "crates/operator-simulation-runtime",
