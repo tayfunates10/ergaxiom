@@ -2,6 +2,22 @@
 
 This roadmap is capability-gated. A phase is complete only when its exit criteria are demonstrated by automated evidence; elapsed time or file count does not complete a phase.
 
+For the exact implemented claim boundary, see [Current capability status](status.md).
+
+## Current gate summary
+
+| Phase | Gate status |
+|---|---|
+| Phase 0 — Verifiable foundation | Satisfied for v1 |
+| Phase 1 — Proof kernel | Satisfied for v1 |
+| Phase 2 — Occupational digital twin | Satisfied for v1 |
+| Phase 3 — Windows execution bridge | Demonstrated; production gate open |
+| Phase 4 — Graphic Designer Alpha | One bounded certified path; phase gate open |
+| Phase 5 — Profession learning laboratory | Not started |
+| Phase 6 — Cross-platform and additional professions | Not started |
+
+A satisfied v1 gate means the listed invariants are implemented and exercised by automated tests. It does not mean interfaces are stable or the product is ready for unrestricted use.
+
 ## Phase 0 — Verifiable foundation
 
 **Goal:** define the contracts that prevent the system from treating model confidence as truth.
@@ -87,6 +103,7 @@ Exit criteria:
 - The bridge refuses actions outside its capability token.
 - A click or keystroke is never treated as proof of success.
 - Time-of-check/time-of-use changes are detected at critical boundaries.
+- Production application identity, recovery, selector and code-signing policies are exercised outside a controlled test target.
 
 ## Phase 4 — Graphic Designer Alpha
 
@@ -111,6 +128,11 @@ Exit criteria:
 - Brand invariants such as logo geometry and approved copy are preserved.
 - Subjective preferences are reported separately from hard acceptance claims.
 - A failed proof returns an actionable error map instead of a success message.
+- Every initial job type has a permanent certified-path regression suite.
+
+Current bounded achievement:
+
+- Static Social Media Post can produce a final certificate over authorized execution, signed Inkscape material, signed sRGB normalization, independent PNG decoding, approved-copy identity, logo geometry, text safe area and rendered contrast for the supported fixture and restricted document profile.
 
 ## Phase 5 — Profession learning laboratory
 
