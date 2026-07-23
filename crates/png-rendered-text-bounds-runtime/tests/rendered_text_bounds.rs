@@ -3,8 +3,7 @@ use std::error::Error;
 use ergaxiom_png_artifact_validator_runtime::PngColorType;
 use ergaxiom_png_pixel_decoder_runtime::{DecodedPng, PngPixelReport};
 use ergaxiom_png_rendered_text_bounds_runtime::{
-    PixelRect, RenderedTextBoundsPolicy, RenderedTextBoundsViolation,
-    validate_rendered_text_bounds,
+    PixelRect, RenderedTextBoundsPolicy, RenderedTextBoundsViolation, validate_rendered_text_bounds,
 };
 
 #[test]
@@ -72,8 +71,7 @@ fn foreground_touching_analysis_boundary_is_rejected() -> Result<(), Box<dyn Err
     boundary_policy.safe_area = boundary_policy.analysis_region;
     boundary_policy.minimum_safe_area_margin_px = 0;
     boundary_policy.minimum_foreground_pixels = 20;
-    let result =
-        validate_rendered_text_bounds(&decoded(100, 60, bytes), &boundary_policy)?;
+    let result = validate_rendered_text_bounds(&decoded(100, 60, bytes), &boundary_policy)?;
 
     assert!(!result.accepted);
     assert_eq!(result.report.foreground_in_clipping_guard_pixel_count, 30);
