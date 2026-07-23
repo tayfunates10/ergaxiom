@@ -1,0 +1,73 @@
+name: PR33 compiler autofix
+
+on:
+  push:
+    branches:
+      - agent/intent-contract-compiler-v1
+
+permissions:
+  contents: write
+
+jobs:
+  fix-and-validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out branch
+        uses: actions/checkout@v4
+        with:
+          ref: agent/intent-contract-compiler-v1
+          fetch-depth: 0
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.85.0
+          components: rustfmt, clippy
+
+      - name: Fix ownership and lifetime errors
+        shell: python
+        run: |
+          from pathlib import Path
+
+          path = Path("crates/intent-contract-compiler-runtime/src/lib.rs")
+          text = path.read_text(encoding="utf-8")
+
+          old = '''        contract_digest: compiled.seal.contract_digest,
+                  capsule_digest: compiled.seal.capsule_digest,
+                  proof_obligation_count: compiled.proof_obligation_count(),'''
+          new = '''        contract_digest: compiled.seal.contract_digest.clone(),
+                  capsule_digest: compiled.seal.capsule_digest.clone(),
+                  proof_obligation_count: compiled.proof_obligation_count(),'''
+          if old not in text:
+              raise SystemExit("compiled contract ownership pattern not found")
+          text = text.replace(old, new, 1)
+
+          old = '''fn artifact_value(
+              id: &str,
+              kind: &str,'''
+          new = '''fn artifact_value(
+              id: &'static str,
+              kind: &str,'''
+          if old not in text:
+              raise SystemExit("artifact_value signature pattern not found")
+          text = text.replace(old, new, 1)
+
+          path.write_text(text, encoding="utf-8")
+
+      - name: Format Rust workspace
+        run: cargo fmt --all
+
+      - name: Run Clippy
+        run: cargo clippy --workspace --all-targets --all-features -- -D warnings
+
+      - name: Run workspace tests
+        run: cargo test --workspace
+
+      - name: Remove one-shot workflow and push fixes
+        run: |
+          rm .github/workflows/pr33-autofix.yml
+          git config user.name "ergaxiom-ci"
+          git config user.email "actions@users.noreply.github.com"
+          git add -A
+          git commit -m "Fix intent compiler ownership and formatting [skip ci]"
+          git push origin HEAD:agent/intent-contract-compiler-v1
