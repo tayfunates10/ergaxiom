@@ -88,13 +88,21 @@ jobs:
               raise SystemExit("job type does not bind every proof-bound operator")
           PY
 
-      - name: Run deterministic and attack tests
+      - name: Run deterministic adapter tests
         run: cargo test -p ergaxiom-inkscape-adapter-runtime
 
-      - name: Run real pinned Inkscape regression
+      - name: Run real pinned Inkscape operator regression
         run: >-
           cargo test
           -p ergaxiom-inkscape-adapter-runtime
           --features real-inkscape-tests
           --test proof_bound_operators
+          -- --nocapture
+
+      - name: Run per-operator fail-closed attack matrix
+        run: >-
+          cargo test
+          -p ergaxiom-inkscape-adapter-runtime
+          --features real-inkscape-tests
+          --test proof_bound_operator_attacks
           -- --nocapture
