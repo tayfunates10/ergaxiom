@@ -21,9 +21,7 @@ use ergaxiom_operator_plan_runtime::CompiledPlan;
 use ergaxiom_png_logo_geometry_runtime::LogoGeometryResult;
 use ergaxiom_png_rendered_contrast_runtime::RenderedContrastResult;
 use ergaxiom_png_rendered_text_bounds_runtime::RenderedTextBoundsResult;
-use ergaxiom_proof_kernel::{
-    AssuranceLevel, DecisionStatus, HashingError, canonical_json_sha256,
-};
+use ergaxiom_proof_kernel::{AssuranceLevel, DecisionStatus, HashingError, canonical_json_sha256};
 use ergaxiom_svg_approved_copy_runtime::ApprovedCopyResult;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -176,7 +174,12 @@ pub fn certify_inkscape_final_artifacts(
         NORMALIZED_RASTER_ARTIFACT_ID,
         ArtifactRole::Evidence,
     )?;
-    if editable_svg_digest != request.base_delivery.normalization_binding.editable_svg_digest {
+    if editable_svg_digest
+        != request
+            .base_delivery
+            .normalization_binding
+            .editable_svg_digest
+    {
         return Err(InkscapeFinalArtifactCertificationError::EditableSvgArtifactMismatch);
     }
     if normalized_png_digest
@@ -395,9 +398,9 @@ fn required_artifact_digest(
             InkscapeFinalArtifactCertificationError::MissingBaseArtifact(artifact_id.to_owned())
         })?;
     if artifact.role != expected_role || artifact.algorithm != DigestAlgorithm::Sha256 {
-        return Err(InkscapeFinalArtifactCertificationError::InvalidBaseArtifact(
-            artifact_id.to_owned(),
-        ));
+        return Err(
+            InkscapeFinalArtifactCertificationError::InvalidBaseArtifact(artifact_id.to_owned()),
+        );
     }
     Ok(artifact.digest.clone())
 }
