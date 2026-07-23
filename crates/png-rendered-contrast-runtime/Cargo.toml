@@ -18,6 +18,7 @@ thiserror.workspace = true
 
 [dev-dependencies]
 ergaxiom-inkscape-adapter-runtime = { path = "../inkscape-adapter-runtime" }
+ergaxiom-png-artifact-validator-runtime = { path = "../png-artifact-validator-runtime" }
 ergaxiom-png-srgb-normalizer-runtime = { path = "../png-srgb-normalizer-runtime" }
 
 [lints]
