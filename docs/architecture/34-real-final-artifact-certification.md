@@ -79,6 +79,21 @@ The permanent Inkscape workflow uploads:
 
 The artifacts are retained for seven days. They are diagnostic evidence from the pinned CI fixture and are not a production signing-key substitute.
 
+## Validation command
+
+With the trusted Inkscape path and executable digest exported, the complete final path runs as:
+
+```bash
+cargo test \
+  -p ergaxiom-graphic-inkscape-final-certified-delivery-runtime \
+  --features real-inkscape-tests \
+  --test real_final_certified_delivery \
+  real_inkscape_artifacts_issue_final_acceptance_certificate \
+  -- --nocapture
+```
+
+The permanent workflow additionally runs workspace formatting, all relevant Clippy targets, deterministic validator suites and the preceding real execution and normalization regressions.
+
 ## Claim boundary
 
 This path certifies one declared fixture and one restricted operator path. It does not certify arbitrary SVG nesting, external resources, filters, fonts, text shaping, color spaces or layouts.
