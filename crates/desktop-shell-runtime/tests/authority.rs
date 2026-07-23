@@ -49,7 +49,10 @@ fn accepted_status_requires_verified_certificate_and_bundle() -> Result<(), Box<
 #[test]
 fn contradictory_accepted_certificate_fails_closed() {
     let mut material = accepted_material();
-    let certificate = material.certificate.as_mut().expect("certificate fixture");
+    let certificate = match material.certificate.as_mut() {
+        Some(certificate) => certificate,
+        None => panic!("certificate fixture is missing"),
+    };
     certificate.signature_verified = false;
 
     assert!(matches!(
