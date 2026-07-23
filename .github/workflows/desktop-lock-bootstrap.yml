@@ -77,3 +77,5 @@ jobs:
           fi
           git commit -m "Generate desktop lockfiles and format sources"
           git push origin HEAD:agent/desktop-shell-foundation-v1
+
+# One-shot bootstrap: remove after the generated files are committed.
