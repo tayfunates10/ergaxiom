@@ -1,0 +1,125 @@
+name: Temporary bind base attestation v2
+
+on:
+  push:
+    branches:
+      - agent/inkscape-srgb-certified-delivery-v1
+    paths:
+      - ".github/workflows/temp-bind-base-attestation-v2.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Check out branch
+        uses: actions/checkout@v4
+        with:
+          ref: agent/inkscape-srgb-certified-delivery-v1
+          fetch-depth: 0
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+
+      - name: Apply robust trust patch
+        shell: python
+        run: |
+          from pathlib import Path
+
+          lib = Path("crates/graphic-inkscape-srgb-certified-delivery-runtime/src/lib.rs")
+          lines = lib.read_text(encoding="utf-8").splitlines()
+
+          field = "    pub base_attestation_keys: &'a AttestationKeyRegistry,"
+          if field not in lines:
+              index = lines.index("    pub normalization_keys: &'a NormalizationKeyRegistry,")
+              lines.insert(index + 1, field)
+
+          call_start = lines.index("    validate_base_bindings(")
+          call_end = call_start
+          while lines[call_end] != "    )?;":
+              call_end += 1
+          lines[call_start:call_end + 1] = [
+              "    validate_base_bindings(",
+              "        &request.base_delivery,",
+              "        request.base_attestation_keys,",
+              "        request.compiled_contract,",
+              "        request.compiled_plan,",
+              "        request.assurance_level,",
+              "    )?;",
+          ]
+
+          function_start = lines.index("fn validate_base_bindings(")
+          function_end = lines.index("fn validate_normalization_bindings(")
+          replacement = '''fn validate_base_bindings(
+              base: &CertifiedInkscapeGraphicDelivery,
+              base_attestation_keys: &AttestationKeyRegistry,
+              compiled_contract: &CompiledContract,
+              compiled_plan: &CompiledPlan,
+              assurance_level: AssuranceLevel,
+          ) -> Result<(), InkscapeSrgbCertificationError> {
+              let base_bundle_value = serde_json::to_value(&base.evidence_bundle)
+                  .map_err(InkscapeSrgbCertificationError::Serialization)?;
+              let independently_verified = verify_attestation_against_bundle(
+                  &base.attestation,
+                  base_attestation_keys,
+                  compiled_contract.clone(),
+                  compiled_plan,
+                  &base_bundle_value,
+                  assurance_level,
+              )?;
+              if independently_verified != base.verified_attestation {
+                  return Err(InkscapeSrgbCertificationError::BaseCertificationBindingMismatch);
+              }
+
+              let certificate = &base.attestation.certificate.payload;
+              let valid = certificate.contract_digest == compiled_contract.seal.contract_digest
+                  && certificate.capsule_digest == compiled_contract.seal.capsule_digest
+                  && certificate.plan_id == compiled_plan.plan_id
+                  && certificate.plan_digest == compiled_plan.plan_digest
+                  && certificate.evidence_bundle_digest == base.evidence_bundle_digest
+                  && independently_verified.evidence_bundle_digest == base.evidence_bundle_digest
+                  && certificate.assurance_level == assurance_level
+                  && independently_verified.assurance_level == assurance_level;
+              if valid {
+                  Ok(())
+              } else {
+                  Err(InkscapeSrgbCertificationError::BaseCertificationBindingMismatch)
+              }
+          }
+          '''.strip().splitlines()
+          lines[function_start:function_end] = replacement + [""]
+          lib.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+          tests = Path("crates/graphic-inkscape-srgb-certified-delivery-runtime/tests/certified_srgb_delivery.rs")
+          lines = tests.read_text(encoding="utf-8").splitlines()
+          output = []
+          for line in lines:
+              if line == "    let base_delivery = certify_base_delivery(":
+                  if not output or output[-1] != "    let base_attestation_keys = attestation_keys(&context)?;":
+                      output.append("    let base_attestation_keys = attestation_keys(&context)?;")
+              output.append(line)
+              if line == "        normalization_keys: &normalization.keys,":
+                  output.append("        base_attestation_keys: &base_attestation_keys,")
+          lines = output
+          for index, line in enumerate(lines):
+              if line == "    let keys = attestation_keys(&context)?;":
+                  lines[index] = "    let keys = base_attestation_keys;"
+                  break
+          tests.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+      - name: Format workspace
+        run: cargo fmt --all
+
+      - name: Commit trust patch
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add crates/graphic-inkscape-srgb-certified-delivery-runtime
+          git commit -m "Verify base Inkscape attestation with trusted keys"
+          git push origin HEAD:agent/inkscape-srgb-certified-delivery-v1
