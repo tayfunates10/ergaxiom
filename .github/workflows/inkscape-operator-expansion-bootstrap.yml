@@ -42,8 +42,12 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          exec > >(tee "$RUNNER_TEMP/operator-bootstrap.log") 2>&1
+          echo "operator chunks: $(ls .bootstrap/operators.part* | wc -l)"
+          echo "test chunks: $(ls .bootstrap/realtest.part* | wc -l)"
           cat .bootstrap/operators.part* | base64 --decode | gzip --decompress > crates/inkscape-adapter-runtime/src/operators.rs
           cat .bootstrap/realtest.part* | base64 --decode | gzip --decompress > crates/inkscape-adapter-runtime/tests/proof_bound_operators.rs
+          wc -c crates/inkscape-adapter-runtime/src/operators.rs crates/inkscape-adapter-runtime/tests/proof_bound_operators.rs
           python - <<'PY'
           from pathlib import Path
 
@@ -62,6 +66,15 @@ jobs:
           lib.write_text(text, encoding="utf-8")
           PY
           cargo fmt --all
+
+      - name: Upload bootstrap diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: inkscape-operator-bootstrap-diagnostics
+          path: ${{ runner.temp }}/operator-bootstrap.log
+          if-no-files-found: warn
+          retention-days: 7
 
       - name: Lint expanded adapter
         run: cargo clippy -p ergaxiom-inkscape-adapter-runtime --all-targets --all-features -- -D warnings
