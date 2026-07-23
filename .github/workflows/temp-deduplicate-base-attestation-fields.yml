@@ -1,0 +1,44 @@
+name: Temporary deduplicate base attestation fields
+
+on:
+  push:
+    branches:
+      - agent/inkscape-srgb-certified-delivery-v1
+    paths:
+      - ".github/workflows/temp-deduplicate-base-attestation-fields.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  deduplicate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Check out branch
+        uses: actions/checkout@v4
+        with:
+          ref: agent/inkscape-srgb-certified-delivery-v1
+          fetch-depth: 0
+
+      - name: Remove consecutive duplicate fields
+        shell: python
+        run: |
+          from pathlib import Path
+          path = Path("crates/graphic-inkscape-srgb-certified-delivery-runtime/tests/certified_srgb_delivery.rs")
+          lines = path.read_text(encoding="utf-8").splitlines()
+          output = []
+          for line in lines:
+              if line == "        base_attestation_keys: &base_attestation_keys," and output and output[-1] == line:
+                  continue
+              output.append(line)
+          path.write_text("\n".join(output) + "\n", encoding="utf-8")
+
+      - name: Commit deduplication
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add crates/graphic-inkscape-srgb-certified-delivery-runtime/tests/certified_srgb_delivery.rs
+          git commit -m "Deduplicate base attestation test fields"
+          git push origin HEAD:agent/inkscape-srgb-certified-delivery-v1
