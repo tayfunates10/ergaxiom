@@ -6,9 +6,7 @@ use std::fs;
 use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use ergaxiom_inkscape_adapter_runtime::{
-    SetTextAndExportRequest, VerifiedInkscape, sha256_file,
-};
+use ergaxiom_inkscape_adapter_runtime::{SetTextAndExportRequest, VerifiedInkscape, sha256_file};
 use ergaxiom_png_pixel_decoder_runtime::decode_png;
 use ergaxiom_png_rendered_contrast_runtime::{
     PixelRect, RenderedContrastPolicy, validate_rendered_contrast,

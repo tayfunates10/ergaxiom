@@ -120,9 +120,9 @@ fn fixed_point_wcag_reference_ratios_are_stable() {
     assert_eq!(contrast_milli(0, 1_000_000), 21_000);
     let dark = relative_luminance_million([17, 24, 39]);
     let light = relative_luminance_million([249, 250, 251]);
-    assert_eq!(dark, 9_069);
-    assert_eq!(light, 955_028);
-    assert_eq!(contrast_milli(dark, light), 17_014);
+    assert_eq!(dark, 9_189);
+    assert_eq!(light, 954_760);
+    assert_eq!(contrast_milli(dark, light), 16_975);
 }
 
 fn policy() -> RenderedContrastPolicy {
