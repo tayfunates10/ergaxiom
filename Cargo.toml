@@ -15,6 +15,7 @@ members = [
   "crates/operator-plan-runtime",
   "crates/operator-simulation-runtime",
   "crates/png-artifact-validator-runtime",
+  "crates/png-logo-geometry-runtime",
   "crates/png-pixel-decoder-runtime",
   "crates/png-rendered-contrast-runtime",
   "crates/png-srgb-normalizer-runtime",
