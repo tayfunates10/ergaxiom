@@ -41,8 +41,8 @@ use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 
 const CONTRACT_SOURCE: &str =
-    include_str!("../../../examples/work-contracts/social-media-static-post.json");
-const CAPSULE_SOURCE: &str = include_str!("../../../professions/graphic-designer/profession.json");
+    include_str!("../../../../examples/work-contracts/social-media-static-post.json");
+const CAPSULE_SOURCE: &str = include_str!("../../../../professions/graphic-designer/profession.json");
 const POLICY_ISSUER: &str = "ergaxiom.policy-authority";
 const POLICY_KEY_ID: &str = "graphic-inkscape-srgb-policy-key";
 pub(crate) const EXECUTOR_ID: &str = "executor.graphic-inkscape-srgb-test";
