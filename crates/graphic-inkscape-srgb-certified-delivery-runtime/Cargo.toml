@@ -16,6 +16,8 @@ ergaxiom-contract-runtime = { path = "../contract-runtime" }
 ergaxiom-evidence-runtime = { path = "../evidence-runtime" }
 ergaxiom-graphic-inkscape-certified-delivery-runtime = { path = "../graphic-inkscape-certified-delivery-runtime" }
 ergaxiom-operator-plan-runtime = { path = "../operator-plan-runtime" }
+ergaxiom-png-pixel-decoder-runtime = { path = "../png-pixel-decoder-runtime" }
+ergaxiom-png-rendered-contrast-runtime = { path = "../png-rendered-contrast-runtime" }
 ergaxiom-png-srgb-normalizer-runtime = { path = "../png-srgb-normalizer-runtime" }
 ergaxiom-proof-kernel = { path = "../proof-kernel" }
 serde.workspace = true
@@ -31,6 +33,7 @@ ergaxiom-graphic-designer-twin-runtime = { path = "../graphic-designer-twin-runt
 ergaxiom-inkscape-adapter-runtime = { path = "../inkscape-adapter-runtime" }
 ergaxiom-inkscape-execution-evidence-runtime = { path = "../inkscape-execution-evidence-runtime" }
 ergaxiom-occupational-twin-runtime = { path = "../occupational-twin-runtime" }
+flate2.workspace = true
 
 [lints]
 workspace = true
