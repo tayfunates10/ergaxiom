@@ -1,0 +1,25 @@
+[package]
+name = "ergaxiom-png-rendered-contrast-runtime"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+publish = false
+
+[features]
+real-inkscape-tests = []
+
+[dependencies]
+ergaxiom-png-pixel-decoder-runtime = { path = "../png-pixel-decoder-runtime" }
+ergaxiom-proof-kernel = { path = "../proof-kernel" }
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+ergaxiom-inkscape-adapter-runtime = { path = "../inkscape-adapter-runtime" }
+ergaxiom-png-artifact-validator-runtime = { path = "../png-artifact-validator-runtime" }
+ergaxiom-png-srgb-normalizer-runtime = { path = "../png-srgb-normalizer-runtime" }
+
+[lints]
+workspace = true
