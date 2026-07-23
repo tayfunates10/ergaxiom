@@ -20,11 +20,8 @@ use sha2::{Digest, Sha256};
 #[test]
 fn complete_contract_produces_the_certified_four_step_plan() -> Result<(), Box<dyn Error>> {
     let fixture = fixture()?;
-    let outcome = synthesize_static_social_post_plan(
-        &identity(),
-        &fixture.contract,
-        &fixture.capsule,
-    )?;
+    let outcome =
+        synthesize_static_social_post_plan(&identity(), &fixture.contract, &fixture.capsule)?;
 
     let TypedPlanOutcome::Planned {
         plan,
@@ -66,7 +63,8 @@ fn complete_contract_produces_the_certified_four_step_plan() -> Result<(), Box<d
 }
 
 #[test]
-fn missing_plan_identity_returns_resolution_requests_without_a_plan() -> Result<(), Box<dyn Error>> {
+fn missing_plan_identity_returns_resolution_requests_without_a_plan() -> Result<(), Box<dyn Error>>
+{
     let fixture = fixture()?;
     let outcome = synthesize_static_social_post_plan(
         &StaticSocialPostPlanIdentity::default(),
@@ -94,16 +92,9 @@ fn missing_plan_identity_returns_resolution_requests_without_a_plan() -> Result<
 fn identical_sealed_inputs_produce_identical_plan_material() -> Result<(), Box<dyn Error>> {
     let fixture = fixture()?;
     let identity = identity();
-    let first = synthesize_static_social_post_plan(
-        &identity,
-        &fixture.contract,
-        &fixture.capsule,
-    )?;
-    let second = synthesize_static_social_post_plan(
-        &identity,
-        &fixture.contract,
-        &fixture.capsule,
-    )?;
+    let first = synthesize_static_social_post_plan(&identity, &fixture.contract, &fixture.capsule)?;
+    let second =
+        synthesize_static_social_post_plan(&identity, &fixture.contract, &fixture.capsule)?;
 
     assert_eq!(first, second);
     Ok(())
@@ -112,18 +103,11 @@ fn identical_sealed_inputs_produce_identical_plan_material() -> Result<(), Box<d
 #[test]
 fn caller_supplied_plan_timestamp_changes_the_plan_digest() -> Result<(), Box<dyn Error>> {
     let fixture = fixture()?;
-    let first = synthesize_static_social_post_plan(
-        &identity(),
-        &fixture.contract,
-        &fixture.capsule,
-    )?;
+    let first =
+        synthesize_static_social_post_plan(&identity(), &fixture.contract, &fixture.capsule)?;
     let mut changed = identity();
     changed.created_at = Some("2026-07-23T12:30:01Z".to_owned());
-    let second = synthesize_static_social_post_plan(
-        &changed,
-        &fixture.contract,
-        &fixture.capsule,
-    )?;
+    let second = synthesize_static_social_post_plan(&changed, &fixture.contract, &fixture.capsule)?;
 
     let TypedPlanOutcome::Planned {
         plan_digest: first_digest,
@@ -160,11 +144,8 @@ fn undeclared_extra_input_cannot_enter_the_certified_plan() -> Result<(), Box<dy
             "immutable": true
         }));
 
-    let result = synthesize_static_social_post_plan(
-        &identity(),
-        &fixture.contract,
-        &fixture.capsule,
-    );
+    let result =
+        synthesize_static_social_post_plan(&identity(), &fixture.contract, &fixture.capsule);
     assert!(matches!(
         result,
         Err(TypedPlannerError::ProfileMismatch {
@@ -190,11 +171,8 @@ fn extra_permission_cannot_be_hidden_in_the_plan() -> Result<(), Box<dyn Error>>
             "constraints": {}
         }));
 
-    let result = synthesize_static_social_post_plan(
-        &identity(),
-        &fixture.contract,
-        &fixture.capsule,
-    );
+    let result =
+        synthesize_static_social_post_plan(&identity(), &fixture.contract, &fixture.capsule);
     assert!(matches!(
         result,
         Err(TypedPlannerError::ProfileMismatch {
@@ -215,11 +193,8 @@ fn missing_capsule_operator_fails_closed() -> Result<(), Box<dyn Error>> {
         .ok_or("capsule operators missing")?;
     operators.retain(|operator| operator["id"] != "design.compose_text");
 
-    let result = synthesize_static_social_post_plan(
-        &identity(),
-        &fixture.contract,
-        &fixture.capsule,
-    );
+    let result =
+        synthesize_static_social_post_plan(&identity(), &fixture.contract, &fixture.capsule);
     assert!(matches!(
         result,
         Err(TypedPlannerError::MissingOperator(operator_id))
@@ -231,11 +206,8 @@ fn missing_capsule_operator_fails_closed() -> Result<(), Box<dyn Error>> {
 #[test]
 fn generated_plan_enters_graphic_twin_simulation_without_rewriting() -> Result<(), Box<dyn Error>> {
     let fixture = fixture()?;
-    let outcome = synthesize_static_social_post_plan(
-        &identity(),
-        &fixture.contract,
-        &fixture.capsule,
-    )?;
+    let outcome =
+        synthesize_static_social_post_plan(&identity(), &fixture.contract, &fixture.capsule)?;
     let TypedPlanOutcome::Planned { plan, .. } = outcome else {
         panic!("complete fixture must produce a plan");
     };

@@ -2,7 +2,7 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use ergaxiom_contract_runtime::{ContractCompileError, CompiledContract, compile_contract};
+use ergaxiom_contract_runtime::{CompiledContract, ContractCompileError, compile_contract};
 use ergaxiom_operator_plan_runtime::{PlanCompileError, compile_plan};
 use ergaxiom_proof_kernel::{HashingError, canonical_json_sha256};
 use serde::{Deserialize, Serialize};
@@ -67,10 +67,7 @@ pub enum TypedPlanOutcome {
 #[derive(Debug, Error)]
 pub enum TypedPlannerError {
     #[error("plan identity field {field} is invalid: {reason}")]
-    InvalidIdentityField {
-        field: &'static str,
-        reason: String,
-    },
+    InvalidIdentityField { field: &'static str, reason: String },
     #[error("failed to decode planning fields from Work Contract: {0}")]
     ContractPlanningDecode(#[source] serde_json::Error),
     #[error("failed to decode planning fields from Profession Capsule: {0}")]
@@ -207,8 +204,7 @@ pub fn synthesize_static_social_post_plan(
     let created_at = resolved(identity.created_at.as_deref(), "created_at")?;
     let capability_requirements = capability_requirements(plan_id);
     let capability_requirement_value = serde_json::to_value(&capability_requirements)?;
-    let capability_requirement_digest =
-        canonical_json_sha256(&capability_requirement_value)?;
+    let capability_requirement_digest = canonical_json_sha256(&capability_requirement_value)?;
 
     let plan = build_plan(
         plan_id,
@@ -330,7 +326,10 @@ fn validate_input_profile(inputs: &[ContractInputView]) -> Result<(), TypedPlann
     ]);
     let mut actual = BTreeMap::new();
     for input in inputs {
-        if actual.insert(input.id.as_str(), input.kind.as_str()).is_some() {
+        if actual
+            .insert(input.id.as_str(), input.kind.as_str())
+            .is_some()
+        {
             return Err(TypedPlannerError::DuplicateIdentifier {
                 kind: "contract input",
                 id: input.id.clone(),
@@ -499,10 +498,38 @@ fn resolve_operator_versions(
 
 fn capability_requirements(plan_id: &str) -> Vec<PlannedCapabilityRequirement> {
     vec![
-        capability(plan_id, "canvas", "step.canvas", "design-editor", "isolated-workspace", "control"),
-        capability(plan_id, "logo", "step.logo", "filesystem", "contract://inputs/*", "read"),
-        capability(plan_id, "text", "step.text", "design-editor", "isolated-workspace", "control"),
-        capability(plan_id, "export", "step.export", "filesystem", "contract://outputs/*", "write"),
+        capability(
+            plan_id,
+            "canvas",
+            "step.canvas",
+            "design-editor",
+            "isolated-workspace",
+            "control",
+        ),
+        capability(
+            plan_id,
+            "logo",
+            "step.logo",
+            "filesystem",
+            "contract://inputs/*",
+            "read",
+        ),
+        capability(
+            plan_id,
+            "text",
+            "step.text",
+            "design-editor",
+            "isolated-workspace",
+            "control",
+        ),
+        capability(
+            plan_id,
+            "export",
+            "step.export",
+            "filesystem",
+            "contract://outputs/*",
+            "write",
+        ),
     ]
 }
 
@@ -653,10 +680,7 @@ fn render_map(map: &BTreeMap<&str, &str>) -> String {
 fn render_output_map(map: &BTreeMap<&str, (&str, &str, Option<&str>)>) -> String {
     map.iter()
         .map(|(id, (kind, destination, media_type))| {
-            format!(
-                "{id}:{kind}:{destination}:{}",
-                media_type.unwrap_or("none")
-            )
+            format!("{id}:{kind}:{destination}:{}", media_type.unwrap_or("none"))
         })
         .collect::<Vec<_>>()
         .join(",")
