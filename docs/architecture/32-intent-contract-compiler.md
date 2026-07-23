@@ -66,6 +66,16 @@ cargo run -p ergaxiom-intent-contract-compiler-runtime \
 
 The CLI exits with code `0` for a compiled contract, `2` when resolution is still required and `1` for invalid or unsupported input.
 
+## Validation commands
+
+```bash
+cargo fmt --all -- --check
+cargo clippy --workspace --all-targets --all-features -- -D warnings
+cargo test --workspace
+```
+
+These commands exercise the authoritative ownership, deterministic hashing, capsule-binding and unresolved-intent behavior before the compiler can be merged.
+
 ## Claim boundary
 
 Version 1 does not interpret unrestricted prose, discover files, read brand rules, select a platform profile or generate timestamps. A future model-assisted interpretation service may propose structured values, but every proposal must retain provenance and pass this deterministic boundary before it can become a Work Contract.
