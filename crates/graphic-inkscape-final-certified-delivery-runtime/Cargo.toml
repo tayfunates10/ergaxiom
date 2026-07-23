@@ -6,6 +6,10 @@ rust-version.workspace = true
 repository.workspace = true
 publish = false
 
+[features]
+default = []
+real-inkscape-tests = []
+
 [dependencies]
 ed25519-dalek.workspace = true
 ergaxiom-attestation-runtime = { path = "../attestation-runtime" }
@@ -33,7 +37,9 @@ ergaxiom-graphic-inkscape-certified-delivery-runtime = { path = "../graphic-inks
 ergaxiom-inkscape-adapter-runtime = { path = "../inkscape-adapter-runtime" }
 ergaxiom-inkscape-execution-evidence-runtime = { path = "../inkscape-execution-evidence-runtime" }
 ergaxiom-occupational-twin-runtime = { path = "../occupational-twin-runtime" }
+ergaxiom-png-pixel-decoder-runtime = { path = "../png-pixel-decoder-runtime" }
 ergaxiom-png-srgb-normalizer-runtime = { path = "../png-srgb-normalizer-runtime" }
+ergaxiom-typed-planner-runtime = { path = "../typed-planner-runtime" }
 
 [lints]
 workspace = true

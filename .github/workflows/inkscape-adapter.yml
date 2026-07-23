@@ -5,24 +5,22 @@ on:
     paths:
       - "Cargo.toml"
       - "Cargo.lock"
+      - "crates/graphic-final-artifact-verification-runtime/**"
       - "crates/graphic-inkscape-certified-delivery-runtime/**"
+      - "crates/graphic-inkscape-final-certified-delivery-runtime/**"
       - "crates/graphic-inkscape-srgb-certified-delivery-runtime/**"
       - "crates/inkscape-adapter-runtime/**"
       - "crates/inkscape-execution-evidence-runtime/**"
       - "crates/png-artifact-validator-runtime/**"
+      - "crates/png-logo-geometry-runtime/**"
       - "crates/png-pixel-decoder-runtime/**"
       - "crates/png-rendered-contrast-runtime/**"
+      - "crates/png-rendered-text-bounds-runtime/**"
       - "crates/png-srgb-normalizer-runtime/**"
+      - "crates/svg-approved-copy-runtime/**"
       - "fixtures/inkscape/**"
       - "professions/graphic-designer/adapters/**"
-      - "docs/architecture/19-inkscape-adapter.md"
-      - "docs/architecture/20-inkscape-certified-delivery.md"
-      - "docs/architecture/21-real-inkscape-certified-delivery.md"
-      - "docs/architecture/22-png-artifact-validator.md"
-      - "docs/architecture/23-png-srgb-normalization.md"
-      - "docs/architecture/24-inkscape-srgb-certified-delivery.md"
-      - "docs/architecture/25-png-pixel-decoder.md"
-      - "docs/architecture/26-rendered-contrast-validator.md"
+      - "docs/architecture/**"
       - ".github/workflows/inkscape-adapter.yml"
   push:
     branches:
@@ -30,24 +28,22 @@ on:
     paths:
       - "Cargo.toml"
       - "Cargo.lock"
+      - "crates/graphic-final-artifact-verification-runtime/**"
       - "crates/graphic-inkscape-certified-delivery-runtime/**"
+      - "crates/graphic-inkscape-final-certified-delivery-runtime/**"
       - "crates/graphic-inkscape-srgb-certified-delivery-runtime/**"
       - "crates/inkscape-adapter-runtime/**"
       - "crates/inkscape-execution-evidence-runtime/**"
       - "crates/png-artifact-validator-runtime/**"
+      - "crates/png-logo-geometry-runtime/**"
       - "crates/png-pixel-decoder-runtime/**"
       - "crates/png-rendered-contrast-runtime/**"
+      - "crates/png-rendered-text-bounds-runtime/**"
       - "crates/png-srgb-normalizer-runtime/**"
+      - "crates/svg-approved-copy-runtime/**"
       - "fixtures/inkscape/**"
       - "professions/graphic-designer/adapters/**"
-      - "docs/architecture/19-inkscape-adapter.md"
-      - "docs/architecture/20-inkscape-certified-delivery.md"
-      - "docs/architecture/21-real-inkscape-certified-delivery.md"
-      - "docs/architecture/22-png-artifact-validator.md"
-      - "docs/architecture/23-png-srgb-normalization.md"
-      - "docs/architecture/24-inkscape-srgb-certified-delivery.md"
-      - "docs/architecture/25-png-pixel-decoder.md"
-      - "docs/architecture/26-rendered-contrast-validator.md"
+      - "docs/architecture/**"
       - ".github/workflows/inkscape-adapter.yml"
 
 permissions:
@@ -87,16 +83,21 @@ jobs:
       - name: Run adapter Clippy
         run: cargo clippy -p ergaxiom-inkscape-adapter-runtime --all-targets --all-features -- -D warnings
 
-      - name: Run certified-delivery, PNG validator, decoder, contrast and normalizer Clippy
+      - name: Run certified-delivery and final-validator Clippy
         run: >-
           cargo clippy
           -p ergaxiom-inkscape-execution-evidence-runtime
           -p ergaxiom-graphic-inkscape-certified-delivery-runtime
           -p ergaxiom-graphic-inkscape-srgb-certified-delivery-runtime
+          -p ergaxiom-graphic-final-artifact-verification-runtime
+          -p ergaxiom-graphic-inkscape-final-certified-delivery-runtime
           -p ergaxiom-png-artifact-validator-runtime
           -p ergaxiom-png-pixel-decoder-runtime
+          -p ergaxiom-png-logo-geometry-runtime
+          -p ergaxiom-png-rendered-text-bounds-runtime
           -p ergaxiom-png-rendered-contrast-runtime
           -p ergaxiom-png-srgb-normalizer-runtime
+          -p ergaxiom-svg-approved-copy-runtime
           --all-targets
           --all-features
           -- -D warnings
@@ -113,14 +114,29 @@ jobs:
       - name: Run deterministic sRGB final-certification tests
         run: cargo test -p ergaxiom-graphic-inkscape-srgb-certified-delivery-runtime
 
+      - name: Run deterministic final-artifact binding tests
+        run: cargo test -p ergaxiom-graphic-final-artifact-verification-runtime
+
+      - name: Run deterministic final certified-delivery tests
+        run: cargo test -p ergaxiom-graphic-inkscape-final-certified-delivery-runtime
+
       - name: Run deterministic PNG validator tests
         run: cargo test -p ergaxiom-png-artifact-validator-runtime
 
       - name: Run deterministic PNG pixel-decoder tests
         run: cargo test -p ergaxiom-png-pixel-decoder-runtime
 
+      - name: Run deterministic logo-geometry tests
+        run: cargo test -p ergaxiom-png-logo-geometry-runtime
+
+      - name: Run deterministic rendered-text-bounds tests
+        run: cargo test -p ergaxiom-png-rendered-text-bounds-runtime
+
       - name: Run deterministic rendered-contrast tests
         run: cargo test -p ergaxiom-png-rendered-contrast-runtime
+
+      - name: Run deterministic approved-copy tests
+        run: cargo test -p ergaxiom-svg-approved-copy-runtime
 
       - name: Run deterministic sRGB normalizer tests
         run: cargo test -p ergaxiom-png-srgb-normalizer-runtime
@@ -193,16 +209,31 @@ jobs:
             real_inkscape_srgb_execution_produces_final_attestation \
             -- --nocapture 2>&1 | tee "$RUNNER_TEMP/real-inkscape-srgb-final-attestation.log"
 
-      - name: Upload real PNG, pixel, contrast and final-attestation evidence logs
+      - name: Run complete real final-artifact certificate test
+        shell: bash
+        env:
+          ERGAXIOM_FINAL_EVIDENCE_DIR: ${{ runner.temp }}/real-final-artifact-evidence
+        run: |
+          set -o pipefail
+          cargo test \
+            -p ergaxiom-graphic-inkscape-final-certified-delivery-runtime \
+            --features real-inkscape-tests \
+            --test real_final_certified_delivery \
+            real_inkscape_artifacts_issue_final_acceptance_certificate \
+            -- --nocapture 2>&1 | tee "$RUNNER_TEMP/real-final-artifact-certificate.log"
+
+      - name: Upload real rendered and final-certificate evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: real-inkscape-rendered-evidence-logs
+          name: real-inkscape-final-artifact-evidence
           path: |
             ${{ runner.temp }}/real-inkscape-png-validator.log
             ${{ runner.temp }}/real-inkscape-srgb-normalization.log
             ${{ runner.temp }}/real-inkscape-pixel-decoder.log
             ${{ runner.temp }}/real-inkscape-rendered-contrast.log
             ${{ runner.temp }}/real-inkscape-srgb-final-attestation.log
+            ${{ runner.temp }}/real-final-artifact-certificate.log
+            ${{ runner.temp }}/real-final-artifact-evidence/**
           if-no-files-found: error
-          retention-days: 1
+          retention-days: 7
