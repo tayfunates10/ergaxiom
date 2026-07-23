@@ -3,6 +3,7 @@ members = [
   "crates/attestation-runtime",
   "crates/capability-runtime",
   "crates/contract-runtime",
+  "crates/desktop-shell-runtime",
   "crates/evidence-runtime",
   "crates/execution-runtime",
   "crates/graphic-certified-delivery-runtime",
