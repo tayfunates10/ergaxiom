@@ -10,6 +10,7 @@ on:
       - "crates/inkscape-adapter-runtime/**"
       - "crates/inkscape-execution-evidence-runtime/**"
       - "crates/png-artifact-validator-runtime/**"
+      - "crates/png-pixel-decoder-runtime/**"
       - "crates/png-srgb-normalizer-runtime/**"
       - "fixtures/inkscape/**"
       - "professions/graphic-designer/adapters/**"
@@ -19,6 +20,7 @@ on:
       - "docs/architecture/22-png-artifact-validator.md"
       - "docs/architecture/23-png-srgb-normalization.md"
       - "docs/architecture/24-inkscape-srgb-certified-delivery.md"
+      - "docs/architecture/25-png-pixel-decoder.md"
       - ".github/workflows/inkscape-adapter.yml"
   push:
     branches:
@@ -31,6 +33,7 @@ on:
       - "crates/inkscape-adapter-runtime/**"
       - "crates/inkscape-execution-evidence-runtime/**"
       - "crates/png-artifact-validator-runtime/**"
+      - "crates/png-pixel-decoder-runtime/**"
       - "crates/png-srgb-normalizer-runtime/**"
       - "fixtures/inkscape/**"
       - "professions/graphic-designer/adapters/**"
@@ -40,6 +43,7 @@ on:
       - "docs/architecture/22-png-artifact-validator.md"
       - "docs/architecture/23-png-srgb-normalization.md"
       - "docs/architecture/24-inkscape-srgb-certified-delivery.md"
+      - "docs/architecture/25-png-pixel-decoder.md"
       - ".github/workflows/inkscape-adapter.yml"
 
 permissions:
@@ -79,13 +83,14 @@ jobs:
       - name: Run adapter Clippy
         run: cargo clippy -p ergaxiom-inkscape-adapter-runtime --all-targets --all-features -- -D warnings
 
-      - name: Run certified-delivery, PNG validator and normalizer Clippy
+      - name: Run certified-delivery, PNG validator, decoder and normalizer Clippy
         run: >-
           cargo clippy
           -p ergaxiom-inkscape-execution-evidence-runtime
           -p ergaxiom-graphic-inkscape-certified-delivery-runtime
           -p ergaxiom-graphic-inkscape-srgb-certified-delivery-runtime
           -p ergaxiom-png-artifact-validator-runtime
+          -p ergaxiom-png-pixel-decoder-runtime
           -p ergaxiom-png-srgb-normalizer-runtime
           --all-targets
           --all-features
@@ -105,6 +110,9 @@ jobs:
 
       - name: Run deterministic PNG validator tests
         run: cargo test -p ergaxiom-png-artifact-validator-runtime
+
+      - name: Run deterministic PNG pixel-decoder tests
+        run: cargo test -p ergaxiom-png-pixel-decoder-runtime
 
       - name: Run deterministic sRGB normalizer tests
         run: cargo test -p ergaxiom-png-srgb-normalizer-runtime
@@ -146,6 +154,16 @@ jobs:
             --test real_inkscape_normalization \
             -- --nocapture 2>&1 | tee "$RUNNER_TEMP/real-inkscape-srgb-normalization.log"
 
+      - name: Run real Inkscape PNG pixel-decoder equivalence test
+        shell: bash
+        run: |
+          set -o pipefail
+          cargo test \
+            -p ergaxiom-png-pixel-decoder-runtime \
+            --features real-inkscape-tests \
+            --test real_inkscape_pixels \
+            -- --nocapture 2>&1 | tee "$RUNNER_TEMP/real-inkscape-pixel-decoder.log"
+
       - name: Run real Inkscape sRGB final-attestation test
         shell: bash
         run: |
@@ -157,14 +175,15 @@ jobs:
             real_inkscape_srgb_execution_produces_final_attestation \
             -- --nocapture 2>&1 | tee "$RUNNER_TEMP/real-inkscape-srgb-final-attestation.log"
 
-      - name: Upload real PNG and final-attestation evidence logs
+      - name: Upload real PNG, pixel and final-attestation evidence logs
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: real-inkscape-srgb-certified-evidence-logs
+          name: real-inkscape-artifact-evidence-logs
           path: |
             ${{ runner.temp }}/real-inkscape-png-validator.log
             ${{ runner.temp }}/real-inkscape-srgb-normalization.log
+            ${{ runner.temp }}/real-inkscape-pixel-decoder.log
             ${{ runner.temp }}/real-inkscape-srgb-final-attestation.log
           if-no-files-found: error
           retention-days: 1
