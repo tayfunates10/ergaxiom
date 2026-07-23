@@ -170,10 +170,7 @@ fn validate_inputs(
     Ok(())
 }
 
-fn extract_target_text(
-    svg_text: &str,
-    target_id: &str,
-) -> Result<String, ApprovedCopyError> {
+fn extract_target_text(svg_text: &str, target_id: &str) -> Result<String, ApprovedCopyError> {
     let document = Document::parse(svg_text)
         .map_err(|error| ApprovedCopyError::SvgParse(error.to_string()))?;
     let root = document.root_element();
