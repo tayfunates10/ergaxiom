@@ -132,7 +132,8 @@ fn real_inkscape_artifacts_issue_final_acceptance_certificate() -> Result<(), Bo
     let raw_raster_bytes = fs::read(&execution.raster)?;
     decode_png_bytes(&raw_raster_bytes)
         .map_err(|error| format!("raw Inkscape PNG decode failed: {error}"))?;
-    let normalization = normalization_fixture(&execution)?;
+    let normalization = normalization_fixture(&execution)
+        .map_err(|error| format!("normalization fixture failed: {error}"))?;
     let mut workspace = workspace()?;
     let mut authorizer = authorizer(&context)?;
     let base_attestation_keys = attestation_keys(&context)?;
@@ -142,7 +143,8 @@ fn real_inkscape_artifacts_issue_final_acceptance_certificate() -> Result<(), Bo
         &mut authorizer,
         &tokens,
         &execution,
-    )?;
+    )
+    .map_err(|error| format!("base delivery certification failed: {error}"))?;
     let srgb_delivery = certify_inkscape_srgb_graphic_delivery(InkscapeSrgbCertificationRequest {
         base_delivery,
         normalization_material: normalization_material(&execution, &normalization),
@@ -158,7 +160,8 @@ fn real_inkscape_artifacts_issue_final_acceptance_certificate() -> Result<(), Bo
         attestation_key_id: ATTESTATION_KEY_ID,
         certificate_issued_at_epoch_s: NOW + 1,
         attestation_signing_key: &context.attestation_key,
-    })?;
+    })
+    .map_err(|error| format!("sRGB delivery certification failed: {error}"))?;
 
     let editable_bytes = fs::read(&execution.editable)?;
     let normalized_bytes = fs::read(&normalization.output)?;
