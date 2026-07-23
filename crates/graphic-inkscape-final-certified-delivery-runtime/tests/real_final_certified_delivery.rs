@@ -12,16 +12,18 @@ use base64::{Engine as _, engine::general_purpose::STANDARD};
 use ed25519_dalek::SigningKey;
 use ergaxiom_attestation_runtime::{AttestationKeyRegistry, verify_attestation_against_bundle};
 use ergaxiom_contract_runtime::compile_contract;
-use ergaxiom_graphic_designer_twin_runtime::{encode_rgba_png, Rgba8};
+use ergaxiom_graphic_designer_twin_runtime::{PixelRect as GraphicRect, Rgba8, encode_rgba_png};
+use ergaxiom_graphic_final_artifact_verification_runtime::{
+    FinalArtifactExpectations, FinalArtifactVerificationError, FinalArtifactVerificationRequest,
+    verify_final_artifacts,
+};
 use ergaxiom_graphic_inkscape_final_certified_delivery_runtime::{
     InkscapeFinalArtifactCertificationRequest, certify_inkscape_final_artifacts,
 };
 use ergaxiom_graphic_inkscape_srgb_certified_delivery_runtime::{
     InkscapeSrgbCertificationRequest, certify_inkscape_srgb_graphic_delivery,
 };
-use ergaxiom_inkscape_adapter_runtime::{
-    SetTextAndExportRequest, VerifiedInkscape, sha256_file,
-};
+use ergaxiom_inkscape_adapter_runtime::{SetTextAndExportRequest, VerifiedInkscape, sha256_file};
 use ergaxiom_inkscape_execution_evidence_runtime::{
     InkscapeExecutionKeyRegistry, sign_execution_record,
 };
@@ -80,7 +82,7 @@ fn real_inkscape_artifacts_issue_final_acceptance_certificate() -> Result<(), Bo
     };
 
     let approved_logo_png = approved_logo_png()?;
-    let mut context = real_context(&approved_logo_png)?;
+    let context = real_context(&approved_logo_png)?;
     let tokens = signed_tokens(&context)?;
     let directory = TestDirectory::create("real-final-artifact")?;
     let source = directory.join("source.svg");
@@ -167,19 +169,14 @@ fn real_inkscape_artifacts_issue_final_acceptance_certificate() -> Result<(), Bo
     )?;
     let decoded_normalized = decode_png_bytes(&normalized_bytes)?;
     let decoded_approved_logo = decode_png_bytes(&approved_logo_png)?;
-    let logo_geometry = validate_logo_geometry(
-        &decoded_approved_logo,
-        &decoded_normalized,
-        &logo_policy(),
-    )?;
+    let logo_geometry =
+        validate_logo_geometry(&decoded_approved_logo, &decoded_normalized, &logo_policy())?;
     let text_bounds = validate_rendered_text_bounds(
         &decoded_normalized,
         &text_policy(TEXT_ANALYSIS, TEXT_SAFE_AREA),
     )?;
-    let rendered_contrast = validate_rendered_contrast(
-        &decoded_normalized,
-        &contrast_policy(4_500),
-    )?;
+    let rendered_contrast =
+        validate_rendered_contrast(&decoded_normalized, &contrast_policy(4_500))?;
 
     require_accepted("approved copy", approved_copy.accepted, &approved_copy)?;
     require_accepted("logo geometry", logo_geometry.accepted, &logo_geometry)?;
@@ -190,34 +187,51 @@ fn real_inkscape_artifacts_issue_final_acceptance_certificate() -> Result<(), Bo
         &rendered_contrast,
     )?;
 
+    let mut mixed_text_bounds = text_bounds.clone();
+    mixed_text_bounds.report.rgba_pixel_digest = "0".repeat(64);
+    let mixed_pixel_result = verify_final_artifacts(FinalArtifactVerificationRequest {
+        expectations: FinalArtifactExpectations {
+            approved_copy_artifact_digest: sha256_hex(context.job.approved_copy.text.as_bytes()),
+            approved_logo_artifact_digest: sha256_hex(&approved_logo_png),
+            editable_svg_digest: sha256_hex(&editable_bytes),
+            normalized_png_digest: sha256_hex(&normalized_bytes),
+            target_element_id: "headline".to_owned(),
+        },
+        approved_copy: &approved_copy,
+        logo_geometry: &logo_geometry,
+        text_bounds: &mixed_text_bounds,
+        rendered_contrast: &rendered_contrast,
+    });
+    assert!(matches!(
+        mixed_pixel_result,
+        Err(FinalArtifactVerificationError::PixelDecodeBindingMismatch)
+    ));
+
     assert_real_rejections(
-        &context,
         &editable_bytes,
         &decoded_approved_logo,
         &decoded_normalized,
         &text_bounds,
     )?;
 
-    let delivery = certify_inkscape_final_artifacts(
-        InkscapeFinalArtifactCertificationRequest {
-            base_delivery: srgb_delivery,
-            approved_logo_artifact_id: &context.job.approved_logo.artifact_id,
-            approved_copy: &approved_copy,
-            logo_geometry: &logo_geometry,
-            text_bounds: &text_bounds,
-            rendered_contrast: &rendered_contrast,
-            base_attestation_keys: &base_attestation_keys,
-            compiled_contract: &context.compiled_contract,
-            compiled_plan: &context.compiled_plan,
-            assurance_level: AssuranceLevel::E3,
-            final_manifest_id: "manifest.real-final-artifacts.0001",
-            final_certificate_id: "certificate.real-final-artifacts.0001",
-            attestation_issuer_id: ATTESTATION_ISSUER,
-            attestation_key_id: ATTESTATION_KEY_ID,
-            certificate_issued_at_epoch_s: NOW + 2,
-            attestation_signing_key: &context.attestation_key,
-        },
-    )?;
+    let delivery = certify_inkscape_final_artifacts(InkscapeFinalArtifactCertificationRequest {
+        base_delivery: srgb_delivery,
+        approved_logo_artifact_id: &context.job.approved_logo.artifact_id,
+        approved_copy: &approved_copy,
+        logo_geometry: &logo_geometry,
+        text_bounds: &text_bounds,
+        rendered_contrast: &rendered_contrast,
+        base_attestation_keys: &base_attestation_keys,
+        compiled_contract: &context.compiled_contract,
+        compiled_plan: &context.compiled_plan,
+        assurance_level: AssuranceLevel::E3,
+        final_manifest_id: "manifest.real-final-artifacts.0001",
+        final_certificate_id: "certificate.real-final-artifacts.0001",
+        attestation_issuer_id: ATTESTATION_ISSUER,
+        attestation_key_id: ATTESTATION_KEY_ID,
+        certificate_issued_at_epoch_s: NOW + 2,
+        attestation_signing_key: &context.attestation_key,
+    })?;
 
     assert_eq!(
         delivery.evidence_bundle.claimed_decision.status,
@@ -293,8 +307,14 @@ fn real_inkscape_artifacts_issue_final_acceptance_certificate() -> Result<(), Bo
         &execution_record.binary.executable_digest,
     )?;
 
-    eprintln!("real final artifact evidence directory: {}", evidence_dir.display());
-    eprintln!("real final evidence bundle digest: {}", delivery.evidence_bundle_digest);
+    eprintln!(
+        "real final artifact evidence directory: {}",
+        evidence_dir.display()
+    );
+    eprintln!(
+        "real final evidence bundle digest: {}",
+        delivery.evidence_bundle_digest
+    );
     eprintln!(
         "real final artifact binding digest: {}",
         delivery.final_artifact_binding.binding_digest
@@ -317,7 +337,7 @@ fn real_context(approved_logo_png: &[u8]) -> Result<support::Context, Box<dyn Er
     context.job.approved_logo.source_width = 20;
     context.job.approved_logo.source_height = 10;
     context.job.approved_logo.primary_color = Rgba8::opaque(20, 40, 80);
-    context.job.safe_area = support::PixelRect {
+    context.job.safe_area = GraphicRect {
         x: TEXT_SAFE_AREA.x,
         y: TEXT_SAFE_AREA.y,
         width: TEXT_SAFE_AREA.width,
@@ -398,10 +418,7 @@ fn logo_policy() -> LogoGeometryPolicy {
     }
 }
 
-fn text_policy(
-    analysis_region: TextRect,
-    safe_area: TextRect,
-) -> RenderedTextBoundsPolicy {
+fn text_policy(analysis_region: TextRect, safe_area: TextRect) -> RenderedTextBoundsPolicy {
     RenderedTextBoundsPolicy {
         analysis_region,
         safe_area,
@@ -436,7 +453,6 @@ fn contrast_policy(minimum_contrast_milli: u32) -> RenderedContrastPolicy {
 }
 
 fn assert_real_rejections(
-    context: &support::Context,
     editable_bytes: &[u8],
     approved_logo: &ergaxiom_png_pixel_decoder_runtime::DecodedPng,
     normalized: &ergaxiom_png_pixel_decoder_runtime::DecodedPng,
@@ -463,7 +479,10 @@ fn assert_real_rejections(
         &altered_logo_pixels,
     )?;
     let altered_logo = decode_png_bytes(&altered_logo_png)?;
-    let rejected_logo = validate_logo_geometry(&altered_logo, normalized, &logo_policy())?;
+    let mut altered_logo_policy = logo_policy();
+    altered_logo_policy.approved_minimum_foreground_pixels = 1;
+    altered_logo_policy.approved_minimum_foreground_share_milli = 400;
+    let rejected_logo = validate_logo_geometry(&altered_logo, normalized, &altered_logo_policy)?;
     assert!(!rejected_logo.accepted);
 
     let observed = accepted_text_bounds
@@ -476,27 +495,13 @@ fn assert_real_rejections(
         width: observed.width,
         height: observed.height,
     };
-    let clipped = validate_rendered_text_bounds(
-        normalized,
-        &text_policy(tight_analysis, tight_analysis),
-    )?;
+    let clipped =
+        validate_rendered_text_bounds(normalized, &text_policy(tight_analysis, tight_analysis))?;
     assert!(!clipped.accepted);
 
     let low_contrast = validate_rendered_contrast(normalized, &contrast_policy(22_000))?;
     assert!(!low_contrast.accepted);
 
-    assert_eq!(
-        normalized.report.artifact_digest,
-        sha256_hex(&fs::read(
-            context
-                .contract_value
-                .get("outputs")
-                .and_then(Value::as_array)
-                .and_then(|_| None::<PathBuf>)
-                .unwrap_or_default()
-        )
-        .unwrap_or_default())
-    );
     Ok(())
 }
 
