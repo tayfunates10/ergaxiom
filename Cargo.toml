@@ -21,6 +21,7 @@ members = [
   "crates/png-rendered-text-bounds-runtime",
   "crates/png-srgb-normalizer-runtime",
   "crates/proof-kernel",
+  "crates/svg-approved-copy-runtime",
   "crates/windows-bridge-runtime",
   "crates/windows-uia-client-runtime"
 ]
