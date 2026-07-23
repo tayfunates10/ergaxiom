@@ -1,0 +1,49 @@
+name: Temporary fix sRGB test paths
+
+on:
+  push:
+    branches:
+      - agent/inkscape-srgb-certified-delivery-v1
+    paths:
+      - ".github/workflows/temp-fix-srgb-test-paths.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Check out branch
+        uses: actions/checkout@v4
+        with:
+          ref: agent/inkscape-srgb-certified-delivery-v1
+          fetch-depth: 0
+
+      - name: Fix include paths
+        shell: python
+        run: |
+          from pathlib import Path
+          path = Path("crates/graphic-inkscape-srgb-certified-delivery-runtime/tests/support/mod.rs")
+          text = path.read_text(encoding="utf-8")
+          text = text.replace(
+              'include_str!("../../../examples/work-contracts/social-media-static-post.json")',
+              'include_str!("../../../../examples/work-contracts/social-media-static-post.json")',
+              1,
+          )
+          text = text.replace(
+              'include_str!("../../../professions/graphic-designer/profession.json")',
+              'include_str!("../../../../professions/graphic-designer/profession.json")',
+              1,
+          )
+          path.write_text(text, encoding="utf-8")
+
+      - name: Commit fix
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add crates/graphic-inkscape-srgb-certified-delivery-runtime/tests/support/mod.rs
+          git commit -m "Fix sRGB certification fixture paths"
+          git push origin HEAD:agent/inkscape-srgb-certified-delivery-v1
