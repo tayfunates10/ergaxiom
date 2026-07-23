@@ -511,11 +511,11 @@ fn assert_real_rejections(
             pixel[3] = 0;
         }
     }
-    let altered_logo_png = encode_rgba_png(
+    let altered_logo_png = strip_color_profile_chunks(&encode_rgba_png(
         approved_logo.report.width,
         approved_logo.report.height,
         &altered_logo_pixels,
-    )?;
+    )?)?;
     let altered_logo = decode_png_bytes(&altered_logo_png)?;
     let mut altered_logo_policy = logo_policy();
     altered_logo_policy.approved_minimum_foreground_pixels = 1;
