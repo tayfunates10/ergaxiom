@@ -9,7 +9,7 @@ on:
       - ".github/workflows/desktop-lock-bootstrap.yml"
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   generate-locks-and-format:
@@ -58,24 +58,26 @@ jobs:
         working-directory: apps/desktop/src-tauri
         run: cargo generate-lockfile
 
-      - name: Commit generated lockfiles and formatting
+      - name: Assemble bootstrap output
         shell: bash
         run: |
           set -euo pipefail
-          git config user.name "ergaxiom-ci"
-          git config user.email "actions@users.noreply.github.com"
-          git add \
-            Cargo.toml \
-            crates/desktop-shell-runtime \
-            apps/desktop/package-lock.json \
-            apps/desktop/src-tauri/Cargo.lock \
-            apps/desktop/src-tauri/src \
-            apps/desktop/src-tauri/Cargo.toml
-          if git diff --cached --quiet; then
-            echo "No bootstrap changes were needed."
-            exit 0
-          fi
-          git commit -m "Generate desktop lockfiles and format sources"
-          git push origin HEAD:${{ github.head_ref }}
+          mkdir -p "$RUNNER_TEMP/desktop-bootstrap/apps/desktop/src-tauri/src"
+          mkdir -p "$RUNNER_TEMP/desktop-bootstrap/crates/desktop-shell-runtime/src"
+          mkdir -p "$RUNNER_TEMP/desktop-bootstrap/crates/desktop-shell-runtime/tests"
+          cp apps/desktop/package-lock.json "$RUNNER_TEMP/desktop-bootstrap/apps/desktop/package-lock.json"
+          cp apps/desktop/src-tauri/Cargo.lock "$RUNNER_TEMP/desktop-bootstrap/apps/desktop/src-tauri/Cargo.lock"
+          cp apps/desktop/src-tauri/src/*.rs "$RUNNER_TEMP/desktop-bootstrap/apps/desktop/src-tauri/src/"
+          cp crates/desktop-shell-runtime/src/*.rs "$RUNNER_TEMP/desktop-bootstrap/crates/desktop-shell-runtime/src/"
+          cp crates/desktop-shell-runtime/tests/*.rs "$RUNNER_TEMP/desktop-bootstrap/crates/desktop-shell-runtime/tests/"
+          git diff -- Cargo.toml apps/desktop/src-tauri crates/desktop-shell-runtime > "$RUNNER_TEMP/desktop-bootstrap/format.patch"
+
+      - name: Upload deterministic bootstrap output
+        uses: actions/upload-artifact@v4
+        with:
+          name: desktop-locks-and-formatted-sources
+          path: ${{ runner.temp }}/desktop-bootstrap/**
+          if-no-files-found: error
+          retention-days: 1
 
 # One-shot bootstrap: remove after the generated files are committed.
