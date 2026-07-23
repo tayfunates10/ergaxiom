@@ -6,9 +6,7 @@ use std::fs;
 use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use ergaxiom_inkscape_adapter_runtime::{
-    SetTextAndExportRequest, VerifiedInkscape, sha256_file,
-};
+use ergaxiom_inkscape_adapter_runtime::{SetTextAndExportRequest, VerifiedInkscape, sha256_file};
 use ergaxiom_png_pixel_decoder_runtime::decode_png;
 use ergaxiom_png_srgb_normalizer_runtime::{
     PngSrgbNormalizationRequest, SrgbRenderingIntent, normalize_png_srgb,
@@ -37,8 +35,7 @@ impl Drop for TestDirectory {
 }
 
 #[test]
-fn raw_and_srgb_normalized_inkscape_pngs_decode_to_identical_rgba()
--> Result<(), Box<dyn Error>> {
+fn raw_and_srgb_normalized_inkscape_pngs_decode_to_identical_rgba() -> Result<(), Box<dyn Error>> {
     let (Ok(executable), Ok(executable_digest)) = (
         env::var("ERGAXIOM_INKSCAPE"),
         env::var("ERGAXIOM_INKSCAPE_SHA256"),
@@ -85,15 +82,22 @@ fn raw_and_srgb_normalized_inkscape_pngs_decode_to_identical_rgba()
         raw.report.non_opaque_pixel_count,
         normalized.report.non_opaque_pixel_count
     );
-    assert_eq!(raw.report.idat_payload_digest, normalized.report.idat_payload_digest);
-    assert_eq!(raw.report.rgba_pixel_digest, normalized.report.rgba_pixel_digest);
+    assert_eq!(
+        raw.report.idat_payload_digest,
+        normalized.report.idat_payload_digest
+    );
+    assert_eq!(
+        raw.report.rgba_pixel_digest,
+        normalized.report.rgba_pixel_digest
+    );
     assert_eq!(raw.rgba8, normalized.rgba8);
-    assert_ne!(raw.report.artifact_digest, normalized.report.artifact_digest);
+    assert_ne!(
+        raw.report.artifact_digest,
+        normalized.report.artifact_digest
+    );
     eprintln!(
         "real Inkscape RGBA digest: {}; filters: {:?}; non-opaque: {}",
-        raw.report.rgba_pixel_digest,
-        raw.report.filter_counts,
-        raw.report.non_opaque_pixel_count
+        raw.report.rgba_pixel_digest, raw.report.filter_counts, raw.report.non_opaque_pixel_count
     );
     Ok(())
 }

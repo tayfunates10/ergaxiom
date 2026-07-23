@@ -42,9 +42,7 @@ fn truecolor_pixels_receive_opaque_alpha() -> Result<(), Box<dyn Error>> {
     let decoded = decode_png_bytes(&png)?;
     assert_eq!(
         decoded.rgba8,
-        vec![
-            1, 2, 3, 255, 4, 5, 6, 255, 7, 8, 9, 255, 10, 11, 12, 255,
-        ]
+        vec![1, 2, 3, 255, 4, 5, 6, 255, 7, 8, 9, 255, 10, 11, 12, 255,]
     );
     assert_eq!(decoded.report.non_opaque_pixel_count, 0);
     assert_eq!(decoded.report.filter_counts, [1, 0, 1, 0, 0]);

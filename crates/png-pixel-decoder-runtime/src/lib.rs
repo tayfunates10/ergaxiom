@@ -4,9 +4,7 @@ use std::fs;
 use std::io::{Cursor, Read};
 use std::path::Path;
 
-use ergaxiom_png_artifact_validator_runtime::{
-    PngArtifactError, PngColorType, inspect_png_bytes,
-};
+use ergaxiom_png_artifact_validator_runtime::{PngArtifactError, PngColorType, inspect_png_bytes};
 use ergaxiom_proof_kernel::{HashingError, canonical_json_sha256};
 use flate2::bufread::ZlibDecoder;
 use serde::{Deserialize, Serialize};
@@ -70,7 +68,9 @@ pub enum PngPixelDecodeError {
     Png(#[from] PngArtifactError),
     #[error("pixel decoder supports only 8-bit PNGs; actual bit depth is {0}")]
     UnsupportedBitDepth(u8),
-    #[error("pixel decoder supports only truecolor and truecolor-alpha PNGs; actual color type is {0:?}")]
+    #[error(
+        "pixel decoder supports only truecolor and truecolor-alpha PNGs; actual color type is {0:?}"
+    )]
     UnsupportedColorType(PngColorType),
     #[error("pixel decoder does not support interlaced PNGs")]
     UnsupportedInterlace,
@@ -141,13 +141,8 @@ pub fn decode_png_bytes(bytes: &[u8]) -> Result<DecodedPng, PngPixelDecodeError>
 
     let idat = collect_idat_payload(bytes)?;
     let scanlines = decompress_exact(&idat, scanline_bytes)?;
-    let (unfiltered, filter_counts) = unfilter_scanlines(
-        &scanlines,
-        width,
-        height,
-        bytes_per_pixel,
-        row_bytes,
-    )?;
+    let (unfiltered, filter_counts) =
+        unfilter_scanlines(&scanlines, width, height, bytes_per_pixel, row_bytes)?;
     let rgba8 = convert_to_rgba(&unfiltered, structural.color_type, pixel_count)?;
     let non_opaque_pixel_count = rgba8
         .chunks_exact(4)
@@ -224,10 +219,7 @@ fn collect_idat_payload(bytes: &[u8]) -> Result<Vec<u8>, PngPixelDecodeError> {
     Ok(idat)
 }
 
-fn decompress_exact(
-    idat: &[u8],
-    expected_len: usize,
-) -> Result<Vec<u8>, PngPixelDecodeError> {
+fn decompress_exact(idat: &[u8], expected_len: usize) -> Result<Vec<u8>, PngPixelDecodeError> {
     let cursor = Cursor::new(idat);
     let mut decoder = ZlibDecoder::new(cursor);
     let limit = u64::try_from(expected_len)
@@ -249,8 +241,8 @@ fn decompress_exact(
             actual: output.len(),
         });
     }
-    let consumed = usize::try_from(decoder.total_in())
-        .map_err(|_| PngPixelDecodeError::SizeOverflow)?;
+    let consumed =
+        usize::try_from(decoder.total_in()).map_err(|_| PngPixelDecodeError::SizeOverflow)?;
     if consumed != idat.len() {
         return Err(PngPixelDecodeError::TrailingCompressedData);
     }
@@ -287,8 +279,7 @@ fn unfilter_scanlines(
         if filter > 4 {
             return Err(PngPixelDecodeError::InvalidFilter(filter));
         }
-        filter_counts[usize::from(filter)] =
-            filter_counts[usize::from(filter)].saturating_add(1);
+        filter_counts[usize::from(filter)] = filter_counts[usize::from(filter)].saturating_add(1);
         let filtered = &scanlines[source_start + 1..source_start + 1 + row_bytes];
         for index in 0..row_bytes {
             let left = if index >= bytes_per_pixel {
