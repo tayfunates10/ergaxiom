@@ -1,7 +1,7 @@
 {
   "schema_version": "0.1.0",
   "capsule_id": "ergaxiom.profession.graphic-designer",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "profession": {
     "name": "graphic_designer",
     "display_name": "Graphic Designer",
@@ -19,14 +19,18 @@
       "id": "wcag-contrast",
       "name": "WCAG text contrast requirements",
       "version": "2.2",
-      "required_for": ["social_media_static_post"],
+      "required_for": [
+        "social_media_static_post"
+      ],
       "reference": null
     },
     {
       "id": "icc-color-management",
       "name": "ICC color profile handling",
       "version": "capsule-defined",
-      "required_for": ["social_media_static_post"],
+      "required_for": [
+        "social_media_static_post"
+      ],
       "reference": null
     }
   ],
@@ -59,7 +63,17 @@
         "design.create_canvas",
         "design.place_asset",
         "design.compose_text",
-        "design.export_raster"
+        "design.export_raster",
+        "inkscape.canvas.resize",
+        "inkscape.layer.create",
+        "inkscape.asset.place",
+        "inkscape.text.create",
+        "inkscape.color.set_fill",
+        "inkscape.object.transform",
+        "inkscape.object.align",
+        "inkscape.object.distribute",
+        "inkscape.document.save_svg",
+        "inkscape.export.profiled"
       ],
       "minimum_assurance_level": "E3"
     }
@@ -69,8 +83,12 @@
       "id": "design.create_canvas",
       "version": "0.1.0",
       "description": "Create a new document with an explicit canvas, unit and color profile.",
-      "input_types": ["canvas_specification"],
-      "output_types": ["editable_document"],
+      "input_types": [
+        "canvas_specification"
+      ],
+      "output_types": [
+        "editable_document"
+      ],
       "preconditions": [
         "canvas_dimensions_are_positive",
         "color_profile_is_supported"
@@ -100,8 +118,14 @@
       "id": "design.place_asset",
       "version": "0.1.0",
       "description": "Place an immutable approved asset while preserving declared geometric invariants.",
-      "input_types": ["editable_document", "approved_asset", "placement_specification"],
-      "output_types": ["editable_document"],
+      "input_types": [
+        "editable_document",
+        "approved_asset",
+        "placement_specification"
+      ],
+      "output_types": [
+        "editable_document"
+      ],
       "preconditions": [
         "asset_hash_matches_contract",
         "asset_is_decodable",
@@ -132,8 +156,14 @@
       "id": "design.compose_text",
       "version": "0.1.0",
       "description": "Create text layers from approved copy and explicit typography constraints.",
-      "input_types": ["editable_document", "approved_copy", "typography_specification"],
-      "output_types": ["editable_document"],
+      "input_types": [
+        "editable_document",
+        "approved_copy",
+        "typography_specification"
+      ],
+      "output_types": [
+        "editable_document"
+      ],
       "preconditions": [
         "copy_is_approved",
         "font_is_available_and_permitted",
@@ -164,8 +194,13 @@
       "id": "design.export_raster",
       "version": "0.1.0",
       "description": "Export a delivery raster using explicit dimensions, media type and color-profile requirements.",
-      "input_types": ["editable_document", "export_specification"],
-      "output_types": ["delivery_raster"],
+      "input_types": [
+        "editable_document",
+        "export_specification"
+      ],
+      "output_types": [
+        "delivery_raster"
+      ],
       "preconditions": [
         "document_is_saved_to_isolated_workspace",
         "export_destination_is_authorized"
@@ -191,15 +226,399 @@
         "supported": true,
         "strategy": "delete unaccepted output from isolated workspace"
       }
+    },
+    {
+      "version": "0.1.0",
+      "output_types": [
+        "editable_document"
+      ],
+      "preconditions": [
+        "source_digest_matches_contract",
+        "trusted_inkscape_identity_is_bound",
+        "target_and_changed_properties_are_declared"
+      ],
+      "postconditions": [
+        "semantic_post_state_matches_declared_effect",
+        "undeclared_document_changes_are_absent",
+        "source_material_remains_immutable"
+      ],
+      "permissions": [
+        "application.control:inkscape",
+        "filesystem.write:isolated_workspace"
+      ],
+      "execution_methods": [
+        "application_api",
+        "cli",
+        "signed_adapter"
+      ],
+      "deterministic": true,
+      "randomness_seed_required": false,
+      "rollback": {
+        "supported": true,
+        "strategy": "discard partial output and restore the previous isolated checkpoint"
+      },
+      "id": "inkscape.canvas.resize",
+      "description": "Resize the SVG canvas and viewBox using explicit positive pixel dimensions.",
+      "input_types": [
+        "editable_document",
+        "canvas_specification"
+      ]
+    },
+    {
+      "version": "0.1.0",
+      "output_types": [
+        "editable_document"
+      ],
+      "preconditions": [
+        "source_digest_matches_contract",
+        "trusted_inkscape_identity_is_bound",
+        "target_and_changed_properties_are_declared"
+      ],
+      "postconditions": [
+        "semantic_post_state_matches_declared_effect",
+        "undeclared_document_changes_are_absent",
+        "source_material_remains_immutable"
+      ],
+      "permissions": [
+        "application.control:inkscape",
+        "filesystem.write:isolated_workspace"
+      ],
+      "execution_methods": [
+        "application_api",
+        "cli",
+        "signed_adapter"
+      ],
+      "deterministic": true,
+      "randomness_seed_required": false,
+      "rollback": {
+        "supported": true,
+        "strategy": "discard partial output and restore the previous isolated checkpoint"
+      },
+      "id": "inkscape.layer.create",
+      "description": "Create one explicitly identified Inkscape layer without changing existing elements.",
+      "input_types": [
+        "editable_document",
+        "layer_specification"
+      ]
+    },
+    {
+      "version": "0.1.0",
+      "output_types": [
+        "editable_document"
+      ],
+      "preconditions": [
+        "source_digest_matches_contract",
+        "trusted_inkscape_identity_is_bound",
+        "target_and_changed_properties_are_declared"
+      ],
+      "postconditions": [
+        "semantic_post_state_matches_declared_effect",
+        "undeclared_document_changes_are_absent",
+        "source_material_remains_immutable"
+      ],
+      "permissions": [
+        "filesystem.read:contract_inputs",
+        "application.control:inkscape",
+        "filesystem.write:isolated_workspace"
+      ],
+      "execution_methods": [
+        "application_api",
+        "cli",
+        "signed_adapter"
+      ],
+      "deterministic": true,
+      "randomness_seed_required": false,
+      "rollback": {
+        "supported": true,
+        "strategy": "discard partial output and restore the previous isolated checkpoint"
+      },
+      "id": "inkscape.asset.place",
+      "description": "Place a digest-bound approved PNG or restricted SVG asset as a data URI.",
+      "input_types": [
+        "editable_document",
+        "approved_asset",
+        "placement_specification"
+      ]
+    },
+    {
+      "version": "0.1.0",
+      "output_types": [
+        "editable_document"
+      ],
+      "preconditions": [
+        "source_digest_matches_contract",
+        "trusted_inkscape_identity_is_bound",
+        "target_and_changed_properties_are_declared"
+      ],
+      "postconditions": [
+        "semantic_post_state_matches_declared_effect",
+        "undeclared_document_changes_are_absent",
+        "source_material_remains_immutable"
+      ],
+      "permissions": [
+        "application.control:inkscape",
+        "filesystem.write:isolated_workspace"
+      ],
+      "execution_methods": [
+        "application_api",
+        "cli",
+        "signed_adapter"
+      ],
+      "deterministic": true,
+      "randomness_seed_required": false,
+      "rollback": {
+        "supported": true,
+        "strategy": "discard partial output and restore the previous isolated checkpoint"
+      },
+      "id": "inkscape.text.create",
+      "description": "Create one direct SVG text element from approved copy and explicit typography.",
+      "input_types": [
+        "editable_document",
+        "approved_copy",
+        "typography_specification"
+      ]
+    },
+    {
+      "version": "0.1.0",
+      "output_types": [
+        "editable_document"
+      ],
+      "preconditions": [
+        "source_digest_matches_contract",
+        "trusted_inkscape_identity_is_bound",
+        "target_and_changed_properties_are_declared"
+      ],
+      "postconditions": [
+        "semantic_post_state_matches_declared_effect",
+        "undeclared_document_changes_are_absent",
+        "source_material_remains_immutable"
+      ],
+      "permissions": [
+        "application.control:inkscape",
+        "filesystem.write:isolated_workspace"
+      ],
+      "execution_methods": [
+        "application_api",
+        "cli",
+        "signed_adapter"
+      ],
+      "deterministic": true,
+      "randomness_seed_required": false,
+      "rollback": {
+        "supported": true,
+        "strategy": "discard partial output and restore the previous isolated checkpoint"
+      },
+      "id": "inkscape.color.set_fill",
+      "description": "Change only the declared fill property of one supported target.",
+      "input_types": [
+        "editable_document",
+        "approved_color",
+        "target_reference"
+      ]
+    },
+    {
+      "version": "0.1.0",
+      "output_types": [
+        "editable_document"
+      ],
+      "preconditions": [
+        "source_digest_matches_contract",
+        "trusted_inkscape_identity_is_bound",
+        "target_and_changed_properties_are_declared"
+      ],
+      "postconditions": [
+        "semantic_post_state_matches_declared_effect",
+        "undeclared_document_changes_are_absent",
+        "source_material_remains_immutable"
+      ],
+      "permissions": [
+        "application.control:inkscape",
+        "filesystem.write:isolated_workspace"
+      ],
+      "execution_methods": [
+        "application_api",
+        "cli",
+        "signed_adapter"
+      ],
+      "deterministic": true,
+      "randomness_seed_required": false,
+      "rollback": {
+        "supported": true,
+        "strategy": "discard partial output and restore the previous isolated checkpoint"
+      },
+      "id": "inkscape.object.transform",
+      "description": "Apply explicit translate, rotate and scale values to one declared target.",
+      "input_types": [
+        "editable_document",
+        "target_reference",
+        "transform_specification"
+      ]
+    },
+    {
+      "version": "0.1.0",
+      "output_types": [
+        "editable_document"
+      ],
+      "preconditions": [
+        "source_digest_matches_contract",
+        "trusted_inkscape_identity_is_bound",
+        "target_and_changed_properties_are_declared"
+      ],
+      "postconditions": [
+        "semantic_post_state_matches_declared_effect",
+        "undeclared_document_changes_are_absent",
+        "source_material_remains_immutable"
+      ],
+      "permissions": [
+        "application.control:inkscape",
+        "filesystem.write:isolated_workspace"
+      ],
+      "execution_methods": [
+        "application_api",
+        "cli",
+        "signed_adapter"
+      ],
+      "deterministic": true,
+      "randomness_seed_required": false,
+      "rollback": {
+        "supported": true,
+        "strategy": "discard partial output and restore the previous isolated checkpoint"
+      },
+      "id": "inkscape.object.align",
+      "description": "Align declared supported elements on one axis using measured geometry.",
+      "input_types": [
+        "editable_document",
+        "target_set",
+        "alignment_specification"
+      ]
+    },
+    {
+      "version": "0.1.0",
+      "output_types": [
+        "editable_document"
+      ],
+      "preconditions": [
+        "source_digest_matches_contract",
+        "trusted_inkscape_identity_is_bound",
+        "target_and_changed_properties_are_declared"
+      ],
+      "postconditions": [
+        "semantic_post_state_matches_declared_effect",
+        "undeclared_document_changes_are_absent",
+        "source_material_remains_immutable"
+      ],
+      "permissions": [
+        "application.control:inkscape",
+        "filesystem.write:isolated_workspace"
+      ],
+      "execution_methods": [
+        "application_api",
+        "cli",
+        "signed_adapter"
+      ],
+      "deterministic": true,
+      "randomness_seed_required": false,
+      "rollback": {
+        "supported": true,
+        "strategy": "discard partial output and restore the previous isolated checkpoint"
+      },
+      "id": "inkscape.object.distribute",
+      "description": "Distribute at least three declared supported elements on one axis.",
+      "input_types": [
+        "editable_document",
+        "target_set",
+        "distribution_specification"
+      ]
+    },
+    {
+      "version": "0.1.0",
+      "output_types": [
+        "editable_document"
+      ],
+      "preconditions": [
+        "source_digest_matches_contract",
+        "trusted_inkscape_identity_is_bound",
+        "target_and_changed_properties_are_declared"
+      ],
+      "postconditions": [
+        "semantic_post_state_matches_declared_effect",
+        "undeclared_document_changes_are_absent",
+        "source_material_remains_immutable"
+      ],
+      "permissions": [
+        "application.control:inkscape",
+        "filesystem.write:isolated_workspace"
+      ],
+      "execution_methods": [
+        "application_api",
+        "cli",
+        "signed_adapter"
+      ],
+      "deterministic": true,
+      "randomness_seed_required": false,
+      "rollback": {
+        "supported": true,
+        "strategy": "discard partial output and restore the previous isolated checkpoint"
+      },
+      "id": "inkscape.document.save_svg",
+      "description": "Save the verified editable SVG into a new isolated output path.",
+      "input_types": [
+        "editable_document",
+        "authorized_output"
+      ]
+    },
+    {
+      "version": "0.1.0",
+      "output_types": [
+        "delivery_artifact"
+      ],
+      "preconditions": [
+        "source_digest_matches_contract",
+        "trusted_inkscape_identity_is_bound",
+        "target_and_changed_properties_are_declared"
+      ],
+      "postconditions": [
+        "semantic_post_state_matches_declared_effect",
+        "undeclared_document_changes_are_absent",
+        "source_material_remains_immutable"
+      ],
+      "permissions": [
+        "application.control:inkscape",
+        "filesystem.write:declared_output"
+      ],
+      "execution_methods": [
+        "application_api",
+        "cli",
+        "signed_adapter"
+      ],
+      "deterministic": true,
+      "randomness_seed_required": false,
+      "rollback": {
+        "supported": true,
+        "strategy": "discard partial output and restore the previous isolated checkpoint"
+      },
+      "id": "inkscape.export.profiled",
+      "description": "Export PNG, restricted SVG or PDF through an explicit media profile.",
+      "input_types": [
+        "editable_document",
+        "export_profile",
+        "authorized_output"
+      ]
     }
   ],
   "validators": [
     {
       "id": "raster.dimensions",
       "version": "0.1.0",
-      "claims": ["canvas_width", "canvas_height"],
+      "claims": [
+        "canvas_width",
+        "canvas_height"
+      ],
       "independence_class": "independent",
-      "evidence_types": ["decoded_image_metadata", "measurement_record"],
+      "evidence_types": [
+        "decoded_image_metadata",
+        "measurement_record"
+      ],
       "deterministic": true,
       "implementation": {
         "strategy": "decode exported artifact independently of design application"
@@ -208,9 +627,14 @@
     {
       "id": "raster.media_type",
       "version": "0.1.0",
-      "claims": ["export_media_type"],
+      "claims": [
+        "export_media_type"
+      ],
       "independence_class": "independent",
-      "evidence_types": ["magic_bytes", "decoded_image_metadata"],
+      "evidence_types": [
+        "magic_bytes",
+        "decoded_image_metadata"
+      ],
       "deterministic": true,
       "implementation": {
         "strategy": "inspect file signature and decoder result"
@@ -219,9 +643,15 @@
     {
       "id": "document.logo_geometry",
       "version": "0.1.0",
-      "claims": ["logo_aspect_ratio", "logo_clear_space"],
+      "claims": [
+        "logo_aspect_ratio",
+        "logo_clear_space"
+      ],
       "independence_class": "independent",
-      "evidence_types": ["document_geometry_snapshot", "measurement_record"],
+      "evidence_types": [
+        "document_geometry_snapshot",
+        "measurement_record"
+      ],
       "deterministic": true,
       "implementation": {
         "strategy": "compare source asset bounds with placed layer transform and neighboring bounds"
@@ -230,9 +660,15 @@
     {
       "id": "document.text_bounds",
       "version": "0.1.0",
-      "claims": ["text_within_safe_area"],
+      "claims": [
+        "text_within_safe_area"
+      ],
       "independence_class": "independent",
-      "evidence_types": ["text_bounds_snapshot", "safe_area_geometry", "measurement_record"],
+      "evidence_types": [
+        "text_bounds_snapshot",
+        "safe_area_geometry",
+        "measurement_record"
+      ],
       "deterministic": true,
       "implementation": {
         "strategy": "evaluate every rendered text bound against the declared safe-area polygon"
@@ -241,9 +677,15 @@
     {
       "id": "raster.text_contrast.relative_luminance",
       "version": "0.1.0",
-      "claims": ["minimum_text_contrast"],
+      "claims": [
+        "minimum_text_contrast"
+      ],
       "independence_class": "independent",
-      "evidence_types": ["contrast_measurements", "declared_region_geometry", "render_digest"],
+      "evidence_types": [
+        "contrast_measurements",
+        "declared_region_geometry",
+        "render_digest"
+      ],
       "deterministic": true,
       "implementation": {
         "strategy": "calculate WCAG relative luminance from declared foreground and effective background regions"
@@ -252,9 +694,15 @@
     {
       "id": "raster.text_contrast.render_sampling",
       "version": "0.1.0",
-      "claims": ["minimum_text_contrast"],
+      "claims": [
+        "minimum_text_contrast"
+      ],
       "independence_class": "independent",
-      "evidence_types": ["contrast_measurements", "sample_coordinates", "render_digest"],
+      "evidence_types": [
+        "contrast_measurements",
+        "sample_coordinates",
+        "render_digest"
+      ],
       "deterministic": true,
       "implementation": {
         "strategy": "independently sample rendered pixels around glyph interiors and local backgrounds"
@@ -263,9 +711,14 @@
     {
       "id": "raster.icc_profile",
       "version": "0.1.0",
-      "claims": ["color_profile"],
+      "claims": [
+        "color_profile"
+      ],
       "independence_class": "independent",
-      "evidence_types": ["embedded_profile_digest", "decoded_image_metadata"],
+      "evidence_types": [
+        "embedded_profile_digest",
+        "decoded_image_metadata"
+      ],
       "deterministic": true,
       "implementation": {
         "strategy": "extract and identify embedded ICC profile"
