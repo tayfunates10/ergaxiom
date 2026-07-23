@@ -7,9 +7,8 @@ use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use ergaxiom_inkscape_adapter_runtime::{
-    AlignmentAxis, AlignmentMode, ApprovedAssetMediaType, ExportMediaType,
-    ProofBoundDesignRequest, ProofBoundExportRequest, ProofBoundOperation, TextAnchor,
-    VerifiedInkscape, sha256_file,
+    AlignmentAxis, AlignmentMode, ApprovedAssetMediaType, ExportMediaType, ProofBoundDesignRequest,
+    ProofBoundExportRequest, ProofBoundOperation, TextAnchor, VerifiedInkscape, sha256_file,
 };
 
 struct TestDirectory {
@@ -164,9 +163,16 @@ fn every_operator_surface_rejects_an_attack_case_without_mutating_source()
             output.clone(),
             vec![operation],
         ));
-        assert!(result.is_err(), "attack case unexpectedly succeeded: {name}");
+        assert!(
+            result.is_err(),
+            "attack case unexpectedly succeeded: {name}"
+        );
         assert!(!output.exists(), "partial output survived: {name}");
-        assert_eq!(sha256_file(&source)?, source_digest, "source changed: {name}");
+        assert_eq!(
+            sha256_file(&source)?,
+            source_digest,
+            "source changed: {name}"
+        );
     }
 
     Ok(())
@@ -196,7 +202,11 @@ fn save_and_export_boundaries_fail_closed() -> Result<(), Box<dyn Error>> {
             fill: "#f4f7ff".to_owned(),
         }],
     );
-    assert!(inkscape.execute_proof_bound_design(&path_collision).is_err());
+    assert!(
+        inkscape
+            .execute_proof_bound_design(&path_collision)
+            .is_err()
+    );
     assert_eq!(sha256_file(&source)?, source_digest);
 
     let output = directory.path.join("editable.svg");
@@ -217,7 +227,11 @@ fn save_and_export_boundaries_fail_closed() -> Result<(), Box<dyn Error>> {
         width_px: None,
         height_px: None,
     });
-    assert!(inkscape.execute_proof_bound_design(&invalid_export).is_err());
+    assert!(
+        inkscape
+            .execute_proof_bound_design(&invalid_export)
+            .is_err()
+    );
     assert!(!output.exists());
     assert_eq!(sha256_file(&source)?, source_digest);
     Ok(())
