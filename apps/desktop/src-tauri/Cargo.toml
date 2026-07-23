@@ -1,0 +1,38 @@
+[package]
+name = "ergaxiom-desktop"
+version = "0.1.0"
+description = "Windows-first verified Ergaxiom desktop control shell"
+edition = "2024"
+rust-version = "1.85"
+repository = "https://github.com/tayfunates10/ergaxiom"
+publish = false
+
+[lib]
+name = "ergaxiom_desktop_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[[bin]]
+name = "ergaxiom-desktop"
+path = "src/main.rs"
+
+[build-dependencies]
+tauri-build = { version = "=2.6.3", features = [] }
+
+[dependencies]
+ergaxiom-contract-runtime = { path = "../../../crates/contract-runtime" }
+ergaxiom-desktop-shell-runtime = { path = "../../../crates/desktop-shell-runtime" }
+ergaxiom-graphic-designer-twin-runtime = { path = "../../../crates/graphic-designer-twin-runtime" }
+ergaxiom-intent-contract-compiler-runtime = { path = "../../../crates/intent-contract-compiler-runtime" }
+ergaxiom-occupational-twin-runtime = { path = "../../../crates/occupational-twin-runtime" }
+ergaxiom-operator-plan-runtime = { path = "../../../crates/operator-plan-runtime" }
+ergaxiom-proof-kernel = { path = "../../../crates/proof-kernel" }
+ergaxiom-typed-planner-runtime = { path = "../../../crates/typed-planner-runtime" }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+sha2 = "0.10"
+tauri = { version = "=2.11.1", features = [] }
+
+[workspace]
+
+[lints.rust]
+unsafe_code = "forbid"
