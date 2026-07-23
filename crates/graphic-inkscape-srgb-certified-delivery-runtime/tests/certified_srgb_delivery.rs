@@ -24,6 +24,7 @@ fn signed_normalization_is_bound_into_a_new_final_attestation() -> Result<(), Bo
     let normalization = normalization_fixture(&execution)?;
     let mut workspace = workspace()?;
     let mut authorizer = authorizer(&context)?;
+    let base_attestation_keys = attestation_keys(&context)?;
     let base_delivery = certify_base_delivery(
         &context,
         &mut workspace,
@@ -36,6 +37,7 @@ fn signed_normalization_is_bound_into_a_new_final_attestation() -> Result<(), Bo
         base_delivery,
         normalization_material: normalization_material(&execution, &normalization),
         normalization_keys: &normalization.keys,
+        base_attestation_keys: &base_attestation_keys,
         contract_value: &context.contract_value,
         compiled_contract: &context.compiled_contract,
         compiled_plan: &context.compiled_plan,
@@ -83,7 +85,7 @@ fn signed_normalization_is_bound_into_a_new_final_attestation() -> Result<(), Bo
                 .any(|artifact| artifact.artifact_id == artifact_id)
         );
     }
-    let keys = attestation_keys(&context)?;
+    let keys = base_attestation_keys;
     assert!(
         ergaxiom_attestation_runtime::verify_attestation_against_bundle(
             &delivery.attestation,
@@ -115,6 +117,7 @@ fn mutated_normalization_record_cannot_certify() -> Result<(), Box<dyn Error>> {
     normalization.package.record.output_png_digest = "0".repeat(64);
     let mut workspace = workspace()?;
     let mut authorizer = authorizer(&context)?;
+    let base_attestation_keys = attestation_keys(&context)?;
     let base_delivery = certify_base_delivery(
         &context,
         &mut workspace,
@@ -127,6 +130,7 @@ fn mutated_normalization_record_cannot_certify() -> Result<(), Box<dyn Error>> {
         base_delivery,
         normalization_material: normalization_material(&execution, &normalization),
         normalization_keys: &normalization.keys,
+        base_attestation_keys: &base_attestation_keys,
         contract_value: &context.contract_value,
         compiled_contract: &context.compiled_contract,
         compiled_plan: &context.compiled_plan,
@@ -156,6 +160,7 @@ fn non_srgb_contract_cannot_re_attest_the_normalized_delivery() -> Result<(), Bo
     let normalization = normalization_fixture(&execution)?;
     let mut workspace = workspace()?;
     let mut authorizer = authorizer(&context)?;
+    let base_attestation_keys = attestation_keys(&context)?;
     let base_delivery = certify_base_delivery(
         &context,
         &mut workspace,
@@ -177,6 +182,7 @@ fn non_srgb_contract_cannot_re_attest_the_normalized_delivery() -> Result<(), Bo
         base_delivery,
         normalization_material: normalization_material(&execution, &normalization),
         normalization_keys: &normalization.keys,
+        base_attestation_keys: &base_attestation_keys,
         contract_value: &altered_contract,
         compiled_contract: &context.compiled_contract,
         compiled_plan: &context.compiled_plan,

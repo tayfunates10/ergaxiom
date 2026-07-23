@@ -37,6 +37,7 @@ pub struct InkscapeSrgbCertificationRequest<'a> {
     pub base_delivery: CertifiedInkscapeGraphicDelivery,
     pub normalization_material: PngSrgbNormalizationMaterial<'a>,
     pub normalization_keys: &'a NormalizationKeyRegistry,
+    pub base_attestation_keys: &'a AttestationKeyRegistry,
     pub contract_value: &'a Value,
     pub compiled_contract: &'a CompiledContract,
     pub compiled_plan: &'a CompiledPlan,
@@ -131,6 +132,7 @@ pub fn certify_inkscape_srgb_graphic_delivery(
 
     validate_base_bindings(
         &request.base_delivery,
+        request.base_attestation_keys,
         request.compiled_contract,
         request.compiled_plan,
         request.assurance_level,
@@ -291,19 +293,34 @@ fn validate_required_field(
 
 fn validate_base_bindings(
     base: &CertifiedInkscapeGraphicDelivery,
+    base_attestation_keys: &AttestationKeyRegistry,
     compiled_contract: &CompiledContract,
     compiled_plan: &CompiledPlan,
     assurance_level: AssuranceLevel,
 ) -> Result<(), InkscapeSrgbCertificationError> {
+    let base_bundle_value = serde_json::to_value(&base.evidence_bundle)
+        .map_err(InkscapeSrgbCertificationError::Serialization)?;
+    let independently_verified = verify_attestation_against_bundle(
+        &base.attestation,
+        base_attestation_keys,
+        compiled_contract.clone(),
+        compiled_plan,
+        &base_bundle_value,
+        assurance_level,
+    )?;
+    if independently_verified != base.verified_attestation {
+        return Err(InkscapeSrgbCertificationError::BaseCertificationBindingMismatch);
+    }
+
     let certificate = &base.attestation.certificate.payload;
     let valid = certificate.contract_digest == compiled_contract.seal.contract_digest
         && certificate.capsule_digest == compiled_contract.seal.capsule_digest
         && certificate.plan_id == compiled_plan.plan_id
         && certificate.plan_digest == compiled_plan.plan_digest
         && certificate.evidence_bundle_digest == base.evidence_bundle_digest
-        && base.verified_attestation.evidence_bundle_digest == base.evidence_bundle_digest
+        && independently_verified.evidence_bundle_digest == base.evidence_bundle_digest
         && certificate.assurance_level == assurance_level
-        && base.verified_attestation.assurance_level == assurance_level;
+        && independently_verified.assurance_level == assurance_level;
     if valid {
         Ok(())
     } else {
