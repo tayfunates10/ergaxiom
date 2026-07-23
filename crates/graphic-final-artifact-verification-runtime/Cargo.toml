@@ -1,0 +1,20 @@
+[package]
+name = "ergaxiom-graphic-final-artifact-verification-runtime"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+publish = false
+
+[dependencies]
+ergaxiom-png-logo-geometry-runtime = { path = "../png-logo-geometry-runtime" }
+ergaxiom-png-rendered-contrast-runtime = { path = "../png-rendered-contrast-runtime" }
+ergaxiom-png-rendered-text-bounds-runtime = { path = "../png-rendered-text-bounds-runtime" }
+ergaxiom-proof-kernel = { path = "../proof-kernel" }
+ergaxiom-svg-approved-copy-runtime = { path = "../svg-approved-copy-runtime" }
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+
+[lints]
+workspace = true
