@@ -9,6 +9,7 @@ members = [
   "crates/graphic-designer-twin-runtime",
   "crates/graphic-final-artifact-verification-runtime",
   "crates/graphic-inkscape-certified-delivery-runtime",
+  "crates/graphic-inkscape-final-certified-delivery-runtime",
   "crates/graphic-inkscape-srgb-certified-delivery-runtime",
   "crates/inkscape-adapter-runtime",
   "crates/inkscape-execution-evidence-runtime",
