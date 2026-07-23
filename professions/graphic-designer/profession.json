@@ -63,17 +63,7 @@
         "design.create_canvas",
         "design.place_asset",
         "design.compose_text",
-        "design.export_raster",
-        "inkscape.canvas.resize",
-        "inkscape.layer.create",
-        "inkscape.asset.place",
-        "inkscape.text.create",
-        "inkscape.color.set_fill",
-        "inkscape.object.transform",
-        "inkscape.object.align",
-        "inkscape.object.distribute",
-        "inkscape.document.save_svg",
-        "inkscape.export.profiled"
+        "design.export_raster"
       ],
       "minimum_assurance_level": "E3"
     }
