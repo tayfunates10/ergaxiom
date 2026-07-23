@@ -21,7 +21,7 @@ use serde::de::DeserializeOwned;
 use serde_json::{Value, json};
 
 use support::{
-    ATTESTATION_ISSUER, ATTESTATION_KEY_ID, NOW, Context, attestation_keys, authorizer,
+    ATTESTATION_ISSUER, ATTESTATION_KEY_ID, Context, NOW, attestation_keys, authorizer,
     certify_base_delivery, context, normalization_fixture, normalization_material, signed_tokens,
     synthetic_execution_fixture, workspace,
 };
@@ -60,7 +60,9 @@ fn independent_final_artifact_proofs_issue_a_new_attestation() -> Result<(), Box
     );
     assert_eq!(delivery.final_artifact_binding.logo_mask_iou_milli, 995);
     assert_eq!(
-        delivery.final_artifact_binding.minimum_dominant_contrast_milli,
+        delivery
+            .final_artifact_binding
+            .minimum_dominant_contrast_milli,
         4500
     );
     assert_eq!(delivery.certification_binding.binding_digest.len(), 64);
@@ -159,7 +161,9 @@ fn untrusted_base_attestation_cannot_be_extended() -> Result<(), Box<dyn Error>>
 
     assert!(matches!(
         result,
-        Err(InkscapeFinalArtifactCertificationError::AttestationVerify(_))
+        Err(InkscapeFinalArtifactCertificationError::AttestationVerify(
+            _
+        ))
     ));
     Ok(())
 }
