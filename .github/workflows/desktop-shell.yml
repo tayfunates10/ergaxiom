@@ -1,0 +1,128 @@
+name: Desktop shell
+
+on:
+  pull_request:
+    paths:
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "crates/desktop-shell-runtime/**"
+      - "apps/desktop/**"
+      - "docs/architecture/35-desktop-product-shell.md"
+      - ".github/workflows/desktop-shell.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "crates/desktop-shell-runtime/**"
+      - "apps/desktop/**"
+      - "docs/architecture/35-desktop-product-shell.md"
+      - ".github/workflows/desktop-shell.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  frontend:
+    name: Typecheck test and build React shell
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: apps/desktop
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Install Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: apps/desktop/package-lock.json
+
+      - name: Install pinned frontend dependencies
+        run: npm ci
+
+      - name: Typecheck frontend
+        run: npm run check
+
+      - name: Run frontend trust-boundary tests
+        run: npm test
+
+      - name: Build production frontend
+        run: npm run build
+
+      - name: Upload production frontend
+        uses: actions/upload-artifact@v4
+        with:
+          name: ergaxiom-desktop-web
+          path: apps/desktop/dist/**
+          if-no-files-found: error
+          retention-days: 7
+
+  rust-authority:
+    name: Verify desktop snapshot authority
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Check workspace formatting
+        run: cargo fmt --all -- --check
+
+      - name: Lint desktop authority runtime
+        run: cargo clippy -p ergaxiom-desktop-shell-runtime --all-targets --all-features -- -D warnings
+
+      - name: Test desktop authority runtime
+        run: cargo test -p ergaxiom-desktop-shell-runtime
+
+  windows-tauri:
+    name: Compile verified Windows Tauri application
+    runs-on: windows-2025
+    defaults:
+      run:
+        working-directory: apps/desktop
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Install Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: apps/desktop/package-lock.json
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Install pinned frontend dependencies
+        run: npm ci
+
+      - name: Check Tauri Rust formatting
+        run: cargo fmt --manifest-path src-tauri/Cargo.toml --all -- --check
+
+      - name: Lint Tauri Rust application
+        run: cargo clippy --locked --manifest-path src-tauri/Cargo.toml --all-targets --all-features -- -D warnings
+
+      - name: Test Tauri Rust application and deterministic pipeline
+        run: cargo test --locked --manifest-path src-tauri/Cargo.toml --all-targets
+
+      - name: Compile Windows application without signing or bundling
+        run: npm run tauri -- build --no-bundle
+
+      - name: Upload unsigned Windows executable
+        uses: actions/upload-artifact@v4
+        with:
+          name: ergaxiom-desktop-windows-unsigned
+          path: apps/desktop/src-tauri/target/release/ergaxiom-desktop.exe
+          if-no-files-found: error
+          retention-days: 7
