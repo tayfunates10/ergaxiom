@@ -65,13 +65,16 @@ jobs:
           set -euo pipefail
           git fetch origin "${{ github.head_ref }}"
           git checkout -B "${{ github.head_ref }}" "origin/${{ github.head_ref }}"
-          perl -0pi -e 's/    height: 60,\n};\nconst LOGO_REGION/    height: 61,\n};\nconst LOGO_REGION/' crates/graphic-inkscape-final-certified-delivery-runtime/tests/real_final_certified_delivery.rs
-          grep -A5 'const TEXT_SAFE_AREA' crates/graphic-inkscape-final-certified-delivery-runtime/tests/real_final_certified_delivery.rs | grep 'height: 61'
-          git checkout HEAD^ -- .github/workflows/inkscape-adapter.yml
-          rm -f .github/workflows/real-final-safe-area-fix.yml
+          target='crates/graphic-inkscape-final-certified-delivery-runtime/tests/real_final_certified_delivery.rs'
+          if grep -A5 'const TEXT_SAFE_AREA' "$target" | grep -q 'height: 61'; then
+            echo 'Safe-area source is already aligned.'
+            exit 0
+          fi
+          perl -0pi -e 's/    height: 60,\n};\nconst LOGO_REGION/    height: 61,\n};\nconst LOGO_REGION/' "$target"
+          grep -A5 'const TEXT_SAFE_AREA' "$target" | grep 'height: 61'
           git config user.name "ergaxiom-ci"
           git config user.email "actions@users.noreply.github.com"
-          git add -A
+          git add "$target"
           git commit -m "Align real and twin text safe area"
           git push origin HEAD:"${{ github.head_ref }}"
 
