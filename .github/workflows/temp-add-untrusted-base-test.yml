@@ -1,0 +1,102 @@
+name: Temporary add untrusted base test
+
+on:
+  push:
+    branches:
+      - agent/inkscape-srgb-certified-delivery-v1
+    paths:
+      - ".github/workflows/temp-add-untrusted-base-test.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  append-test:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - name: Check out branch
+        uses: actions/checkout@v4
+        with:
+          ref: agent/inkscape-srgb-certified-delivery-v1
+          fetch-depth: 0
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+
+      - name: Append untrusted-base attack test
+        shell: python
+        run: |
+          from pathlib import Path
+          path = Path("crates/graphic-inkscape-srgb-certified-delivery-runtime/tests/certified_srgb_delivery.rs")
+          text = path.read_text(encoding="utf-8")
+          marker = "fn untrusted_base_attestation_key_cannot_re_attest()"
+          if marker in text:
+              raise SystemExit(0)
+          text = text.replace(
+              "use ed25519_dalek::SigningKey;\n",
+              "use ed25519_dalek::SigningKey;\nuse ergaxiom_attestation_runtime::{AttestationKeyRegistry, AttestationVerifyError};\n",
+              1,
+          )
+          addition = r'''
+
+          #[test]
+          fn untrusted_base_attestation_key_cannot_re_attest() -> Result<(), Box<dyn Error>> {
+              let context = context()?;
+              let tokens = signed_tokens(&context)?;
+              let execution = synthetic_execution_fixture()?;
+              let normalization = normalization_fixture(&execution)?;
+              let mut workspace = workspace()?;
+              let mut authorizer = authorizer(&context)?;
+              let base_delivery = certify_base_delivery(
+                  &context,
+                  &mut workspace,
+                  &mut authorizer,
+                  &tokens,
+                  &execution,
+              )?;
+              let untrusted_keys = AttestationKeyRegistry::default();
+
+              let result = certify_inkscape_srgb_graphic_delivery(
+                  InkscapeSrgbCertificationRequest {
+                      base_delivery,
+                      normalization_material: normalization_material(&execution, &normalization),
+                      normalization_keys: &normalization.keys,
+                      base_attestation_keys: &untrusted_keys,
+                      contract_value: &context.contract_value,
+                      compiled_contract: &context.compiled_contract,
+                      compiled_plan: &context.compiled_plan,
+                      assurance_level: AssuranceLevel::E3,
+                      final_manifest_id: "manifest.graphic-inkscape-srgb.untrusted-base",
+                      final_certificate_id: "certificate.graphic-inkscape-srgb.untrusted-base",
+                      attestation_issuer_id: ATTESTATION_ISSUER,
+                      attestation_key_id: ATTESTATION_KEY_ID,
+                      certificate_issued_at_epoch_s: NOW + 1,
+                      attestation_signing_key: &context.attestation_key,
+                  },
+              );
+
+              assert!(matches!(
+                  result,
+                  Err(InkscapeSrgbCertificationError::AttestationVerify(
+                      AttestationVerifyError::UnknownTrustedKey { .. }
+                  ))
+              ));
+              Ok(())
+          }
+          '''
+          path.write_text(text + addition, encoding="utf-8")
+
+      - name: Format workspace
+        run: cargo fmt --all
+
+      - name: Commit attack test
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add crates/graphic-inkscape-srgb-certified-delivery-runtime/tests/certified_srgb_delivery.rs
+          git commit -m "Reject untrusted base attestation keys"
+          git push origin HEAD:agent/inkscape-srgb-certified-delivery-v1
