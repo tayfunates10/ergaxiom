@@ -84,6 +84,16 @@ The CLI exits with code `0` for a planned result, `2` when identity resolution i
 
 The integration suite feeds the generated plan directly into `compile_graphic_design_simulation`. This proves the planner output uses the artifact bindings and operator order required by the Occupational Twin without manual rewriting.
 
+## Validation commands
+
+```bash
+cargo fmt --all -- --check
+cargo clippy --workspace --all-targets --all-features -- -D warnings
+cargo test --workspace
+```
+
+The permanent pull-request workflow also runs the real pinned-Inkscape regression chain to detect changes outside the planner crate.
+
 ## Claim boundary
 
 Version 1 supports one deterministic plan shape. It does not perform model-based planning, generate layouts, issue capability tokens, control Inkscape or select among alternative operator strategies.
