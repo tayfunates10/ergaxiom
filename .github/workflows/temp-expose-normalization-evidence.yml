@@ -1,0 +1,48 @@
+name: Temporary expose normalization evidence
+
+on:
+  push:
+    branches:
+      - agent/inkscape-srgb-certified-delivery-v1
+    paths:
+      - ".github/workflows/temp-expose-normalization-evidence.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  expose:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Check out branch
+        uses: actions/checkout@v4
+        with:
+          ref: agent/inkscape-srgb-certified-delivery-v1
+          fetch-depth: 0
+
+      - name: Expose evidence module
+        shell: python
+        run: |
+          from pathlib import Path
+          path = Path("crates/png-srgb-normalizer-runtime/src/lib.rs")
+          text = path.read_text(encoding="utf-8")
+          marker = "#![forbid(unsafe_code)]\n"
+          insertion = "#![forbid(unsafe_code)]\n\npub mod evidence;\npub use evidence::*;\n"
+          if "pub mod evidence;" not in text:
+              if marker not in text:
+                  raise SystemExit("crate header not found")
+              text = text.replace(marker, insertion, 1)
+              path.write_text(text, encoding="utf-8")
+
+      - name: Commit module export
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add crates/png-srgb-normalizer-runtime/src/lib.rs
+          if git diff --cached --quiet; then
+            exit 0
+          fi
+          git commit -m "Expose signed PNG normalization evidence"
+          git push origin HEAD:agent/inkscape-srgb-certified-delivery-v1
