@@ -13,7 +13,7 @@ permissions:
 jobs:
   expose:
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
+    timeout-minutes: 11
     steps:
       - name: Check out branch
         uses: actions/checkout@v4
