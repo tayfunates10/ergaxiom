@@ -82,12 +82,12 @@ fn real_inkscape_headline_has_independently_measured_rendered_contrast()
         &decoded,
         &RenderedContrastPolicy {
             subject_region: PixelRect {
-                x: 132,
-                y: 218,
-                width: 248,
-                height: 58,
+                x: 100,
+                y: 205,
+                width: 312,
+                height: 80,
             },
-            background_ring_px: 8,
+            background_ring_px: 10,
             minimum_contrast_milli: 4500,
             background_max_channel_deviation: 4,
             foreground_minimum_distance_squared: 4096,
@@ -99,6 +99,11 @@ fn real_inkscape_headline_has_independently_measured_rendered_contrast()
         },
     )?;
 
+    eprintln!(
+        "real rendered contrast report: {}; violations: {:?}",
+        serde_json::to_string(&result.report)?,
+        result.violations
+    );
     assert!(result.accepted, "violations: {:?}", result.violations);
     assert_eq!(result.report.background_rgb, [249, 250, 251]);
     assert_eq!(result.report.foreground_rgb, [17, 24, 39]);
