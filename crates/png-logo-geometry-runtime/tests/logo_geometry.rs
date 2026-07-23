@@ -2,8 +2,7 @@ use std::error::Error;
 
 use ergaxiom_png_artifact_validator_runtime::PngColorType;
 use ergaxiom_png_logo_geometry_runtime::{
-    LogoGeometryError, LogoGeometryPolicy, LogoGeometryViolation, PixelRect,
-    validate_logo_geometry,
+    LogoGeometryError, LogoGeometryPolicy, LogoGeometryViolation, PixelRect, validate_logo_geometry,
 };
 use ergaxiom_png_pixel_decoder_runtime::{DecodedPng, PngPixelReport};
 
@@ -32,18 +31,19 @@ fn stretched_or_shrunken_logo_is_rejected() -> Result<(), Box<dyn Error>> {
     let approved = approved_logo();
     let mut image = image(120, 80, [250, 250, 250, 255]);
     fill(&mut image, 120, rect(44, 34, 24, 12), [17, 24, 39, 255]);
-    let result =
-        validate_logo_geometry(&approved, &decoded(120, 80, image, 'r'), &policy())?;
+    let result = validate_logo_geometry(&approved, &decoded(120, 80, image, 'r'), &policy())?;
 
     assert!(!result.accepted);
     assert!(result.violations.iter().any(|violation| matches!(
         violation,
         LogoGeometryViolation::MaskSimilarityTooLow { .. }
     )));
-    assert!(result.violations.iter().any(|violation| matches!(
-        violation,
-        LogoGeometryViolation::AspectRatioMismatch { .. }
-    )));
+    assert!(
+        result.violations.iter().any(|violation| matches!(
+            violation,
+            LogoGeometryViolation::AspectRatioMismatch { .. }
+        ))
+    );
     Ok(())
 }
 
