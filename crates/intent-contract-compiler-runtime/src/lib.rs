@@ -73,7 +73,10 @@ pub enum IntentContractCompileError {
     #[error("loaded capsule field is missing or invalid: {0}")]
     InvalidCapsuleField(&'static str),
     #[error("loaded capsule ID {actual} is unsupported; expected {expected}")]
-    UnsupportedCapsule { actual: String, expected: &'static str },
+    UnsupportedCapsule {
+        actual: String,
+        expected: &'static str,
+    },
     #[error("intent field {field} is invalid: {reason}")]
     InvalidIntentField { field: &'static str, reason: String },
     #[error("intent field {field} uses unsupported certified value {actual:?}: {reason}")]
@@ -124,18 +127,17 @@ pub fn compile_static_social_post_intent(
     Ok(IntentCompileOutcome::Compiled {
         intent_kind: JOB_TYPE.to_owned(),
         contract,
-        contract_digest: compiled.seal.contract_digest,
-        capsule_digest: compiled.seal.capsule_digest,
+        contract_digest: compiled.seal.contract_digest.clone(),
+        capsule_digest: compiled.seal.capsule_digest.clone(),
         proof_obligation_count: compiled.proof_obligation_count(),
         unresolved_mandatory_unknowns: compiled.unresolved_mandatory_unknowns,
     })
 }
 
 fn validate_capsule(capsule: &Value) -> Result<(), IntentContractCompileError> {
-    let capsule_id = capsule
-        .get("capsule_id")
-        .and_then(Value::as_str)
-        .ok_or(IntentContractCompileError::InvalidCapsuleField("capsule_id"))?;
+    let capsule_id = capsule.get("capsule_id").and_then(Value::as_str).ok_or(
+        IntentContractCompileError::InvalidCapsuleField("capsule_id"),
+    )?;
     if capsule_id != CAPSULE_ID {
         return Err(IntentContractCompileError::UnsupportedCapsule {
             actual: capsule_id.to_owned(),
@@ -193,10 +195,7 @@ fn validate_present_values(
     }
     if let Some(clear_space) = intent.logo_clear_space_px {
         if clear_space == 0 {
-            return Err(invalid(
-                "logo_clear_space_px",
-                "must be greater than zero",
-            ));
+            return Err(invalid("logo_clear_space_px", "must be greater than zero"));
         }
     }
     if let Some(contrast) = intent.minimum_text_contrast_milli {
@@ -284,15 +283,9 @@ fn artifact_field(prefix: &'static str, suffix: &'static str) -> &'static str {
     }
 }
 
-fn validate_canvas_edge(
-    field: &'static str,
-    value: u32,
-) -> Result<(), IntentContractCompileError> {
+fn validate_canvas_edge(field: &'static str, value: u32) -> Result<(), IntentContractCompileError> {
     if value == 0 || value > MAXIMUM_CANVAS_EDGE_PX {
-        return Err(invalid(
-            field,
-            "must be between 1 and 32768 pixels",
-        ));
+        return Err(invalid(field, "must be between 1 and 32768 pixels"));
     }
     Ok(())
 }
@@ -573,7 +566,7 @@ fn build_contract(
 }
 
 fn artifact_value(
-    id: &str,
+    id: &'static str,
     kind: &str,
     artifact: &InputArtifactIntent,
 ) -> Result<Value, IntentContractCompileError> {
@@ -614,14 +607,73 @@ fn constraint(
 
 fn proof_obligations() -> Vec<Value> {
     vec![
-        obligation("proof.canvas_width", "canvas_width", &["raster.dimensions"], "independent", &["decoded_image_metadata", "measurement_record"]),
-        obligation("proof.canvas_height", "canvas_height", &["raster.dimensions"], "independent", &["decoded_image_metadata", "measurement_record"]),
-        obligation("proof.color_profile", "color_profile", &["raster.icc_profile"], "independent", &["embedded_profile_digest", "decoded_image_metadata"]),
-        obligation("proof.logo_aspect_ratio", "logo_aspect_ratio", &["document.logo_geometry"], "independent", &["document_geometry_snapshot", "measurement_record"]),
-        obligation("proof.logo_clear_space", "logo_clear_space", &["document.logo_geometry"], "independent", &["document_geometry_snapshot", "measurement_record"]),
-        obligation("proof.text_within_safe_area", "text_within_safe_area", &["document.text_bounds"], "independent", &["text_bounds_snapshot", "safe_area_geometry", "measurement_record"]),
-        obligation("proof.minimum_text_contrast", "minimum_text_contrast", &["raster.text_contrast.relative_luminance", "raster.text_contrast.render_sampling"], "diverse", &["contrast_measurements", "sample_coordinates", "render_digest"]),
-        obligation("proof.export_media_type", "export_media_type", &["raster.media_type"], "independent", &["magic_bytes", "decoded_image_metadata"]),
+        obligation(
+            "proof.canvas_width",
+            "canvas_width",
+            &["raster.dimensions"],
+            "independent",
+            &["decoded_image_metadata", "measurement_record"],
+        ),
+        obligation(
+            "proof.canvas_height",
+            "canvas_height",
+            &["raster.dimensions"],
+            "independent",
+            &["decoded_image_metadata", "measurement_record"],
+        ),
+        obligation(
+            "proof.color_profile",
+            "color_profile",
+            &["raster.icc_profile"],
+            "independent",
+            &["embedded_profile_digest", "decoded_image_metadata"],
+        ),
+        obligation(
+            "proof.logo_aspect_ratio",
+            "logo_aspect_ratio",
+            &["document.logo_geometry"],
+            "independent",
+            &["document_geometry_snapshot", "measurement_record"],
+        ),
+        obligation(
+            "proof.logo_clear_space",
+            "logo_clear_space",
+            &["document.logo_geometry"],
+            "independent",
+            &["document_geometry_snapshot", "measurement_record"],
+        ),
+        obligation(
+            "proof.text_within_safe_area",
+            "text_within_safe_area",
+            &["document.text_bounds"],
+            "independent",
+            &[
+                "text_bounds_snapshot",
+                "safe_area_geometry",
+                "measurement_record",
+            ],
+        ),
+        obligation(
+            "proof.minimum_text_contrast",
+            "minimum_text_contrast",
+            &[
+                "raster.text_contrast.relative_luminance",
+                "raster.text_contrast.render_sampling",
+            ],
+            "diverse",
+            &[
+                "contrast_measurements",
+                "sample_coordinates",
+                "render_digest",
+            ],
+        ),
+        obligation(
+            "proof.export_media_type",
+            "export_media_type",
+            &["raster.media_type"],
+            "independent",
+            &["magic_bytes", "decoded_image_metadata"],
+        ),
     ]
 }
 

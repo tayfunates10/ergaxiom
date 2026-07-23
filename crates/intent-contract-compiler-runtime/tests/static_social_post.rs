@@ -46,7 +46,8 @@ fn complete_intent_compiles_into_the_real_capsule() -> Result<(), Box<dyn Error>
 
 #[test]
 fn missing_values_return_resolution_requests_without_a_contract() -> Result<(), Box<dyn Error>> {
-    let outcome = compile_static_social_post_intent(&StaticSocialPostIntent::default(), &capsule()?)?;
+    let outcome =
+        compile_static_social_post_intent(&StaticSocialPostIntent::default(), &capsule()?)?;
 
     let IntentCompileOutcome::NeedsResolution {
         resolution_requests,
@@ -75,7 +76,8 @@ fn missing_values_return_resolution_requests_without_a_contract() -> Result<(), 
 }
 
 #[test]
-fn identical_resolved_intent_produces_identical_contract_and_digest() -> Result<(), Box<dyn Error>> {
+fn identical_resolved_intent_produces_identical_contract_and_digest() -> Result<(), Box<dyn Error>>
+{
     let capsule = capsule()?;
     let intent = complete_intent();
     let first = compile_static_social_post_intent(&intent, &capsule)?;
