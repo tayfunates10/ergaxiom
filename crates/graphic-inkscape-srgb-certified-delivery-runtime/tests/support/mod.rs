@@ -452,12 +452,8 @@ pub(crate) fn execution_fixture_from_files(
     };
     record.record_digest = execution_record_digest(&record)?;
     let execution_key = SigningKey::from_bytes(&[73_u8; 32]);
-    let package = sign_execution_record(
-        &record,
-        EXECUTION_ISSUER,
-        EXECUTION_KEY_ID,
-        &execution_key,
-    )?;
+    let package =
+        sign_execution_record(&record, EXECUTION_ISSUER, EXECUTION_KEY_ID, &execution_key)?;
     let mut keys = InkscapeExecutionKeyRegistry::default();
     keys.insert_ed25519(
         EXECUTION_ISSUER,
@@ -475,7 +471,9 @@ pub(crate) fn execution_fixture_from_files(
     })
 }
 
-pub(crate) fn execution_material<'a>(fixture: &'a ExecutionFixture) -> InkscapeExecutionMaterial<'a> {
+pub(crate) fn execution_material<'a>(
+    fixture: &'a ExecutionFixture,
+) -> InkscapeExecutionMaterial<'a> {
     InkscapeExecutionMaterial {
         request: &fixture.request,
         package: &fixture.package,
@@ -492,13 +490,15 @@ pub(crate) fn certify_base_delivery(
     tokens: &[Value],
     execution: &ExecutionFixture,
 ) -> Result<CertifiedInkscapeGraphicDelivery, Box<dyn Error>> {
-    Ok(certify_inkscape_graphic_delivery(InkscapeGraphicCertificationRequest {
-        base: base_request(workspace, authorizer, context, tokens),
-        execution_material: execution_material(execution),
-        execution_keys: &execution.keys,
-        final_manifest_id: "manifest.graphic-inkscape-srgb-inkscape.0001",
-        final_certificate_id: "certificate.graphic-inkscape-srgb-inkscape.0001",
-    })?)
+    Ok(certify_inkscape_graphic_delivery(
+        InkscapeGraphicCertificationRequest {
+            base: base_request(workspace, authorizer, context, tokens),
+            execution_material: execution_material(execution),
+            execution_keys: &execution.keys,
+            final_manifest_id: "manifest.graphic-inkscape-srgb-inkscape.0001",
+            final_certificate_id: "certificate.graphic-inkscape-srgb-inkscape.0001",
+        },
+    )?)
 }
 
 pub(crate) fn normalization_fixture(
@@ -550,7 +550,9 @@ pub(crate) fn normalization_material<'a>(
     }
 }
 
-pub(crate) fn attestation_keys(context: &Context) -> Result<AttestationKeyRegistry, Box<dyn Error>> {
+pub(crate) fn attestation_keys(
+    context: &Context,
+) -> Result<AttestationKeyRegistry, Box<dyn Error>> {
     let mut keys = AttestationKeyRegistry::default();
     keys.insert_ed25519(
         ATTESTATION_ISSUER,

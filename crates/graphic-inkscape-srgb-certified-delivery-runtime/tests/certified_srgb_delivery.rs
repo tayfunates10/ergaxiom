@@ -11,7 +11,7 @@ use ergaxiom_proof_kernel::{AssuranceLevel, DecisionStatus};
 use serde_json::json;
 
 use support::{
-    ATTESTATION_ISSUER, ATTESTATION_KEY_ID, NOW, attestation_keys, authorizer, base_request,
+    ATTESTATION_ISSUER, ATTESTATION_KEY_ID, NOW, attestation_keys, authorizer,
     certify_base_delivery, context, normalization_fixture, normalization_material, signed_tokens,
     synthetic_execution_fixture, workspace,
 };
