@@ -1,0 +1,75 @@
+name: Temporary fix real contrast ROI
+
+on:
+  push:
+    branches:
+      - agent/rendered-contrast-validator-v1
+    paths:
+      - ".github/workflows/temp-fix-real-contrast-roi.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - name: Check out branch
+        uses: actions/checkout@v4
+        with:
+          ref: agent/rendered-contrast-validator-v1
+          fetch-depth: 0
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+
+      - name: Expand headline ROI and log before assertion
+        shell: python
+        run: |
+          from pathlib import Path
+          path = Path("crates/png-rendered-contrast-runtime/tests/real_inkscape_contrast.rs")
+          text = path.read_text(encoding="utf-8")
+          text = text.replace(
+              '''            subject_region: PixelRect {
+                x: 132,
+                y: 218,
+                width: 248,
+                height: 58,
+            },
+            background_ring_px: 8,''',
+              '''            subject_region: PixelRect {
+                x: 100,
+                y: 205,
+                width: 312,
+                height: 80,
+            },
+            background_ring_px: 10,''',
+              1,
+          )
+          old = '''    assert!(result.accepted, "violations: {:?}", result.violations);
+    assert_eq!(result.report.background_rgb, [249, 250, 251]);'''
+          new = '''    eprintln!(
+        "real rendered contrast report: {}; violations: {:?}",
+        serde_json::to_string(&result.report)?,
+        result.violations
+    );
+    assert!(result.accepted, "violations: {:?}", result.violations);
+    assert_eq!(result.report.background_rgb, [249, 250, 251]);'''
+          if old not in text:
+              raise SystemExit("assertion target not found")
+          path.write_text(text.replace(old, new, 1), encoding="utf-8")
+
+      - name: Format workspace
+        run: cargo fmt --all
+
+      - name: Commit ROI correction
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add crates/png-rendered-contrast-runtime/tests/real_inkscape_contrast.rs
+          git commit -m "Correct real rendered contrast ROI"
+          git push origin HEAD:agent/rendered-contrast-validator-v1
