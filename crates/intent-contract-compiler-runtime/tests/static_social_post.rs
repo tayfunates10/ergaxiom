@@ -25,7 +25,7 @@ fn complete_intent_compiles_into_the_real_capsule() -> Result<(), Box<dyn Error>
 
     assert_eq!(contract["schema_version"], "0.2.0");
     assert_eq!(contract["contract_id"], "contract.intent-compiler.0001");
-    assert_eq!(contract["profession"]["capsule_version"], "0.2.0");
+    assert_eq!(contract["profession"]["capsule_version"], "0.3.0");
     assert_eq!(contract["job_type"], "social_media_static_post");
     assert_eq!(contract["requirements"]["unknowns"], Value::Array(vec![]));
     assert_eq!(

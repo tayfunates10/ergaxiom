@@ -187,6 +187,7 @@
               "document_model",
               "application_api",
               "signed_plugin",
+              "signed_adapter",
               "cli",
               "os_automation",
               "accessibility",

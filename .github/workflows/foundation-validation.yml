@@ -50,4 +50,16 @@ jobs:
         run: python tools/validate_schema_catalog.py
 
       - name: Validate Phase 0 foundation
-        run: python tools/validate_foundation.py
+        shell: bash
+        run: |
+          set -o pipefail
+          python tools/validate_foundation.py 2>&1 | tee "$RUNNER_TEMP/foundation-validation.log"
+
+      - name: Upload foundation diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: foundation-validation-diagnostics
+          path: ${{ runner.temp }}/foundation-validation.log
+          if-no-files-found: warn
+          retention-days: 7

@@ -1,0 +1,126 @@
+name: Proof-bound Inkscape operators
+
+on:
+  pull_request:
+    paths:
+      - "Cargo.toml"
+      - "crates/inkscape-adapter-runtime/**"
+      - "professions/graphic-designer/profession.json"
+      - "docs/architecture/36-proof-bound-inkscape-operators.md"
+      - ".github/workflows/inkscape-operator-expansion.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "Cargo.toml"
+      - "crates/inkscape-adapter-runtime/**"
+      - "professions/graphic-designer/profession.json"
+      - "docs/architecture/36-proof-bound-inkscape-operators.md"
+      - ".github/workflows/inkscape-operator-expansion.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  verify-proof-bound-operators:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Install and bind Inkscape
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends inkscape
+          executable="$(command -v inkscape)"
+          digest="$(sha256sum "$executable" | awk '{print $1}')"
+          echo "ERGAXIOM_INKSCAPE=$executable" >> "$GITHUB_ENV"
+          echo "ERGAXIOM_INKSCAPE_SHA256=$digest" >> "$GITHUB_ENV"
+          inkscape --version
+
+      - name: Check workspace formatting
+        run: cargo fmt --all -- --check
+
+      - name: Lint proof-bound adapter
+        run: cargo clippy -p ergaxiom-inkscape-adapter-runtime --all-targets --all-features -- -D warnings
+
+      - name: Verify capsule operator pins
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          capsule = json.loads(Path("professions/graphic-designer/profession.json").read_text(encoding="utf-8"))
+          expected = {
+              "inkscape.canvas.resize",
+              "inkscape.layer.create",
+              "inkscape.asset.place",
+              "inkscape.text.create",
+              "inkscape.color.set_fill",
+              "inkscape.object.transform",
+              "inkscape.object.align",
+              "inkscape.object.distribute",
+              "inkscape.document.save_svg",
+              "inkscape.export.profiled",
+          }
+          operator_ids = [item["id"] for item in capsule["operators"]]
+          if len(operator_ids) != len(set(operator_ids)):
+              raise SystemExit("capsule contains duplicate operator identities")
+          operators = {item["id"]: item for item in capsule["operators"]}
+          missing = expected.difference(operators)
+          if missing:
+              raise SystemExit(f"missing capsule operator pins: {sorted(missing)}")
+          for operator_id in sorted(expected):
+              item = operators[operator_id]
+              if item.get("version") != "0.1.0":
+                  raise SystemExit(f"untrusted operator version for {operator_id}")
+              if not item.get("deterministic"):
+                  raise SystemExit(f"operator is not deterministic: {operator_id}")
+              if not item.get("rollback", {}).get("supported"):
+                  raise SystemExit(f"operator lacks rollback: {operator_id}")
+          for job_type in capsule["job_types"]:
+              job_operator_ids = job_type["operator_ids"]
+              if len(job_operator_ids) != len(set(job_operator_ids)):
+                  raise SystemExit(f"job type repeats an operator identity: {job_type['id']}")
+          certified_profile = [
+              "design.create_canvas",
+              "design.place_asset",
+              "design.compose_text",
+              "design.export_raster",
+          ]
+          static_post = next(
+              (item for item in capsule["job_types"] if item["id"] == "social_media_static_post"),
+              None,
+          )
+          if static_post is None:
+              raise SystemExit("social_media_static_post job type is missing")
+          if static_post["operator_ids"] != certified_profile:
+              raise SystemExit("certified static-post operator profile changed")
+          PY
+
+      - name: Run deterministic adapter tests
+        run: cargo test -p ergaxiom-inkscape-adapter-runtime
+
+      - name: Run real pinned Inkscape operator regression
+        run: >-
+          cargo test
+          -p ergaxiom-inkscape-adapter-runtime
+          --features real-inkscape-tests
+          --test proof_bound_operators
+          -- --nocapture
+
+      - name: Run per-operator fail-closed attack matrix
+        run: >-
+          cargo test
+          -p ergaxiom-inkscape-adapter-runtime
+          --features real-inkscape-tests
+          --test proof_bound_operator_attacks
+          -- --nocapture

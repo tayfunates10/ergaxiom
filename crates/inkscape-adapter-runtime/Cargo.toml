@@ -10,6 +10,7 @@ publish = false
 real-inkscape-tests = []
 
 [dependencies]
+base64.workspace = true
 ergaxiom-proof-kernel = { path = "../proof-kernel" }
 quick-xml = "=0.40.1"
 serde.workspace = true

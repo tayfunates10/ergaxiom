@@ -12,7 +12,9 @@ A capability is marked **certified path** only when the repository has an automa
 | Canonical JSON and SHA-256 sealing | Implemented | Used by contracts, plans, receipts, evidence and certificates. |
 | Three-valued proof kernel | Implemented | Mandatory `FALSE`, `UNKNOWN`, missing and contradictory proof states fail closed. |
 | Property-based impossible-acceptance tests | Implemented | Generated states cannot accept missing mandatory proof. |
-| Work Contract and capsule runtime compilation | Implemented | Compiles existing typed JSON; natural-language intent compilation is not implemented. |
+| Work Contract and capsule runtime compilation | Implemented | Compiles typed contracts and version-pinned profession capsules. |
+| Deterministic intent-to-contract compilation | Implemented | The Static Social Media Post profile compiles a structured resolved intent. Unrestricted natural-language interpretation is not claimed. |
+| Typed planner synthesis | Implemented | The Static Social Media Post profile synthesizes a deterministic plan using capsule-approved operators. General planning is not claimed. |
 | Operator Plan compilation and trace conformance | Implemented | Plans may use only capsule-approved, version-pinned operators. |
 | Signed capability tokens and authorization receipts | Implemented | Tokens are contract, capsule, plan, step, operator, executor and optional-device bound. |
 | Authorized execution trace | Implemented | Receipt use and plan state are independently recomputed. |
@@ -21,7 +23,8 @@ A capability is marked **certified path** only when the repository has an automa
 | Ed25519 Acceptance Certificates | Implemented | Issuance independently reassesses the exact Evidence Bundle before signing. |
 | Windows Bridge protocol | Implemented | Signed pre-state, action-boundary state, post-state and TOCTOU checks. |
 | Windows UI Automation host and Rust client | Demonstrated | Real bounded action against a controlled WPF target; not arbitrary Windows application control. |
-| Inkscape adapter | Demonstrated | Pinned executable, direct text replacement and raster export for a restricted SVG profile. |
+| Inkscape adapter | Demonstrated | Exact binary binding, source immutability, action-boundary checks and a restricted proof-bound operator set with real Inkscape regression. |
+| Proof-bound Inkscape canvas, layer, asset, text, color and geometry operators | Implemented | Ten version-pinned capabilities support canvas resize, layer creation, digest-bound asset placement, explicit text, fill, transform, align, distribute, editable SVG save and profiled PNG/SVG/PDF export. Unsupported SVG structures fail closed. |
 | Signed Inkscape execution evidence | Implemented | Source, editable SVG, raster, semantic snapshots, application identity and signature are bound. |
 | Independent PNG container validation | Implemented | Chunk ordering, CRC, dimensions, media type and color-profile evidence. |
 | Restricted sRGB normalization | Implemented | Adds sRGB evidence only to proven restricted SVG material without changing IDAT bytes. |
@@ -31,12 +34,10 @@ A capability is marked **certified path** only when the repository has an automa
 | Rendered text bounds, safe area and clipping guard | Implemented | Validates visible foreground inside a declared text-only analysis region. |
 | Editable SVG approved-copy identity | Implemented | Independently parses one direct-text SVG element and compares exact approved UTF-8 copy. |
 | Cross-validator final artifact binding | Implemented | Requires all raster validators to share the exact normalized PNG and pixel decode. |
-| Static Social Media Post final certificate | Certified path | Synthetic end-to-end fixture reaches a new certificate over signed execution, normalization and independent artifact proofs. Real Inkscape regressions cover the bounded execution and prior attestation chain. |
-| Natural-language Work Contract compiler | Planned | No model or deterministic intent compiler is currently exposed. |
-| Typed planner service | Planned | Existing plan runtime validates supplied plans; it does not synthesize plans from intent. |
-| Desktop product UI | Planned | No production Tauri/React shell is present. |
+| Static Social Media Post final certificate | Certified path | Synthetic end-to-end material reaches a certificate over signed execution, normalization and independent artifact proofs. Permanent real-Inkscape regressions cover bounded execution and final artifact certification. |
+| Desktop product shell | Implemented | Tauri/React review shell displays immutable inputs, resolution state, contract, permissions, sealed plan, execution, validators, evidence and certificate state. Renderer mutation cannot forge acceptance. Writable approval and execution commands are not yet enabled. |
 | General application learning | Planned | No live-learning or self-modifying production capability is allowed. |
-| Background cleanup job | Planned | Profession definition mentions image editing, but no certified job path exists. |
+| Background cleanup job | Planned | No certified job-specific contract and validator chain exists. |
 | Brand-compliant export job | Planned | No complete job-specific contract and certification suite exists. |
 | Print-ready poster preflight | Planned | No complete PDF/print validator chain exists. |
 | Cross-platform bridges | Planned | The proof kernel is platform-neutral; only bounded Windows and Inkscape paths exist. |
@@ -57,11 +58,11 @@ A capability is marked **certified path** only when the repository has an automa
 
 ### Phase 3 — Windows execution bridge
 
-**Status: demonstrated, not closed.** A genuine WPF UI Automation action is signed and independently verified. The phase remains open because production application coverage, application identity policy, broader UI patterns, recovery, code signing and real-user environment hardening are incomplete.
+**Status: demonstrated, not closed.** A genuine WPF UI Automation action is signed and independently verified. The phase remains open because production application coverage, broader UI patterns, recovery, code signing and real-user environment hardening are incomplete.
 
 ### Phase 4 — Graphic Designer Alpha
 
-**Status: one bounded certified path, phase not closed.** Static Social Media Post has a complete deterministic certification path for the supported fixture and restricted Inkscape flow. The phase remains open until real artifact fixtures exercise every final validator in one permanent workflow, failure results produce an actionable user-facing error map, and the three other initial job types are certified.
+**Status: one certified job and an expanded proof-bound Inkscape surface; phase not closed.** Static Social Media Post has a complete certified path. The adapter now provides version-pinned, attack-tested operators for canvas, layer, assets, text, colors, geometry and PNG/SVG/PDF delivery. The phase remains open until the background-cleanup, brand-compliant-export and print-ready-poster jobs each receive their own contracts, planners, independent validators, actionable failure maps and permanent certificate regressions.
 
 ### Phase 5 — Profession learning laboratory
 
@@ -78,16 +79,23 @@ A capability is marked **certified path** only when the repository has an automa
 - **Profession alpha:** every mandatory technical claim for the declared job types is covered by certified paths and failure maps.
 - **Product alpha:** the desktop application can safely compile, review, authorize, execute and inspect those certified profession paths.
 
-## Immediate gates
+## Completed immediate gates
 
-1. Deterministic intent-to-contract compiler for the existing Static Social Media Post contract.
-2. Typed planner synthesis using only certified Graphic Designer operators.
-3. Permanent real-Inkscape final-artifact validation and final-certificate CI path.
-4. Desktop contract-review, permission, execution and evidence views.
-5. Actionable error maps for failed validators.
-6. Additional application operators and the remaining Graphic Designer jobs.
-7. Secure local key storage, release signing and installer hardening.
-8. Profession learning laboratory isolated from production execution.
+1. Deterministic intent-to-contract compiler for Static Social Media Post.
+2. Typed planner synthesis using certified Graphic Designer operators.
+3. Permanent real-Inkscape final-artifact validation and final-certificate CI.
+4. Tauri/React contract, permission, plan, execution, validator, evidence and certificate views.
+5. Renderer-side acceptance forgery prevention and actionable validator/failure display.
+6. Expanded proof-bound Inkscape operator set with per-operator attack coverage and real regression.
+
+## Next gates
+
+1. Certify background cleanup, brand-compliant export and print-ready poster preflight.
+2. Add digest-bound writable approval and execution commands to the desktop application without moving authority into the renderer.
+3. Harden local key storage, revocation, release signing, SBOM and Windows installer provenance.
+4. Expand the Windows Bridge across real application patterns and recovery cases.
+5. Build the Profession Learning Laboratory in a cryptographically separate environment.
+6. Add cross-platform bridges and additional profession capsules only after the Windows Product Alpha gates hold.
 
 ## Non-negotiable rule
 
