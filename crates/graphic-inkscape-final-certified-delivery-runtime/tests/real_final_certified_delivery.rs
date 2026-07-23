@@ -1,5 +1,6 @@
 #![cfg(feature = "real-inkscape-tests")]
 
+#[allow(dead_code)]
 #[path = "../../graphic-inkscape-srgb-certified-delivery-runtime/tests/support/mod.rs"]
 mod support;
 
