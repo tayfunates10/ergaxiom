@@ -90,9 +90,20 @@ jobs:
               job_operator_ids = job_type["operator_ids"]
               if len(job_operator_ids) != len(set(job_operator_ids)):
                   raise SystemExit(f"job type repeats an operator identity: {job_type['id']}")
-          job_ids = set(capsule["job_types"][0]["operator_ids"])
-          if not expected.issubset(job_ids):
-              raise SystemExit("job type does not bind every proof-bound operator")
+          certified_profile = [
+              "design.create_canvas",
+              "design.place_asset",
+              "design.compose_text",
+              "design.export_raster",
+          ]
+          static_post = next(
+              (item for item in capsule["job_types"] if item["id"] == "social_media_static_post"),
+              None,
+          )
+          if static_post is None:
+              raise SystemExit("social_media_static_post job type is missing")
+          if static_post["operator_ids"] != certified_profile:
+              raise SystemExit("certified static-post operator profile changed")
           PY
 
       - name: Run deterministic adapter tests
