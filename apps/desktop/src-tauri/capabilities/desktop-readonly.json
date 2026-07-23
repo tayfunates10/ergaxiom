@@ -1,0 +1,10 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "desktop-readonly",
+  "description": "Read-only capability for the Ergaxiom main control window.",
+  "windows": ["main"],
+  "permissions": [
+    "core:default",
+    "allow-get-desktop-shell-snapshot"
+  ]
+}

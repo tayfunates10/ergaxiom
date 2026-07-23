@@ -1,0 +1,188 @@
+name: Desktop shell
+
+on:
+  pull_request:
+    paths:
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "crates/desktop-shell-runtime/**"
+      - "apps/desktop/**"
+      - "docs/architecture/35-desktop-product-shell.md"
+      - ".github/workflows/desktop-shell.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "crates/desktop-shell-runtime/**"
+      - "apps/desktop/**"
+      - "docs/architecture/35-desktop-product-shell.md"
+      - ".github/workflows/desktop-shell.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  frontend:
+    name: Typecheck test and build React shell
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: apps/desktop
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Install Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: apps/desktop/package-lock.json
+
+      - name: Install pinned frontend dependencies
+        run: npm ci
+
+      - name: Typecheck frontend
+        run: npm run check
+
+      - name: Run frontend trust-boundary tests
+        run: npm test
+
+      - name: Build production frontend
+        shell: bash
+        run: |
+          set -o pipefail
+          npm run build 2>&1 | tee "$RUNNER_TEMP/frontend-build.log"
+
+      - name: Upload frontend diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ergaxiom-desktop-frontend-diagnostics
+          path: ${{ runner.temp }}/frontend-build.log
+          if-no-files-found: warn
+          retention-days: 7
+
+      - name: Upload production frontend
+        uses: actions/upload-artifact@v4
+        with:
+          name: ergaxiom-desktop-web
+          path: apps/desktop/dist/**
+          if-no-files-found: error
+          retention-days: 7
+
+  rust-authority:
+    name: Verify desktop snapshot authority
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Check workspace formatting
+        run: cargo fmt --all -- --check
+
+      - name: Lint desktop authority runtime
+        shell: bash
+        run: |
+          set -o pipefail
+          cargo clippy -p ergaxiom-desktop-shell-runtime --all-targets --all-features -- -D warnings 2>&1 | tee "$RUNNER_TEMP/desktop-authority-clippy.log"
+
+      - name: Upload authority diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ergaxiom-desktop-authority-diagnostics
+          path: ${{ runner.temp }}/desktop-authority-clippy.log
+          if-no-files-found: warn
+          retention-days: 7
+
+      - name: Test desktop authority runtime
+        run: cargo test -p ergaxiom-desktop-shell-runtime
+
+  windows-tauri:
+    name: Compile verified Windows Tauri application
+    runs-on: windows-2025
+    defaults:
+      run:
+        working-directory: apps/desktop
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Install Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: apps/desktop/package-lock.json
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Install pinned frontend dependencies
+        run: npm ci
+
+      - name: Check Tauri Rust formatting
+        run: cargo fmt --manifest-path src-tauri/Cargo.toml --all -- --check
+
+      - name: Lint Tauri Rust application
+        shell: pwsh
+        run: |
+          cargo clippy --locked --manifest-path src-tauri/Cargo.toml --all-targets --all-features -- -D warnings 2>&1 | Tee-Object -FilePath "$env:RUNNER_TEMP\tauri-clippy.log"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Upload Windows Clippy diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ergaxiom-desktop-windows-clippy-diagnostics
+          path: ${{ runner.temp }}/tauri-clippy.log
+          if-no-files-found: warn
+          retention-days: 7
+
+      - name: Test Tauri Rust application and deterministic pipeline
+        shell: pwsh
+        run: |
+          cargo test --locked --manifest-path src-tauri/Cargo.toml --all-targets 2>&1 | Tee-Object -FilePath "$env:RUNNER_TEMP\tauri-tests.log"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Upload Windows test diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ergaxiom-desktop-windows-test-diagnostics
+          path: ${{ runner.temp }}/tauri-tests.log
+          if-no-files-found: warn
+          retention-days: 7
+
+      - name: Compile Windows application without signing or bundling
+        shell: pwsh
+        run: |
+          npm run tauri -- build --no-bundle 2>&1 | Tee-Object -FilePath "$env:RUNNER_TEMP\tauri-build.log"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Upload Windows build diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ergaxiom-desktop-windows-build-diagnostics
+          path: ${{ runner.temp }}/tauri-build.log
+          if-no-files-found: warn
+          retention-days: 7
+
+      - name: Upload unsigned Windows executable
+        uses: actions/upload-artifact@v4
+        with:
+          name: ergaxiom-desktop-windows-unsigned
+          path: apps/desktop/src-tauri/target/release/ergaxiom-desktop.exe
+          if-no-files-found: error
+          retention-days: 7

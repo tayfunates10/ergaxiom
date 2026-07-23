@@ -1,0 +1,4 @@
+[[permission]]
+identifier = "allow-get-desktop-shell-snapshot"
+description = "Allows the main window to read one digest-verified desktop shell snapshot."
+commands.allow = ["get_desktop_shell_snapshot"]
