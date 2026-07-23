@@ -84,7 +84,10 @@ fn fixture() -> Result<Fixture, Box<dyn Error>> {
     })
 }
 
-fn material<'a>(fixture: &'a Fixture, package: &'a SignedPngSrgbNormalizationRecord) -> PngSrgbNormalizationMaterial<'a> {
+fn material<'a>(
+    fixture: &'a Fixture,
+    package: &'a SignedPngSrgbNormalizationRecord,
+) -> PngSrgbNormalizationMaterial<'a> {
     PngSrgbNormalizationMaterial {
         request: &fixture.request,
         package,
@@ -97,9 +100,16 @@ fn material<'a>(fixture: &'a Fixture, package: &'a SignedPngSrgbNormalizationRec
 #[test]
 fn signed_normalization_material_is_independently_verified() -> Result<(), Box<dyn Error>> {
     let fixture = fixture()?;
-    let verified = verify_normalization_material(&material(&fixture, &fixture.package), &fixture.keys)?;
-    assert_eq!(verified.input_idat_payload_digest, verified.output_idat_payload_digest);
-    assert_eq!(verified.rendering_intent, SrgbRenderingIntent::RelativeColorimetric);
+    let verified =
+        verify_normalization_material(&material(&fixture, &fixture.package), &fixture.keys)?;
+    assert_eq!(
+        verified.input_idat_payload_digest,
+        verified.output_idat_payload_digest
+    );
+    assert_eq!(
+        verified.rendering_intent,
+        SrgbRenderingIntent::RelativeColorimetric
+    );
     assert_eq!(verified.package_digest.len(), 64);
     Ok(())
 }
@@ -141,7 +151,9 @@ fn material_path_substitution_is_rejected() -> Result<(), Box<dyn Error>> {
     };
     assert!(matches!(
         verify_normalization_material(&material, &fixture.keys),
-        Err(NormalizationEvidenceError::MaterialPathMismatch("output_png"))
+        Err(NormalizationEvidenceError::MaterialPathMismatch(
+            "output_png"
+        ))
     ));
     Ok(())
 }

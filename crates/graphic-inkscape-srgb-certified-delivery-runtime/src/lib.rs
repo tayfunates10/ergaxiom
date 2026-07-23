@@ -140,10 +140,8 @@ pub fn certify_inkscape_srgb_graphic_delivery(
         return Err(InkscapeSrgbCertificationError::ContractColorProfileMismatch);
     }
 
-    let verified_normalization = verify_normalization_material(
-        &request.normalization_material,
-        request.normalization_keys,
-    )?;
+    let verified_normalization =
+        verify_normalization_material(&request.normalization_material, request.normalization_keys)?;
     validate_normalization_bindings(&request.base_delivery, &verified_normalization)?;
 
     let base_evidence_bundle_digest = request.base_delivery.evidence_bundle_digest.clone();

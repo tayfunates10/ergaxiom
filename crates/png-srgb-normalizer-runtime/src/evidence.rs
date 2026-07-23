@@ -13,7 +13,7 @@ use thiserror::Error;
 
 use crate::{
     PngSrgbNormalizationError, PngSrgbNormalizationRecord, PngSrgbNormalizationRequest,
-    SrgbSvgEvidence, inspect_svg_srgb,
+    inspect_svg_srgb,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -185,8 +185,8 @@ pub fn verify_normalization_material(
     verify_signature(material.package, keys)?;
     validate_record_digest(record)?;
 
-    let request_value =
-        serde_json::to_value(material.request).map_err(NormalizationEvidenceError::Serialization)?;
+    let request_value = serde_json::to_value(material.request)
+        .map_err(NormalizationEvidenceError::Serialization)?;
     let request_digest = canonical_json_sha256(&request_value)?;
     if request_digest != record.request_digest {
         return Err(NormalizationEvidenceError::RequestDigestMismatch);
@@ -196,9 +196,17 @@ pub fn verify_normalization_material(
     {
         return Err(NormalizationEvidenceError::RequestRecordBindingMismatch);
     }
-    require_same_file(&material.request.source_svg, material.source_svg, "source_svg")?;
+    require_same_file(
+        &material.request.source_svg,
+        material.source_svg,
+        "source_svg",
+    )?;
     require_same_file(&material.request.input_png, material.input_png, "input_png")?;
-    require_same_file(&material.request.output_png, material.output_png, "output_png")?;
+    require_same_file(
+        &material.request.output_png,
+        material.output_png,
+        "output_png",
+    )?;
 
     let source_evidence = inspect_svg_srgb(material.source_svg)?;
     if source_evidence != record.source_svg_evidence
@@ -294,8 +302,8 @@ fn verify_signature(
         .map_err(|_| NormalizationEvidenceError::InvalidSignatureEncoding)?;
     let signature = Signature::from_slice(&bytes)
         .map_err(|_| NormalizationEvidenceError::InvalidSignatureLength)?;
-    let value = serde_json::to_value(&package.record)
-        .map_err(NormalizationEvidenceError::Serialization)?;
+    let value =
+        serde_json::to_value(&package.record).map_err(NormalizationEvidenceError::Serialization)?;
     key.verify_strict(&canonical_json_bytes(&value)?, &signature)
         .map_err(|_| NormalizationEvidenceError::SignatureVerificationFailed)
 }
@@ -303,7 +311,8 @@ fn verify_signature(
 fn validate_record_digest(
     record: &PngSrgbNormalizationRecord,
 ) -> Result<(), NormalizationEvidenceError> {
-    let mut value = serde_json::to_value(record).map_err(NormalizationEvidenceError::Serialization)?;
+    let mut value =
+        serde_json::to_value(record).map_err(NormalizationEvidenceError::Serialization)?;
     let object = value.as_object_mut().ok_or_else(|| {
         NormalizationEvidenceError::Serialization(serde_json::Error::io(std::io::Error::other(
             "record did not serialize to an object",
@@ -342,20 +351,16 @@ fn idat_digest(bytes: &[u8]) -> Result<String, NormalizationEvidenceError> {
                 ergaxiom_png_artifact_validator_runtime::PngArtifactError::TruncatedChunk,
             ));
         }
-        let length = u32::from_be_bytes(
-            bytes[offset..offset + 4]
-                .try_into()
-                .map_err(|_| {
-                    ergaxiom_png_artifact_validator_runtime::PngArtifactError::TruncatedChunk
-                })?,
-        ) as usize;
+        let length = u32::from_be_bytes(bytes[offset..offset + 4].try_into().map_err(|_| {
+            ergaxiom_png_artifact_validator_runtime::PngArtifactError::TruncatedChunk
+        })?) as usize;
         let data_start = offset + 8;
-        let data_end = data_start.checked_add(length).ok_or_else(|| {
+        let data_end = data_start.checked_add(length).ok_or({
             NormalizationEvidenceError::Png(
                 ergaxiom_png_artifact_validator_runtime::PngArtifactError::TruncatedChunk,
             )
         })?;
-        let chunk_end = data_end.checked_add(4).ok_or_else(|| {
+        let chunk_end = data_end.checked_add(4).ok_or({
             NormalizationEvidenceError::Png(
                 ergaxiom_png_artifact_validator_runtime::PngArtifactError::TruncatedChunk,
             )
