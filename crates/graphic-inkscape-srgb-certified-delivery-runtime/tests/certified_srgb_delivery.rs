@@ -4,6 +4,7 @@ use std::error::Error;
 use std::{env, fs};
 
 use ed25519_dalek::SigningKey;
+use ergaxiom_attestation_runtime::{AttestationKeyRegistry, AttestationVerifyError};
 use ergaxiom_inkscape_adapter_runtime::{SetTextAndExportRequest, VerifiedInkscape, sha256_file};
 use ergaxiom_inkscape_execution_evidence_runtime::{
     InkscapeExecutionKeyRegistry, sign_execution_record,
@@ -330,5 +331,48 @@ fn real_inkscape_srgb_execution_produces_final_attestation() -> Result<(), Box<d
         "real Inkscape sRGB final attestation digest: {}",
         delivery.evidence_bundle_digest
     );
+    Ok(())
+}
+
+#[test]
+fn untrusted_base_attestation_key_cannot_re_attest() -> Result<(), Box<dyn Error>> {
+    let context = context()?;
+    let tokens = signed_tokens(&context)?;
+    let execution = synthetic_execution_fixture()?;
+    let normalization = normalization_fixture(&execution)?;
+    let mut workspace = workspace()?;
+    let mut authorizer = authorizer(&context)?;
+    let base_delivery = certify_base_delivery(
+        &context,
+        &mut workspace,
+        &mut authorizer,
+        &tokens,
+        &execution,
+    )?;
+    let untrusted_keys = AttestationKeyRegistry::default();
+
+    let result = certify_inkscape_srgb_graphic_delivery(InkscapeSrgbCertificationRequest {
+        base_delivery,
+        normalization_material: normalization_material(&execution, &normalization),
+        normalization_keys: &normalization.keys,
+        base_attestation_keys: &untrusted_keys,
+        contract_value: &context.contract_value,
+        compiled_contract: &context.compiled_contract,
+        compiled_plan: &context.compiled_plan,
+        assurance_level: AssuranceLevel::E3,
+        final_manifest_id: "manifest.graphic-inkscape-srgb.untrusted-base",
+        final_certificate_id: "certificate.graphic-inkscape-srgb.untrusted-base",
+        attestation_issuer_id: ATTESTATION_ISSUER,
+        attestation_key_id: ATTESTATION_KEY_ID,
+        certificate_issued_at_epoch_s: NOW + 1,
+        attestation_signing_key: &context.attestation_key,
+    });
+
+    assert!(matches!(
+        result,
+        Err(InkscapeSrgbCertificationError::AttestationVerify(
+            AttestationVerifyError::UnknownTrustedKey { .. }
+        ))
+    ));
     Ok(())
 }
