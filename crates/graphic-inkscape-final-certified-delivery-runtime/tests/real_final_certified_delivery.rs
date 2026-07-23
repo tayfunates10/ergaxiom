@@ -63,7 +63,7 @@ const TEXT_SAFE_AREA: TextRect = TextRect {
     x: 20,
     y: 110,
     width: 200,
-    height: 60,
+    height: 61,
 };
 const LOGO_REGION: LogoRect = LogoRect {
     x: 24,
