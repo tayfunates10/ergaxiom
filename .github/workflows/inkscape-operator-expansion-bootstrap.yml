@@ -1,0 +1,92 @@
+name: Inkscape operator expansion bootstrap
+
+on:
+  pull_request:
+    paths:
+      - ".bootstrap/**"
+      - "crates/inkscape-adapter-runtime/**"
+      - ".github/workflows/inkscape-operator-expansion-bootstrap.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  materialize-and-verify:
+    if: github.head_ref == 'agent/inkscape-operator-expansion-v1'
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out operator branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref }}
+          fetch-depth: 0
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Install and bind Inkscape
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends inkscape
+          executable="$(command -v inkscape)"
+          digest="$(sha256sum "$executable" | awk '{print $1}')"
+          echo "ERGAXIOM_INKSCAPE=$executable" >> "$GITHUB_ENV"
+          echo "ERGAXIOM_INKSCAPE_SHA256=$digest" >> "$GITHUB_ENV"
+          inkscape --version
+
+      - name: Materialize proof-bound operator implementation
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat .bootstrap/operators.part* | base64 --decode | gzip --decompress > crates/inkscape-adapter-runtime/src/operators.rs
+          cat .bootstrap/realtest.part* | base64 --decode | gzip --decompress > crates/inkscape-adapter-runtime/tests/proof_bound_operators.rs
+          python - <<'PY'
+          from pathlib import Path
+
+          cargo = Path("crates/inkscape-adapter-runtime/Cargo.toml")
+          text = cargo.read_text(encoding="utf-8")
+          if "base64.workspace = true" not in text:
+              text = text.replace("[dependencies]\n", "[dependencies]\nbase64.workspace = true\n", 1)
+          cargo.write_text(text, encoding="utf-8")
+
+          lib = Path("crates/inkscape-adapter-runtime/src/lib.rs")
+          text = lib.read_text(encoding="utf-8")
+          marker = "#![forbid(unsafe_code)]\n"
+          module = "\nmod operators;\npub use operators::*;\n"
+          if "mod operators;" not in text:
+              text = text.replace(marker, marker + module, 1)
+          lib.write_text(text, encoding="utf-8")
+          PY
+          cargo fmt --all
+
+      - name: Lint expanded adapter
+        run: cargo clippy -p ergaxiom-inkscape-adapter-runtime --all-targets --all-features -- -D warnings
+
+      - name: Run deterministic operator and attack tests
+        run: cargo test -p ergaxiom-inkscape-adapter-runtime
+
+      - name: Run real Inkscape operator regression
+        run: >-
+          cargo test
+          -p ergaxiom-inkscape-adapter-runtime
+          --features real-inkscape-tests
+          --test proof_bound_operators
+          -- --nocapture
+
+      - name: Commit verified materialized sources
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "ergaxiom-ci"
+          git config user.email "actions@users.noreply.github.com"
+          git add crates/inkscape-adapter-runtime
+          if git diff --cached --quiet; then
+            echo "Verified sources are already materialized."
+            exit 0
+          fi
+          git commit -m "Implement expanded proof-bound Inkscape operators"
+          git push origin HEAD:${{ github.head_ref }}
