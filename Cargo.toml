@@ -25,6 +25,7 @@ members = [
   "crates/png-srgb-normalizer-runtime",
   "crates/proof-kernel",
   "crates/svg-approved-copy-runtime",
+  "crates/typed-planner-runtime",
   "crates/windows-bridge-runtime",
   "crates/windows-uia-client-runtime"
 ]
