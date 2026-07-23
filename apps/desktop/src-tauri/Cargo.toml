@@ -25,6 +25,7 @@ ergaxiom-graphic-designer-twin-runtime = { path = "../../../crates/graphic-desig
 ergaxiom-intent-contract-compiler-runtime = { path = "../../../crates/intent-contract-compiler-runtime" }
 ergaxiom-occupational-twin-runtime = { path = "../../../crates/occupational-twin-runtime" }
 ergaxiom-operator-plan-runtime = { path = "../../../crates/operator-plan-runtime" }
+ergaxiom-operator-simulation-runtime = { path = "../../../crates/operator-simulation-runtime" }
 ergaxiom-proof-kernel = { path = "../../../crates/proof-kernel" }
 ergaxiom-typed-planner-runtime = { path = "../../../crates/typed-planner-runtime" }
 serde = { version = "1.0", features = ["derive"] }
