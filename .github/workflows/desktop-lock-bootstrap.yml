@@ -1,10 +1,11 @@
 name: Desktop lock bootstrap
 
 on:
-  push:
-    branches:
-      - agent/desktop-shell-foundation-v1
+  pull_request:
     paths:
+      - "apps/desktop/**"
+      - "crates/desktop-shell-runtime/**"
+      - "Cargo.toml"
       - ".github/workflows/desktop-lock-bootstrap.yml"
 
 permissions:
@@ -12,20 +13,19 @@ permissions:
 
 jobs:
   generate-locks-and-format:
+    if: github.head_ref == 'agent/desktop-shell-foundation-v1'
     runs-on: ubuntu-24.04
     steps:
       - name: Check out desktop branch
         uses: actions/checkout@v4
         with:
-          ref: agent/desktop-shell-foundation-v1
+          ref: ${{ github.head_ref }}
           fetch-depth: 0
 
       - name: Install Node
         uses: actions/setup-node@v4
         with:
           node-version: 24
-          cache: npm
-          cache-dependency-path: apps/desktop/package.json
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -76,6 +76,6 @@ jobs:
             exit 0
           fi
           git commit -m "Generate desktop lockfiles and format sources"
-          git push origin HEAD:agent/desktop-shell-foundation-v1
+          git push origin HEAD:${{ github.head_ref }}
 
 # One-shot bootstrap: remove after the generated files are committed.
