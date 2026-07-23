@@ -25,7 +25,7 @@ fn complete_intent_compiles_into_the_real_capsule() -> Result<(), Box<dyn Error>
 
     assert_eq!(contract["schema_version"], "0.2.0");
     assert_eq!(contract["contract_id"], "contract.intent-compiler.0001");
-    assert_eq!(contract["profession"]["capsule_version"], "0.2.0");
+    assert_eq!(contract["profession"]["capsule_version"], "0.3.0");
     assert_eq!(contract["job_type"], "social_media_static_post");
     assert_eq!(contract["requirements"]["unknowns"], Value::Array(vec![]));
     assert_eq!(
@@ -76,55 +76,47 @@ fn missing_values_return_resolution_requests_without_a_contract() -> Result<(), 
 }
 
 #[test]
-fn identical_resolved_intent_produces_identical_contract_and_digest() -> Result<(), Box<dyn Error>>
-{
+fn identical_resolved_intent_produces_identical_contract_and_digest() -> Result<(), Box<dyn Error>> {
     let capsule = capsule()?;
-    let intent = complete_intent();
-    let first = compile_static_social_post_intent(&intent, &capsule)?;
-    let second = compile_static_social_post_intent(&intent, &capsule)?;
-
-    assert_eq!(first, second);
+    let left = compile_static_social_post_intent(&complete_intent(), &capsule)?;
+    let right = compile_static_social_post_intent(&complete_intent(), &capsule)?;
+    assert_eq!(left, right);
     Ok(())
 }
 
 #[test]
 fn caller_supplied_timestamp_is_part_of_the_seal() -> Result<(), Box<dyn Error>> {
     let capsule = capsule()?;
-    let first = compile_static_social_post_intent(&complete_intent(), &capsule)?;
+    let baseline = compile_static_social_post_intent(&complete_intent(), &capsule)?;
     let mut changed = complete_intent();
-    changed.created_at = Some("2026-07-23T12:00:01Z".to_owned());
-    let second = compile_static_social_post_intent(&changed, &capsule)?;
+    changed.created_at = Some("2026-07-23T15:01:00Z".to_owned());
+    let changed = compile_static_social_post_intent(&changed, &capsule)?;
 
     let IntentCompileOutcome::Compiled {
-        contract_digest: first_digest,
+        contract_digest: baseline_digest,
         ..
-    } = first
+    } = baseline
     else {
-        panic!("first intent must compile");
+        panic!("baseline must compile");
     };
     let IntentCompileOutcome::Compiled {
-        contract_digest: second_digest,
+        contract_digest: changed_digest,
         ..
-    } = second
+    } = changed
     else {
-        panic!("second intent must compile");
+        panic!("changed intent must compile");
     };
-    assert_ne!(first_digest, second_digest);
+    assert_ne!(baseline_digest, changed_digest);
     Ok(())
 }
 
 #[test]
 fn invalid_artifact_digest_fails_before_contract_generation() -> Result<(), Box<dyn Error>> {
     let mut intent = complete_intent();
-    intent.approved_logo.sha256 = Some("ABC".to_owned());
-    let result = compile_static_social_post_intent(&intent, &capsule()?);
-
+    intent.approved_logo.sha256 = Some("not-a-digest".to_owned());
     assert!(matches!(
-        result,
-        Err(IntentContractCompileError::InvalidIntentField {
-            field: "approved_logo.sha256",
-            ..
-        })
+        compile_static_social_post_intent(&intent, &capsule()?),
+        Err(IntentContractCompileError::InvalidArtifactDigest(_))
     ));
     Ok(())
 }
@@ -133,14 +125,9 @@ fn invalid_artifact_digest_fails_before_contract_generation() -> Result<(), Box<
 fn unsupported_color_profile_cannot_enter_the_certified_path() -> Result<(), Box<dyn Error>> {
     let mut intent = complete_intent();
     intent.color_profile = Some("Display P3".to_owned());
-    let result = compile_static_social_post_intent(&intent, &capsule()?);
-
     assert!(matches!(
-        result,
-        Err(IntentContractCompileError::UnsupportedCertifiedValue {
-            field: "color_profile",
-            ..
-        })
+        compile_static_social_post_intent(&intent, &capsule()?),
+        Err(IntentContractCompileError::UnsupportedColorProfile(_))
     ));
     Ok(())
 }
@@ -149,51 +136,44 @@ fn unsupported_color_profile_cannot_enter_the_certified_path() -> Result<(), Box
 fn unsafe_contrast_threshold_is_rejected() -> Result<(), Box<dyn Error>> {
     let mut intent = complete_intent();
     intent.minimum_text_contrast_milli = Some(4_499);
-    let result = compile_static_social_post_intent(&intent, &capsule()?);
-
     assert!(matches!(
-        result,
-        Err(IntentContractCompileError::InvalidIntentField {
-            field: "minimum_text_contrast_milli",
-            ..
-        })
+        compile_static_social_post_intent(&intent, &capsule()?),
+        Err(IntentContractCompileError::UnsafeContrastThreshold(4_499))
     ));
     Ok(())
+}
+
+fn capsule() -> Result<Value, serde_json::Error> {
+    serde_json::from_str(include_str!(
+        "../../../professions/graphic-designer/profession.json"
+    ))
 }
 
 fn complete_intent() -> StaticSocialPostIntent {
     StaticSocialPostIntent {
         contract_id: Some("contract.intent-compiler.0001".to_owned()),
-        created_at: Some("2026-07-23T12:00:00Z".to_owned()),
-        original_text: Some(
-            "Create a 1080 by 1350 social post from the approved brand assets.".to_owned(),
-        ),
+        created_at: Some("2026-07-23T15:00:00Z".to_owned()),
+        original_text: Some("Create a verified static social post.".to_owned()),
         language: Some("en".to_owned()),
-        requester_id: Some("user.example".to_owned()),
-        approved_logo: artifact("approved-logo.png", "image/png", 'a'),
+        requester_id: Some("requester.test".to_owned()),
+        approved_logo: artifact("approved-logo.svg", "image/svg+xml", 'a'),
         brand_profile: artifact("brand-profile.json", "application/json", 'b'),
         approved_copy: artifact("approved-copy.txt", "text/plain", 'c'),
         canvas_width_px: Some(1080),
         canvas_height_px: Some(1350),
         color_profile: Some("sRGB IEC61966-2.1".to_owned()),
-        logo_clear_space_px: Some(32),
+        logo_clear_space_px: Some(48),
         minimum_text_contrast_milli: Some(4_500),
-        visual_tone: Some("Clean, restrained and professional.".to_owned()),
-        required_application_version: Some("1.4".to_owned()),
+        visual_tone: Some("modern and strong".to_owned()),
+        required_application_version: Some("1.2.2".to_owned()),
         require_pre_execution_approval: true,
     }
 }
 
-fn artifact(name: &str, media_type: &str, digest_seed: char) -> InputArtifactIntent {
+fn artifact(uri: &str, media_type: &str, digest_character: char) -> InputArtifactIntent {
     InputArtifactIntent {
-        uri: Some(format!("contract://inputs/{name}")),
+        uri: Some(format!("contract://inputs/{uri}")),
         media_type: Some(media_type.to_owned()),
-        sha256: Some(digest_seed.to_string().repeat(64)),
+        sha256: Some(digest_character.to_string().repeat(64)),
     }
-}
-
-fn capsule() -> Result<Value, Box<dyn Error>> {
-    Ok(serde_json::from_str(include_str!(
-        "../../../professions/graphic-designer/profession.json"
-    ))?)
 }
