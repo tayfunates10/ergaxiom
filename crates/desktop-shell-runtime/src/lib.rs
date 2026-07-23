@@ -225,9 +225,7 @@ fn derive_authority_status(material: &DesktopShellMaterial) -> AuthorityStatus {
     }
 }
 
-fn validate_certificate(
-    certificate: &CertificateVerification,
-) -> Result<(), DesktopShellError> {
+fn validate_certificate(certificate: &CertificateVerification) -> Result<(), DesktopShellError> {
     if certificate.certificate_id.trim().is_empty() {
         return Err(DesktopShellError::EmptyField("certificate_id"));
     }
@@ -300,9 +298,6 @@ fn snapshot_digest(snapshot: &DesktopShellSnapshot) -> Result<String, DesktopShe
     let object = value
         .as_object_mut()
         .ok_or_else(|| serde_json::Error::io(std::io::Error::other("snapshot is not an object")))?;
-    object.insert(
-        "snapshot_digest".to_owned(),
-        Value::String(String::new()),
-    );
+    object.insert("snapshot_digest".to_owned(), Value::String(String::new()));
     Ok(canonical_json_sha256(&value)?)
 }

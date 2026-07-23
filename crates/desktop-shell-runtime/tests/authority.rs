@@ -41,10 +41,7 @@ fn unresolved_material_cannot_display_acceptance() -> Result<(), Box<dyn Error>>
 fn accepted_status_requires_verified_certificate_and_bundle() -> Result<(), Box<dyn Error>> {
     let snapshot = build_desktop_shell_snapshot(accepted_material())?;
 
-    assert_eq!(
-        snapshot.authority_status,
-        AuthorityStatus::VerifiedAccepted
-    );
+    assert_eq!(snapshot.authority_status, AuthorityStatus::VerifiedAccepted);
     assert!(verify_desktop_shell_snapshot(&snapshot)?);
     Ok(())
 }

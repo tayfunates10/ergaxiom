@@ -11,9 +11,7 @@ use ergaxiom_intent_contract_compiler_runtime::{
     InputArtifactIntent, IntentCompileOutcome, StaticSocialPostIntent,
     compile_static_social_post_intent,
 };
-use ergaxiom_occupational_twin_runtime::{
-    ApplicationIdentity, EnvironmentIdentity, TwinWorkspace,
-};
+use ergaxiom_occupational_twin_runtime::{ApplicationIdentity, EnvironmentIdentity, TwinWorkspace};
 use ergaxiom_operator_plan_runtime::compile_plan;
 use ergaxiom_operator_simulation_runtime::SimulatedStepStatus;
 use ergaxiom_typed_planner_runtime::{
@@ -359,7 +357,12 @@ mod tests {
         assert_eq!(snapshot.authority_status, AuthorityStatus::Ready);
         assert!(snapshot.certificate.is_none());
         assert!(snapshot.evidence_bundle.is_none());
-        assert!(snapshot.steps.iter().all(|step| step.status == StageStatus::Passed));
+        assert!(
+            snapshot
+                .steps
+                .iter()
+                .all(|step| step.status == StageStatus::Passed)
+        );
         assert!(
             snapshot
                 .validators
@@ -370,7 +373,7 @@ mod tests {
             snapshot
                 .metadata
                 .get("twin_validation_passed")
-                .and_then(Value::as_bool),
+                .and_then(serde_json::Value::as_bool),
             Some(true)
         );
     }

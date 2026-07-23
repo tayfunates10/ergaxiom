@@ -32,7 +32,8 @@ mod tests {
 
     #[test]
     fn command_returns_only_verified_snapshot() {
-        let response = get_desktop_shell_snapshot().expect("verified snapshot command must succeed");
+        let response =
+            get_desktop_shell_snapshot().expect("verified snapshot command must succeed");
         assert!(response.verified);
         assert_eq!(response.source, "deterministic_twin");
     }
