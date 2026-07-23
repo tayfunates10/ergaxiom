@@ -1,0 +1,16 @@
+[package]
+name = "ergaxiom-desktop-shell-runtime"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+publish = false
+
+[dependencies]
+ergaxiom-proof-kernel = { path = "../proof-kernel" }
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+
+[lints]
+workspace = true
