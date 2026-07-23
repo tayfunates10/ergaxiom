@@ -6,13 +6,13 @@ This pipeline closes the bounded `social_media_static_post` evidence path over o
 
 The fixture contains:
 
-- an immutable approved-logo PNG,
+- an immutable approved-logo PNG used as the independent comparison input,
 - immutable approved copy,
 - a white 240 × 300 SVG canvas,
-- the approved-logo PNG embedded as a data URI in a declared 80 × 40 logo region, and
+- an allowlisted SVG rectangle that renders the approved PNG's declared mask, aspect ratio and primary color in an 80 × 40 logo region, and
 - one direct `text` element with the certified target ID.
 
-The approved-logo bytes and digest are rebound into the Work Contract before execution. The changed contract is recompiled and a new sealed Operator Plan is synthesized through the deterministic typed planner. This prevents the real test from reusing a plan or certificate bound to different input bytes.
+The adapter continues to reject SVG `image` elements and external resource loading. The approved-logo PNG is therefore not embedded into the executable SVG. Instead, its bytes and digest are rebound into the Work Contract and its decoded mask is independently compared with the real rendered logo region. The changed contract is recompiled and a new sealed Operator Plan is synthesized through the deterministic typed planner. This prevents the real test from reusing a plan or certificate bound to different input bytes.
 
 ## Execution and normalization
 
