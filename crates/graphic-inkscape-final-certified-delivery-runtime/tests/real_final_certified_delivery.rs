@@ -9,7 +9,6 @@ use std::error::Error;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use base64::{Engine as _, engine::general_purpose::STANDARD};
 use ed25519_dalek::SigningKey;
 use ergaxiom_attestation_runtime::{AttestationKeyRegistry, verify_attestation_against_bundle};
 use ergaxiom_contract_runtime::compile_contract;
@@ -89,10 +88,7 @@ fn real_inkscape_artifacts_issue_final_acceptance_certificate() -> Result<(), Bo
     let source = directory.join("source.svg");
     let editable = directory.join("editable.svg");
     let raw_raster = directory.join("raw.png");
-    fs::write(
-        &source,
-        real_fixture_svg(&approved_logo_png, "BEFORE").as_bytes(),
-    )?;
+    fs::write(&source, real_fixture_svg("BEFORE").as_bytes())?;
 
     let inkscape = VerifiedInkscape::open(&executable, &executable_digest)?;
     let execution_request = SetTextAndExportRequest {
@@ -388,13 +384,12 @@ fn approved_logo_png() -> Result<Vec<u8>, Box<dyn Error>> {
     Ok(encode_rgba_png(20, 10, &pixels)?)
 }
 
-fn real_fixture_svg(approved_logo_png: &[u8], text: &str) -> String {
-    let data = STANDARD.encode(approved_logo_png);
+fn real_fixture_svg(text: &str) -> String {
     format!(
         r##"<?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="240" height="300" viewBox="0 0 240 300" id="root">
+<svg xmlns="http://www.w3.org/2000/svg" width="240" height="300" viewBox="0 0 240 300" id="root">
   <rect id="background" x="0" y="0" width="240" height="300" fill="#ffffff" />
-  <image id="approved-logo" x="24" y="24" width="80" height="40" preserveAspectRatio="none" href="data:image/png;base64,{data}" xlink:href="data:image/png;base64,{data}" />
+  <rect id="approved-logo" x="24" y="24" width="80" height="40" fill="#142850" />
   <text id="headline" x="36" y="150" font-family="DejaVu Sans" font-size="28" font-weight="700" fill="#000000">{text}</text>
 </svg>
 "##
