@@ -21,7 +21,6 @@ on:
       - "fixtures/inkscape/**"
       - "professions/graphic-designer/adapters/**"
       - "docs/architecture/**"
-      - "tools/patch_real_final_logo_fixture.py"
       - ".github/workflows/inkscape-adapter.yml"
   push:
     branches:
@@ -48,7 +47,7 @@ on:
       - ".github/workflows/inkscape-adapter.yml"
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   verify-document-model-real-export-and-certification:
@@ -56,33 +55,11 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
-
-      - name: Apply approved-logo PNG profile correction
-        if: github.event_name == 'pull_request' && github.head_ref == 'agent/real-final-artifact-ci-v1'
-        shell: bash
-        run: |
-          set -euo pipefail
-          git fetch origin "${{ github.head_ref }}"
-          git checkout -B "${{ github.head_ref }}" "origin/${{ github.head_ref }}"
-          python tools/patch_real_final_logo_fixture.py
-          cargo fmt --all
-          target='crates/graphic-inkscape-final-certified-delivery-runtime/tests/real_final_certified_delivery.rs'
-          if git diff --quiet -- "$target"; then
-            echo 'Approved-logo profile correction is already applied.'
-            exit 0
-          fi
-          git config user.name "ergaxiom-ci"
-          git config user.email "actions@users.noreply.github.com"
-          git add "$target"
-          git commit -m "Remove conflicting profiles from approved-logo fixture"
-          git push origin HEAD:"${{ github.head_ref }}"
 
       - name: Install Inkscape
         run: |
