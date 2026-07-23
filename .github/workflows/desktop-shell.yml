@@ -135,13 +135,49 @@ jobs:
         run: cargo fmt --manifest-path src-tauri/Cargo.toml --all -- --check
 
       - name: Lint Tauri Rust application
-        run: cargo clippy --locked --manifest-path src-tauri/Cargo.toml --all-targets --all-features -- -D warnings
+        shell: pwsh
+        run: |
+          cargo clippy --locked --manifest-path src-tauri/Cargo.toml --all-targets --all-features -- -D warnings 2>&1 | Tee-Object -FilePath "$env:RUNNER_TEMP\tauri-clippy.log"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Upload Windows Clippy diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ergaxiom-desktop-windows-clippy-diagnostics
+          path: ${{ runner.temp }}/tauri-clippy.log
+          if-no-files-found: warn
+          retention-days: 7
 
       - name: Test Tauri Rust application and deterministic pipeline
-        run: cargo test --locked --manifest-path src-tauri/Cargo.toml --all-targets
+        shell: pwsh
+        run: |
+          cargo test --locked --manifest-path src-tauri/Cargo.toml --all-targets 2>&1 | Tee-Object -FilePath "$env:RUNNER_TEMP\tauri-tests.log"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Upload Windows test diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ergaxiom-desktop-windows-test-diagnostics
+          path: ${{ runner.temp }}/tauri-tests.log
+          if-no-files-found: warn
+          retention-days: 7
 
       - name: Compile Windows application without signing or bundling
-        run: npm run tauri -- build --no-bundle
+        shell: pwsh
+        run: |
+          npm run tauri -- build --no-bundle 2>&1 | Tee-Object -FilePath "$env:RUNNER_TEMP\tauri-build.log"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Upload Windows build diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ergaxiom-desktop-windows-build-diagnostics
+          path: ${{ runner.temp }}/tauri-build.log
+          if-no-files-found: warn
+          retention-days: 7
 
       - name: Upload unsigned Windows executable
         uses: actions/upload-artifact@v4
