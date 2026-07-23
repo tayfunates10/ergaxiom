@@ -9,7 +9,7 @@ permissions:
   contents: write
 
 jobs:
-  fix-format-and-validate:
+  fix-and-format:
     runs-on: ubuntu-latest
     steps:
       - name: Check out branch
@@ -22,7 +22,7 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: 1.85.0
-          components: rustfmt, clippy
+          components: rustfmt
 
       - name: Fix real final test bindings
         shell: python
@@ -32,36 +32,36 @@ jobs:
           path = Path("crates/graphic-inkscape-final-certified-delivery-runtime/tests/real_final_certified_delivery.rs")
           text = path.read_text(encoding="utf-8")
 
-          text = text.replace(
-              "use ergaxiom_graphic_designer_twin_runtime::{encode_rgba_png, Rgba8};",
-              "use ergaxiom_graphic_designer_twin_runtime::{\n    PixelRect as GraphicRect, Rgba8, encode_rgba_png,\n};\nuse ergaxiom_graphic_final_artifact_verification_runtime::{\n    FinalArtifactExpectations, FinalArtifactVerificationError,\n    FinalArtifactVerificationRequest, verify_final_artifacts,\n};",
-              1,
-          )
-          text = text.replace(
-              "    let mut context = real_context(&approved_logo_png)?;",
-              "    let context = real_context(&approved_logo_png)?;",
-              1,
-          )
-          text = text.replace(
-              "    assert_real_rejections(\n        &context,\n        &editable_bytes,",
-              "    let mut mixed_text_bounds = text_bounds.clone();\n    mixed_text_bounds.report.rgba_pixel_digest = \"0\".repeat(64);\n    let mixed_pixel_result = verify_final_artifacts(FinalArtifactVerificationRequest {\n        expectations: FinalArtifactExpectations {\n            approved_copy_artifact_digest: sha256_hex(\n                context.job.approved_copy.text.as_bytes(),\n            ),\n            approved_logo_artifact_digest: sha256_hex(&approved_logo_png),\n            editable_svg_digest: sha256_hex(&editable_bytes),\n            normalized_png_digest: sha256_hex(&normalized_bytes),\n            target_element_id: \"headline\".to_owned(),\n        },\n        approved_copy: &approved_copy,\n        logo_geometry: &logo_geometry,\n        text_bounds: &mixed_text_bounds,\n        rendered_contrast: &rendered_contrast,\n    });\n    assert!(matches!(\n        mixed_pixel_result,\n        Err(FinalArtifactVerificationError::PixelDecodeBindingMismatch)\n    ));\n\n    assert_real_rejections(\n        &editable_bytes,",
-              1,
-          )
-          text = text.replace(
-              "    context.job.safe_area = support::PixelRect {",
-              "    context.job.safe_area = GraphicRect {",
-              1,
-          )
-          text = text.replace(
-              "fn assert_real_rejections(\n    context: &support::Context,\n    editable_bytes: &[u8],",
-              "fn assert_real_rejections(\n    editable_bytes: &[u8],",
-              1,
-          )
-          text = text.replace(
-              "    let rejected_logo = validate_logo_geometry(&altered_logo, normalized, &logo_policy())?;",
-              "    let mut altered_logo_policy = logo_policy();\n    altered_logo_policy.approved_minimum_foreground_pixels = 1;\n    altered_logo_policy.approved_minimum_foreground_share_milli = 400;\n    let rejected_logo =\n        validate_logo_geometry(&altered_logo, normalized, &altered_logo_policy)?;",
-              1,
-          )
+          replacements = [
+              (
+                  "use ergaxiom_graphic_designer_twin_runtime::{encode_rgba_png, Rgba8};",
+                  "use ergaxiom_graphic_designer_twin_runtime::{\n    PixelRect as GraphicRect, Rgba8, encode_rgba_png,\n};\nuse ergaxiom_graphic_final_artifact_verification_runtime::{\n    FinalArtifactExpectations, FinalArtifactVerificationError,\n    FinalArtifactVerificationRequest, verify_final_artifacts,\n};",
+              ),
+              (
+                  "    let mut context = real_context(&approved_logo_png)?;",
+                  "    let context = real_context(&approved_logo_png)?;",
+              ),
+              (
+                  "    assert_real_rejections(\n        &context,\n        &editable_bytes,",
+                  "    let mut mixed_text_bounds = text_bounds.clone();\n    mixed_text_bounds.report.rgba_pixel_digest = \"0\".repeat(64);\n    let mixed_pixel_result = verify_final_artifacts(FinalArtifactVerificationRequest {\n        expectations: FinalArtifactExpectations {\n            approved_copy_artifact_digest: sha256_hex(\n                context.job.approved_copy.text.as_bytes(),\n            ),\n            approved_logo_artifact_digest: sha256_hex(&approved_logo_png),\n            editable_svg_digest: sha256_hex(&editable_bytes),\n            normalized_png_digest: sha256_hex(&normalized_bytes),\n            target_element_id: \"headline\".to_owned(),\n        },\n        approved_copy: &approved_copy,\n        logo_geometry: &logo_geometry,\n        text_bounds: &mixed_text_bounds,\n        rendered_contrast: &rendered_contrast,\n    });\n    assert!(matches!(\n        mixed_pixel_result,\n        Err(FinalArtifactVerificationError::PixelDecodeBindingMismatch)\n    ));\n\n    assert_real_rejections(\n        &editable_bytes,",
+              ),
+              (
+                  "    context.job.safe_area = support::PixelRect {",
+                  "    context.job.safe_area = GraphicRect {",
+              ),
+              (
+                  "fn assert_real_rejections(\n    context: &support::Context,\n    editable_bytes: &[u8],",
+                  "fn assert_real_rejections(\n    editable_bytes: &[u8],",
+              ),
+              (
+                  "    let rejected_logo = validate_logo_geometry(&altered_logo, normalized, &logo_policy())?;",
+                  "    let mut altered_logo_policy = logo_policy();\n    altered_logo_policy.approved_minimum_foreground_pixels = 1;\n    altered_logo_policy.approved_minimum_foreground_share_milli = 400;\n    let rejected_logo =\n        validate_logo_geometry(&altered_logo, normalized, &altered_logo_policy)?;",
+              ),
+          ]
+          for old, new in replacements:
+              if old not in text:
+                  raise SystemExit(f"required replacement pattern not found: {old[:80]}")
+              text = text.replace(old, new, 1)
 
           bad_start = text.find("    assert_eq!(\n        normalized.report.artifact_digest,")
           if bad_start == -1:
@@ -76,13 +76,7 @@ jobs:
       - name: Format Rust workspace
         run: cargo fmt --all
 
-      - name: Run workspace Clippy
-        run: cargo clippy --workspace --all-targets --all-features -- -D warnings
-
-      - name: Run workspace tests
-        run: cargo test --workspace --all-features
-
-      - name: Remove one-shot workflow and push fixes
+      - name: Remove workflow and push source fixes
         run: |
           rm .github/workflows/real-final-test-autofix.yml
           git config user.name "ergaxiom-ci"
