@@ -65,27 +65,8 @@ jobs:
           set -euo pipefail
           git fetch origin "${{ github.head_ref }}"
           git checkout -B "${{ github.head_ref }}" "origin/${{ github.head_ref }}"
-          python - <<'PY'
-          from pathlib import Path
-
-          path = Path("crates/graphic-inkscape-final-certified-delivery-runtime/tests/real_final_certified_delivery.rs")
-          text = path.read_text(encoding="utf-8")
-          old = '''const TEXT_SAFE_AREA: TextRect = TextRect {
-              x: 20,
-              y: 110,
-              width: 200,
-              height: 60,
-          };'''
-          new = '''const TEXT_SAFE_AREA: TextRect = TextRect {
-              x: 20,
-              y: 110,
-              width: 200,
-              height: 61,
-          };'''
-          if old not in text:
-              raise SystemExit("safe-area constant not found")
-          path.write_text(text.replace(old, new, 1), encoding="utf-8")
-          PY
+          perl -0pi -e 's/    height: 60,\n};\nconst LOGO_REGION/    height: 61,\n};\nconst LOGO_REGION/' crates/graphic-inkscape-final-certified-delivery-runtime/tests/real_final_certified_delivery.rs
+          grep -A5 'const TEXT_SAFE_AREA' crates/graphic-inkscape-final-certified-delivery-runtime/tests/real_final_certified_delivery.rs | grep 'height: 61'
           git checkout HEAD^ -- .github/workflows/inkscape-adapter.yml
           rm -f .github/workflows/real-final-safe-area-fix.yml
           git config user.name "ergaxiom-ci"
