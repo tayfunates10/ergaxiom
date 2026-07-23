@@ -82,6 +82,8 @@ fn real_inkscape_artifacts_issue_final_acceptance_certificate() -> Result<(), Bo
     };
 
     let approved_logo_png = approved_logo_png()?;
+    let decoded_approved_logo = decode_png_bytes(&approved_logo_png)
+        .map_err(|error| format!("approved-logo PNG decode failed: {error}"))?;
     let context = real_context(&approved_logo_png)?;
     let tokens = signed_tokens(&context)?;
     let directory = TestDirectory::create("real-final-artifact")?;
@@ -127,6 +129,9 @@ fn real_inkscape_artifacts_issue_final_acceptance_certificate() -> Result<(), Bo
         keys: execution_keys,
     };
 
+    let raw_raster_bytes = fs::read(&execution.raster)?;
+    decode_png_bytes(&raw_raster_bytes)
+        .map_err(|error| format!("raw Inkscape PNG decode failed: {error}"))?;
     let normalization = normalization_fixture(&execution)?;
     let mut workspace = workspace()?;
     let mut authorizer = authorizer(&context)?;
@@ -164,8 +169,8 @@ fn real_inkscape_artifacts_issue_final_acceptance_certificate() -> Result<(), Bo
             target_element_id: "headline".to_owned(),
         },
     )?;
-    let decoded_normalized = decode_png_bytes(&normalized_bytes)?;
-    let decoded_approved_logo = decode_png_bytes(&approved_logo_png)?;
+    let decoded_normalized = decode_png_bytes(&normalized_bytes)
+        .map_err(|error| format!("normalized PNG decode failed: {error}"))?;
     let logo_geometry =
         validate_logo_geometry(&decoded_approved_logo, &decoded_normalized, &logo_policy())?;
     let text_bounds = validate_rendered_text_bounds(
