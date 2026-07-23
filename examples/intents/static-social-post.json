@@ -1,0 +1,30 @@
+{
+  "contract_id": "contract.intent-compiler.example.0001",
+  "created_at": "2026-07-23T12:00:00Z",
+  "original_text": "Create a 1080 by 1350 social media post from the approved brand assets and copy.",
+  "language": "en",
+  "requester_id": "user.example",
+  "approved_logo": {
+    "uri": "contract://inputs/approved-logo.png",
+    "media_type": "image/png",
+    "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  },
+  "brand_profile": {
+    "uri": "contract://inputs/brand-profile.json",
+    "media_type": "application/json",
+    "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+  },
+  "approved_copy": {
+    "uri": "contract://inputs/approved-copy.txt",
+    "media_type": "text/plain",
+    "sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+  },
+  "canvas_width_px": 1080,
+  "canvas_height_px": 1350,
+  "color_profile": "sRGB IEC61966-2.1",
+  "logo_clear_space_px": 32,
+  "minimum_text_contrast_milli": 4500,
+  "visual_tone": "Clean, restrained and professional.",
+  "required_application_version": "1.4",
+  "require_pre_execution_approval": true
+}
