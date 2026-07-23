@@ -18,6 +18,7 @@ members = [
   "crates/png-logo-geometry-runtime",
   "crates/png-pixel-decoder-runtime",
   "crates/png-rendered-contrast-runtime",
+  "crates/png-rendered-text-bounds-runtime",
   "crates/png-srgb-normalizer-runtime",
   "crates/proof-kernel",
   "crates/windows-bridge-runtime",
