@@ -1,12 +1,8 @@
 #![forbid(unsafe_code)]
 
 use ergaxiom_png_logo_geometry_runtime::LogoGeometryResult;
-use ergaxiom_png_rendered_contrast_runtime::{
-    PixelRect as ContrastRect, RenderedContrastResult,
-};
-use ergaxiom_png_rendered_text_bounds_runtime::{
-    PixelRect as TextRect, RenderedTextBoundsResult,
-};
+use ergaxiom_png_rendered_contrast_runtime::{PixelRect as ContrastRect, RenderedContrastResult};
+use ergaxiom_png_rendered_text_bounds_runtime::{PixelRect as TextRect, RenderedTextBoundsResult};
 use ergaxiom_proof_kernel::{HashingError, canonical_json_sha256};
 use ergaxiom_svg_approved_copy_runtime::ApprovedCopyResult;
 use serde::{Deserialize, Serialize};
@@ -253,9 +249,7 @@ fn validate_result(
         return Err(FinalArtifactVerificationError::ValidatorRejected(name));
     }
     if !violations_empty {
-        return Err(FinalArtifactVerificationError::ContradictoryValidatorResult(
-            name,
-        ));
+        return Err(FinalArtifactVerificationError::ContradictoryValidatorResult(name));
     }
     Ok(())
 }
