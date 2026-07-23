@@ -51,6 +51,15 @@ jobs:
           python - <<'PY'
           from pathlib import Path
 
+          for generated_path in [
+              "crates/inkscape-adapter-runtime/src/operators.rs",
+              "crates/inkscape-adapter-runtime/tests/proof_bound_operators.rs",
+          ]:
+              generated = Path(generated_path)
+              text = generated.read_text(encoding="utf-8")
+              text = text.replace('r#"<svg', 'r##"<svg').replace('</svg>"#', '</svg>"##')
+              generated.write_text(text, encoding="utf-8")
+
           cargo = Path("crates/inkscape-adapter-runtime/Cargo.toml")
           text = cargo.read_text(encoding="utf-8")
           if "base64.workspace = true" not in text:
