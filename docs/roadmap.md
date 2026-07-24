@@ -12,7 +12,7 @@ For the exact implemented claim boundary, see [Current capability status](status
 | Phase 1 — Proof kernel | Satisfied for v1 |
 | Phase 2 — Occupational digital twin | Satisfied for v1 |
 | Phase 3 — Windows execution bridge | Demonstrated; production gate open |
-| Phase 4 — Graphic Designer Alpha | One bounded certified path; phase gate open |
+| Phase 4 — Graphic Designer Alpha | Satisfied for v1; four certified job paths |
 | Phase 5 — Profession learning laboratory | Not started |
 | Phase 6 — Cross-platform and additional professions | Not started |
 
@@ -109,6 +109,8 @@ Exit criteria:
 
 **Goal:** deliver the first narrow profession that can execute and verify real work.
 
+**Exit gate: satisfied for v1.**
+
 Initial certified job types:
 
 - Static social-media post
@@ -130,9 +132,14 @@ Exit criteria:
 - A failed proof returns an actionable error map instead of a success message.
 - Every initial job type has a permanent certified-path regression suite.
 
-Current bounded achievement:
+Certified bounded achievements:
 
-- Static Social Media Post can produce a final certificate over authorized execution, signed Inkscape material, signed sRGB normalization, independent PNG decoding, approved-copy identity, logo geometry, text safe area and rendered contrast for the supported fixture and restricted document profile.
+- Static Social Media Post certifies authorized execution, signed Inkscape material, sRGB normalization, independent PNG decoding, approved-copy identity, logo geometry, text safe area and rendered contrast.
+- Image Background Cleanup certifies an explicitly approved digest-bound binary alpha mask, exact foreground preservation, transparent background samples and real Inkscape integration without guessing segmentation.
+- Brand-Compliant Image Export certifies restricted-SVG brand rules, palette, logo identity and geometry, typography, approved copy, pinned Inkscape export and verified sRGB delivery.
+- Print-Ready Poster Preflight certifies restricted outlined-vector SVG structure, trim, bleed, safe area, palette, deterministic PDF page boxes, direct and indirect resources, vector-only output, outlined fonts, allowed color spaces, transparency and security boundaries, and real pinned Inkscape export.
+
+The v1 gate does not claim unrestricted graphic design, subjective aesthetic quality, unrestricted raster preflight, CMYK conversion, spot colors, overprint simulation or general PDF/X certification.
 
 ## Phase 5 — Profession learning laboratory
 
