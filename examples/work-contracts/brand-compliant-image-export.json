@@ -1,0 +1,453 @@
+{
+  "schema_version": "0.2.0",
+  "contract_id": "example.brand-export.0001",
+  "created_at": "2026-07-24T11:00:00Z",
+  "request": {
+    "original_text": "Export this approved design only when every declared brand rule is proven.",
+    "language": "en",
+    "requester_id": "example-user"
+  },
+  "profession": {
+    "capsule_id": "ergaxiom.profession.graphic-designer",
+    "capsule_version": "0.5.0",
+    "specialization": "brand_compliance"
+  },
+  "job_type": "brand_compliant_image_export",
+  "environment": {
+    "os": null,
+    "applications": [
+      {
+        "application_id": "org.inkscape.Inkscape",
+        "required_version": "1.2.2"
+      }
+    ],
+    "network_mode": "denied"
+  },
+  "inputs": [
+    {
+      "id": "source_svg",
+      "kind": "source_svg",
+      "uri": "contract://inputs/source.svg",
+      "integrity": {
+        "algorithm": "sha256",
+        "digest": "0000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "media_type": "image/svg+xml",
+      "immutable": true
+    },
+    {
+      "id": "brand_manifest",
+      "kind": "brand_manifest",
+      "uri": "contract://inputs/brand-manifest.json",
+      "integrity": {
+        "algorithm": "sha256",
+        "digest": "a7e81126c4d4c2cc7bdac519b7afbdeb7ece41c5adccbf91a21074cc944e7c3a"
+      },
+      "media_type": "application/json",
+      "immutable": true
+    },
+    {
+      "id": "approved_logo",
+      "kind": "approved_logo",
+      "uri": "contract://inputs/approved-logo.png",
+      "integrity": {
+        "algorithm": "sha256",
+        "digest": "2222222222222222222222222222222222222222222222222222222222222222"
+      },
+      "media_type": "image/png",
+      "immutable": true
+    }
+  ],
+  "outputs": [
+    {
+      "id": "editable_master",
+      "kind": "editable_master",
+      "destination": "contract://outputs/brand-compliant.svg",
+      "media_type": "image/svg+xml",
+      "required": true
+    },
+    {
+      "id": "delivery_raster",
+      "kind": "delivery_raster",
+      "destination": "contract://outputs/brand-compliant.png",
+      "media_type": "image/png",
+      "required": true
+    },
+    {
+      "id": "evidence_bundle",
+      "kind": "evidence_bundle",
+      "destination": "contract://outputs/brand-compliant-evidence.json",
+      "media_type": "application/json",
+      "required": true
+    }
+  ],
+  "requirements": {
+    "hard": [
+      {
+        "id": "canvas_width",
+        "claim": "The SVG and PNG width is exactly 320 pixels.",
+        "subject": "delivery_raster.width",
+        "operator": "eq",
+        "expected": 320,
+        "unit": "px",
+        "tolerance": 0,
+        "mandatory": true,
+        "source": "brand_manifest"
+      },
+      {
+        "id": "canvas_height",
+        "claim": "The SVG and PNG height is exactly 180 pixels.",
+        "subject": "delivery_raster.height",
+        "operator": "eq",
+        "expected": 180,
+        "unit": "px",
+        "tolerance": 0,
+        "mandatory": true,
+        "source": "brand_manifest"
+      },
+      {
+        "id": "restricted_svg_profile",
+        "claim": "The source uses only the certified root, background, embedded-logo and direct-text SVG profile.",
+        "subject": "source_svg.restricted_profile",
+        "operator": "eq",
+        "expected": true,
+        "unit": null,
+        "tolerance": 0,
+        "mandatory": true,
+        "source": "certified_job_profile"
+      },
+      {
+        "id": "palette_violations",
+        "claim": "Every declared fill color is present in the approved brand palette.",
+        "subject": "source_svg.palette_violations",
+        "operator": "eq",
+        "expected": 0,
+        "unit": "count",
+        "tolerance": 0,
+        "mandatory": true,
+        "source": "brand_manifest"
+      },
+      {
+        "id": "logo_digest_match",
+        "claim": "The embedded logo bytes exactly match the approved logo SHA-256.",
+        "subject": "source_svg.logo_digest_match",
+        "operator": "eq",
+        "expected": true,
+        "unit": null,
+        "tolerance": 0,
+        "mandatory": true,
+        "source": "approved_logo"
+      },
+      {
+        "id": "logo_geometry_match",
+        "claim": "The logo placement and dimensions exactly match the approved brand rule.",
+        "subject": "source_svg.logo_geometry_match",
+        "operator": "eq",
+        "expected": true,
+        "unit": null,
+        "tolerance": 0,
+        "mandatory": true,
+        "source": "brand_manifest"
+      },
+      {
+        "id": "logo_clear_space",
+        "claim": "The logo satisfies the minimum clear-space rule on all canvas edges.",
+        "subject": "source_svg.logo_clear_space",
+        "operator": "eq",
+        "expected": true,
+        "unit": null,
+        "tolerance": 0,
+        "mandatory": true,
+        "source": "brand_manifest"
+      },
+      {
+        "id": "typography_match",
+        "claim": "Font family, size, weight, position, color and anchor exactly match the approved typography rule.",
+        "subject": "source_svg.typography_match",
+        "operator": "eq",
+        "expected": true,
+        "unit": null,
+        "tolerance": 0,
+        "mandatory": true,
+        "source": "brand_manifest"
+      },
+      {
+        "id": "approved_copy_match",
+        "claim": "The direct text exactly matches approved copy.",
+        "subject": "source_svg.approved_copy_match",
+        "operator": "eq",
+        "expected": true,
+        "unit": null,
+        "tolerance": 0,
+        "mandatory": true,
+        "source": "brand_manifest"
+      },
+      {
+        "id": "output_media_type",
+        "claim": "The delivery artifact is a structurally valid PNG.",
+        "subject": "delivery_raster.media_type",
+        "operator": "eq",
+        "expected": "image/png",
+        "unit": null,
+        "tolerance": 0,
+        "mandatory": true,
+        "source": "certified_job_profile"
+      },
+      {
+        "id": "color_profile",
+        "claim": "The delivery PNG contains an sRGB profile signal.",
+        "subject": "delivery_raster.color_profile",
+        "operator": "eq",
+        "expected": "sRGB IEC61966-2.1",
+        "unit": null,
+        "tolerance": 0,
+        "mandatory": true,
+        "source": "certified_job_profile"
+      },
+      {
+        "id": "source_immutable",
+        "claim": "The exact source SVG bytes remain unchanged during execution.",
+        "subject": "source_svg.immutable",
+        "operator": "eq",
+        "expected": true,
+        "unit": null,
+        "tolerance": 0,
+        "mandatory": true,
+        "source": "execution_record"
+      },
+      {
+        "id": "inkscape_export_verified",
+        "claim": "The brand-compliant SVG is exported through the pinned Inkscape adapter with matching dimensions and digest-bound evidence.",
+        "subject": "delivery_raster.inkscape_export_verified",
+        "operator": "eq",
+        "expected": true,
+        "unit": null,
+        "tolerance": 0,
+        "mandatory": true,
+        "source": "trusted_application_identity"
+      }
+    ],
+    "preferences": [
+      {
+        "id": "subjective_brand_review",
+        "description": "Prefer balanced composition without changing the technical acceptance boundary.",
+        "weight": 1,
+        "evaluation_mode": "human_review"
+      }
+    ],
+    "unknowns": []
+  },
+  "permissions": [
+    {
+      "capability": "filesystem",
+      "resource": "contract://inputs/*",
+      "access": "read",
+      "constraints": {
+        "immutable": true
+      }
+    },
+    {
+      "capability": "filesystem",
+      "resource": "contract://outputs/*",
+      "access": "write",
+      "constraints": {
+        "overwrite": false
+      }
+    },
+    {
+      "capability": "brand-validator",
+      "resource": "isolated-workspace",
+      "access": "control",
+      "constraints": {
+        "network": false
+      }
+    },
+    {
+      "capability": "design-editor",
+      "resource": "brand-export",
+      "access": "control",
+      "constraints": {
+        "network": false
+      }
+    }
+  ],
+  "proof_obligations": [
+    {
+      "id": "proof.canvas_width",
+      "constraint_id": "canvas_width",
+      "validator_ids": [
+        "brand.canvas.dimensions"
+      ],
+      "mandatory": true,
+      "independence_class": "independent",
+      "evidence_types": [
+        "decoded_image_metadata"
+      ]
+    },
+    {
+      "id": "proof.canvas_height",
+      "constraint_id": "canvas_height",
+      "validator_ids": [
+        "brand.canvas.dimensions"
+      ],
+      "mandatory": true,
+      "independence_class": "independent",
+      "evidence_types": [
+        "decoded_image_metadata"
+      ]
+    },
+    {
+      "id": "proof.restricted_svg_profile",
+      "constraint_id": "restricted_svg_profile",
+      "validator_ids": [
+        "brand.svg.structure"
+      ],
+      "mandatory": true,
+      "independence_class": "independent",
+      "evidence_types": [
+        "parsed_svg_snapshot"
+      ]
+    },
+    {
+      "id": "proof.palette_violations",
+      "constraint_id": "palette_violations",
+      "validator_ids": [
+        "brand.palette.allowlist"
+      ],
+      "mandatory": true,
+      "independence_class": "independent",
+      "evidence_types": [
+        "parsed_svg_snapshot"
+      ]
+    },
+    {
+      "id": "proof.logo_digest_match",
+      "constraint_id": "logo_digest_match",
+      "validator_ids": [
+        "brand.logo.identity"
+      ],
+      "mandatory": true,
+      "independence_class": "independent",
+      "evidence_types": [
+        "embedded_asset_digest"
+      ]
+    },
+    {
+      "id": "proof.logo_geometry_match",
+      "constraint_id": "logo_geometry_match",
+      "validator_ids": [
+        "brand.logo.geometry"
+      ],
+      "mandatory": true,
+      "independence_class": "independent",
+      "evidence_types": [
+        "parsed_svg_geometry"
+      ]
+    },
+    {
+      "id": "proof.logo_clear_space",
+      "constraint_id": "logo_clear_space",
+      "validator_ids": [
+        "brand.logo.clear_space"
+      ],
+      "mandatory": true,
+      "independence_class": "independent",
+      "evidence_types": [
+        "parsed_svg_geometry"
+      ]
+    },
+    {
+      "id": "proof.typography_match",
+      "constraint_id": "typography_match",
+      "validator_ids": [
+        "brand.typography"
+      ],
+      "mandatory": true,
+      "independence_class": "independent",
+      "evidence_types": [
+        "parsed_svg_typography"
+      ]
+    },
+    {
+      "id": "proof.approved_copy_match",
+      "constraint_id": "approved_copy_match",
+      "validator_ids": [
+        "brand.copy.identity"
+      ],
+      "mandatory": true,
+      "independence_class": "independent",
+      "evidence_types": [
+        "parsed_direct_text"
+      ]
+    },
+    {
+      "id": "proof.output_media_type",
+      "constraint_id": "output_media_type",
+      "validator_ids": [
+        "brand.png.structure"
+      ],
+      "mandatory": true,
+      "independence_class": "independent",
+      "evidence_types": [
+        "decoded_image_metadata"
+      ]
+    },
+    {
+      "id": "proof.color_profile",
+      "constraint_id": "color_profile",
+      "validator_ids": [
+        "brand.png.structure"
+      ],
+      "mandatory": true,
+      "independence_class": "independent",
+      "evidence_types": [
+        "png_chunk_evidence"
+      ]
+    },
+    {
+      "id": "proof.source_immutable",
+      "constraint_id": "source_immutable",
+      "validator_ids": [
+        "brand.source.immutability"
+      ],
+      "mandatory": true,
+      "independence_class": "independent",
+      "evidence_types": [
+        "pre_execution_digest"
+      ]
+    },
+    {
+      "id": "proof.inkscape_export_verified",
+      "constraint_id": "inkscape_export_verified",
+      "validator_ids": [
+        "brand.inkscape.integration"
+      ],
+      "mandatory": true,
+      "independence_class": "independent",
+      "evidence_types": [
+        "signed_execution_record"
+      ]
+    }
+  ],
+  "approval_policy": {
+    "require_pre_execution_approval": true,
+    "require_irreversible_action_approval": true,
+    "approval_ttl_seconds": 300
+  },
+  "acceptance": {
+    "minimum_assurance_level": "E3",
+    "unknowns_must_be_empty": true,
+    "all_mandatory_proofs_must_pass": true,
+    "validator_conflicts_allowed": false
+  },
+  "metadata": {
+    "compiler": "ergaxiom-brand-compliant-export-certified-path-runtime",
+    "compiler_version": "0.1.0",
+    "intent_kind": "brand_compliant_image_export",
+    "brand_manifest_digest": "a7e81126c4d4c2cc7bdac519b7afbdeb7ece41c5adccbf91a21074cc944e7c3a",
+    "restricted_svg_profile": "root_background_embedded_logo_direct_text_v1",
+    "subjective_brand_quality_is_hard_acceptance": false,
+    "deterministic": true,
+    "implicit_defaults": false
+  }
+}
