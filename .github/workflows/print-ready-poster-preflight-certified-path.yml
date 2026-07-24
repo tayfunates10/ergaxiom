@@ -149,6 +149,8 @@ jobs:
 
       - name: Run real Inkscape Acceptance Certificate regression
         shell: bash
+        env:
+          ERGAXIOM_KEEP_TEST_ARTIFACTS: "1"
         run: |
           set -euo pipefail
           cargo test \
@@ -169,5 +171,7 @@ jobs:
             clippy-diagnostics.log
             deterministic-test-diagnostics.log
             real-certificate-diagnostics.log
+            /tmp/ergaxiom-print-preflight-certificate-*/*.svg
+            /tmp/ergaxiom-print-preflight-certificate-*/*.pdf
           if-no-files-found: ignore
           retention-days: 7
