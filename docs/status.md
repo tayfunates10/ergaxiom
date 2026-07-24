@@ -13,8 +13,8 @@ A capability is marked **certified path** only when the repository has an automa
 | Three-valued proof kernel | Implemented | Mandatory `FALSE`, `UNKNOWN`, missing and contradictory proof states fail closed. |
 | Property-based impossible-acceptance tests | Implemented | Generated states cannot accept missing mandatory proof. |
 | Work Contract and capsule runtime compilation | Implemented | Compiles typed contracts and version-pinned profession capsules. |
-| Deterministic intent-to-contract compilation | Implemented | The Static Social Media Post profile compiles a structured resolved intent. Unrestricted natural-language interpretation is not claimed. |
-| Typed planner synthesis | Implemented | The Static Social Media Post profile synthesizes a deterministic plan using capsule-approved operators. General planning is not claimed. |
+| Deterministic intent-to-contract compilation | Implemented | Static Social Media Post and Image Background Cleanup compile structured resolved intents. Unrestricted natural-language interpretation is not claimed. |
+| Typed planner synthesis | Implemented | Static Social Media Post and Image Background Cleanup synthesize deterministic plans using capsule-approved operators. General planning is not claimed. |
 | Operator Plan compilation and trace conformance | Implemented | Plans may use only capsule-approved, version-pinned operators. |
 | Signed capability tokens and authorization receipts | Implemented | Tokens are contract, capsule, plan, step, operator, executor and optional-device bound. |
 | Authorized execution trace | Implemented | Receipt use and plan state are independently recomputed. |
@@ -35,12 +35,12 @@ A capability is marked **certified path** only when the repository has an automa
 | Editable SVG approved-copy identity | Implemented | Independently parses one direct-text SVG element and compares exact approved UTF-8 copy. |
 | Cross-validator final artifact binding | Implemented | Requires all raster validators to share the exact normalized PNG and pixel decode. |
 | Static Social Media Post final certificate | Certified path | Synthetic end-to-end material reaches a certificate over signed execution, normalization and independent artifact proofs. Permanent real-Inkscape regressions cover bounded execution and final artifact certification. |
+| Image Background Cleanup final certificate | Certified path | Applies an explicitly approved digest-bound binary alpha mask without guessing segmentation, independently proves exact foreground preservation and transparent background samples, runs a pinned Inkscape integration probe and verifies an Ed25519 Acceptance Certificate. |
 | Desktop product shell | Implemented | Tauri/React review shell displays immutable inputs, resolution state, contract, permissions, sealed plan, execution, validators, evidence and certificate state. Renderer mutation cannot forge acceptance. Writable approval and execution commands are not yet enabled. |
 | General application learning | Planned | No live-learning or self-modifying production capability is allowed. |
-| Background cleanup job | Planned | No certified job-specific contract and validator chain exists. |
 | Brand-compliant export job | Planned | No complete job-specific contract and certification suite exists. |
 | Print-ready poster preflight | Planned | No complete PDF/print validator chain exists. |
-| Cross-platform bridges | Planned | The proof kernel is platform-neutral; only bounded Windows and Inkscape paths exist. |
+| Cross-platform bridges | Planned | The proof kernel is platform-neutral; bounded Windows UI Automation and platform-bound Inkscape paths exist. |
 
 ## Phase assessment
 
@@ -62,7 +62,7 @@ A capability is marked **certified path** only when the repository has an automa
 
 ### Phase 4 — Graphic Designer Alpha
 
-**Status: one certified job and an expanded proof-bound Inkscape surface; phase not closed.** Static Social Media Post has a complete certified path. The adapter now provides version-pinned, attack-tested operators for canvas, layer, assets, text, colors, geometry and PNG/SVG/PDF delivery. The phase remains open until the background-cleanup, brand-compliant-export and print-ready-poster jobs each receive their own contracts, planners, independent validators, actionable failure maps and permanent certificate regressions.
+**Status: two certified jobs and an expanded proof-bound Inkscape surface; phase not closed.** Static Social Media Post and the bounded binary-mask Image Background Cleanup profile have complete certified paths. The adapter provides version-pinned, attack-tested operators for canvas, layer, assets, text, colors, geometry and PNG/SVG/PDF delivery. The phase remains open until Brand-Compliant Export and Print-Ready Poster Preflight receive their own contracts, planners, independent validators, actionable failure maps and permanent certificate regressions.
 
 ### Phase 5 — Profession learning laboratory
 
@@ -87,10 +87,11 @@ A capability is marked **certified path** only when the repository has an automa
 4. Tauri/React contract, permission, plan, execution, validator, evidence and certificate views.
 5. Renderer-side acceptance forgery prevention and actionable validator/failure display.
 6. Expanded proof-bound Inkscape operator set with per-operator attack coverage and real regression.
+7. Binary-mask Image Background Cleanup with authorized trace reassessment, independent PNG proofs, real Inkscape integration and a verified Acceptance Certificate.
 
 ## Next gates
 
-1. Certify background cleanup, brand-compliant export and print-ready poster preflight.
+1. Certify Brand-Compliant Export and Print-Ready Poster Preflight.
 2. Add digest-bound writable approval and execution commands to the desktop application without moving authority into the renderer.
 3. Harden local key storage, revocation, release signing, SBOM and Windows installer provenance.
 4. Expand the Windows Bridge across real application patterns and recovery cases.
