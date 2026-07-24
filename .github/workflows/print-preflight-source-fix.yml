@@ -1,0 +1,143 @@
+name: Print preflight source fix
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/print-preflight-source-fix.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    if: github.head_ref == 'agent/print-ready-poster-preflight-certified-path-v1'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Check out branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref }}
+          fetch-depth: 0
+
+      - name: Install Rust formatter
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+
+      - name: Apply verified compiler fixes
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+
+          pdf = Path('crates/print-ready-poster-preflight-certified-path-runtime/src/pdf.rs')
+          text = pdf.read_text(encoding='utf-8')
+          replacements = [
+              (
+                  'use lopdf::{Dictionary, Document, Object, ObjectId};',
+                  'use lopdf::{Dictionary, Document, Object};',
+              ),
+              (
+                  '    #[error("PDF parsing or writing failed: {0}")]\n    Pdf(#[from] lopdf::Error),\n',
+                  '    #[error("PDF parsing or writing failed: {0}")]\n    Pdf(#[from] lopdf::Error),\n    #[error("PDF I/O failed: {0}")]\n    Io(#[from] std::io::Error),\n',
+              ),
+              (
+                  '''            if matches!(
+                name,
+                b"Action" | b"JavaScript" | b"Launch" | b"EmbeddedFile" | b"FileAttachment"
+            ) {
+                return false;
+            }
+''',
+                  '''            if [
+                b"Action".as_slice(),
+                b"JavaScript".as_slice(),
+                b"Launch".as_slice(),
+                b"EmbeddedFile".as_slice(),
+                b"FileAttachment".as_slice(),
+            ]
+            .contains(&name)
+            {
+                return false;
+            }
+''',
+              ),
+              ('\n#[allow(dead_code)]\nfn _object_id_type_check(_: ObjectId) {}\n', '\n'),
+          ]
+          for old, new in replacements:
+              if old not in text:
+                  raise SystemExit(f'PDF replacement not found: {old[:80]!r}')
+              text = text.replace(old, new, 1)
+          pdf.write_text(text, encoding='utf-8')
+
+          planner = Path('crates/print-ready-poster-preflight-certified-path-runtime/src/planner.rs')
+          text = planner.read_text(encoding='utf-8')
+          old = '''    let compiled_plan = compile_plan(&plan, capsule_value, &compiled_contract)?;
+    Ok(PrintPreflightPlanOutcome::Planned {
+        job_type: PRINT_PREFLIGHT_JOB_TYPE.to_owned(),
+        plan,
+        plan_digest: compiled_plan.plan_digest,
+        contract_digest: compiled_plan.contract_digest,
+        capsule_digest: compiled_plan.capsule_digest,
+        mandatory_step_count: compiled_plan.mandatory_step_count(),
+'''
+          new = '''    let compiled_plan = compile_plan(&plan, capsule_value, &compiled_contract)?;
+    let mandatory_step_count = compiled_plan.mandatory_step_count();
+    Ok(PrintPreflightPlanOutcome::Planned {
+        job_type: PRINT_PREFLIGHT_JOB_TYPE.to_owned(),
+        plan,
+        plan_digest: compiled_plan.plan_digest,
+        contract_digest: compiled_plan.contract_digest,
+        capsule_digest: compiled_plan.capsule_digest,
+        mandatory_step_count,
+'''
+          if old not in text:
+              raise SystemExit('planner move block not found')
+          text = text.replace(old, new, 1)
+          old = '''    let expected_outputs = BTreeSet::from([
+        "delivery_pdf|delivery_pdf|contract://outputs/print-ready-poster.pdf|application/pdf",
+        "editable_master|editable_master|contract://outputs/print-ready-poster.svg|image/svg+xml",
+        "evidence_bundle|evidence_bundle|contract://outputs/print-ready-poster-evidence.json|application/json",
+    ]);
+'''
+          new = '''    let expected_outputs = BTreeSet::from([
+        "delivery_pdf|delivery_pdf|contract://outputs/print-ready-poster.pdf|application/pdf".to_owned(),
+        "editable_master|editable_master|contract://outputs/print-ready-poster.svg|image/svg+xml".to_owned(),
+        "evidence_bundle|evidence_bundle|contract://outputs/print-ready-poster-evidence.json|application/json".to_owned(),
+    ]);
+'''
+          if old not in text:
+              raise SystemExit('planner output set block not found')
+          planner.write_text(text.replace(old, new, 1), encoding='utf-8')
+
+          svg = Path('crates/print-ready-poster-preflight-certified-path-runtime/src/svg.rs')
+          text = svg.read_text(encoding='utf-8')
+          old = '''    loop {
+        match reader.read_event() {
+'''
+          new = '''    let mut buffer = Vec::new();
+    loop {
+        buffer.clear();
+        match reader.read_event_into(&mut buffer) {
+'''
+          if old not in text:
+              raise SystemExit('buffered XML reader block not found')
+          svg.write_text(text.replace(old, new, 1), encoding='utf-8')
+          PY
+          cargo fmt --all
+          cargo check -p ergaxiom-print-ready-poster-preflight-certified-path-runtime --all-targets --all-features
+
+      - name: Commit verified fixes
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "ergaxiom-ci"
+          git config user.email "actions@users.noreply.github.com"
+          git add crates/print-ready-poster-preflight-certified-path-runtime/src/pdf.rs \
+            crates/print-ready-poster-preflight-certified-path-runtime/src/planner.rs \
+            crates/print-ready-poster-preflight-certified-path-runtime/src/svg.rs
+          git diff --cached --check
+          git commit -m "Fix print preflight compiler integration"
+          git push origin HEAD:${{ github.head_ref }}
