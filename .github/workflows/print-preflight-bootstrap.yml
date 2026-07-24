@@ -41,7 +41,7 @@ jobs:
           set -euo pipefail
           git config user.name "ergaxiom-ci"
           git config user.email "actions@users.noreply.github.com"
-          git add Cargo.toml Cargo.lock \
+          git add Cargo.toml \
             professions/graphic-designer/profession.json \
             examples/work-contracts \
             crates/intent-contract-compiler-runtime/tests/static_social_post.rs \
