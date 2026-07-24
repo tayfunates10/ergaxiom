@@ -413,7 +413,7 @@
       "mandatory": true,
       "independence_class": "independent",
       "evidence_types": [
-        "pre_post_digest"
+        "pre_execution_digest"
       ]
     },
     {
@@ -425,7 +425,7 @@
       "mandatory": true,
       "independence_class": "independent",
       "evidence_types": [
-        "signed_application_record"
+        "signed_execution_record"
       ]
     }
   ],

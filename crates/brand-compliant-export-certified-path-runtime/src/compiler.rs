@@ -502,12 +502,12 @@ fn proof_obligations() -> Vec<Value> {
         (
             "source_immutable",
             "brand.source.immutability",
-            "pre_post_digest",
+            "pre_execution_digest",
         ),
         (
             "inkscape_export_verified",
             "brand.inkscape.integration",
-            "signed_application_record",
+            "signed_execution_record",
         ),
     ]
     .into_iter()
