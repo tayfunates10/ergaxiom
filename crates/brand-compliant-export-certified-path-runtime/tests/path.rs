@@ -203,6 +203,7 @@ fn resolved_intent(
     })
 }
 
+#[allow(clippy::too_many_arguments)]
 fn execution_record(
     source: &[u8],
     logo: &[u8],
