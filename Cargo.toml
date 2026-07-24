@@ -1,6 +1,7 @@
 [workspace]
 members = [
   "crates/attestation-runtime",
+  "crates/background-cleanup-certified-path-runtime",
   "crates/capability-runtime",
   "crates/contract-runtime",
   "crates/desktop-shell-runtime",

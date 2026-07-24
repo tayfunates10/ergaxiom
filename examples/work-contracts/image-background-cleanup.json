@@ -1,0 +1,429 @@
+{
+  "schema_version": "0.2.0",
+  "contract_id": "example.background-cleanup.0001",
+  "created_at": "2026-07-24T08:00:00Z",
+  "request": {
+    "original_text": "Remove the background using the approved cleanup mask while preserving every foreground pixel.",
+    "language": "en",
+    "requester_id": "example-user"
+  },
+  "profession": {
+    "capsule_id": "ergaxiom.profession.graphic-designer",
+    "capsule_version": "0.4.0",
+    "specialization": "image_editing"
+  },
+  "job_type": "image_background_cleanup",
+  "environment": {
+    "os": null,
+    "applications": [
+      {
+        "application_id": "org.inkscape.Inkscape",
+        "required_version": "1.2.2"
+      }
+    ],
+    "network_mode": "denied"
+  },
+  "inputs": [
+    {
+      "id": "source_raster",
+      "kind": "source_raster",
+      "uri": "contract://inputs/source.png",
+      "integrity": {
+        "algorithm": "sha256",
+        "digest": "0000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "media_type": "image/png",
+      "immutable": true
+    },
+    {
+      "id": "approved_cleanup_mask",
+      "kind": "approved_cleanup_mask",
+      "uri": "contract://inputs/approved-mask.png",
+      "integrity": {
+        "algorithm": "sha256",
+        "digest": "1111111111111111111111111111111111111111111111111111111111111111"
+      },
+      "media_type": "image/png",
+      "immutable": true
+    }
+  ],
+  "outputs": [
+    {
+      "id": "cleaned_raster",
+      "kind": "cleaned_raster",
+      "destination": "contract://outputs/background-cleaned.png",
+      "media_type": "image/png",
+      "required": true
+    },
+    {
+      "id": "integration_probe",
+      "kind": "integration_probe_raster",
+      "destination": "contract://outputs/background-cleanup-probe.png",
+      "media_type": "image/png",
+      "required": true
+    },
+    {
+      "id": "evidence_bundle",
+      "kind": "evidence_bundle",
+      "destination": "contract://outputs/background-cleanup-evidence.json",
+      "media_type": "application/json",
+      "required": true
+    }
+  ],
+  "requirements": {
+    "hard": [
+      {
+        "id": "cleaned_width",
+        "claim": "The cleaned PNG width is exactly 4 pixels.",
+        "subject": "cleaned_raster.width",
+        "operator": "eq",
+        "expected": 4,
+        "unit": "px",
+        "tolerance": 0,
+        "mandatory": true,
+        "source": "trusted_source_metadata"
+      },
+      {
+        "id": "cleaned_height",
+        "claim": "The cleaned PNG height is exactly 3 pixels.",
+        "subject": "cleaned_raster.height",
+        "operator": "eq",
+        "expected": 3,
+        "unit": "px",
+        "tolerance": 0,
+        "mandatory": true,
+        "source": "trusted_source_metadata"
+      },
+      {
+        "id": "mask_dimensions_match",
+        "claim": "The approved cleanup mask dimensions exactly match the source raster.",
+        "subject": "approved_cleanup_mask.dimensions_match_source",
+        "operator": "eq",
+        "expected": true,
+        "unit": null,
+        "tolerance": 0,
+        "mandatory": true,
+        "source": "approved_cleanup_mask"
+      },
+      {
+        "id": "mask_is_binary",
+        "claim": "Every approved cleanup-mask alpha sample is exactly 0 or 255.",
+        "subject": "approved_cleanup_mask.binary_alpha",
+        "operator": "eq",
+        "expected": true,
+        "unit": null,
+        "tolerance": 0,
+        "mandatory": true,
+        "source": "approved_cleanup_mask"
+      },
+      {
+        "id": "mask_foreground_pixels",
+        "claim": "The approved cleanup mask contains at least one foreground pixel.",
+        "subject": "approved_cleanup_mask.foreground_pixels",
+        "operator": "gte",
+        "expected": 1,
+        "unit": "count",
+        "tolerance": 0,
+        "mandatory": true,
+        "source": "approved_cleanup_mask"
+      },
+      {
+        "id": "mask_background_pixels",
+        "claim": "The approved cleanup mask contains at least one background pixel.",
+        "subject": "approved_cleanup_mask.background_pixels",
+        "operator": "gte",
+        "expected": 1,
+        "unit": "count",
+        "tolerance": 0,
+        "mandatory": true,
+        "source": "approved_cleanup_mask"
+      },
+      {
+        "id": "background_alpha_violations",
+        "claim": "Every pixel declared as background is fully transparent in the cleaned PNG.",
+        "subject": "cleaned_raster.background_alpha_violations",
+        "operator": "eq",
+        "expected": 0,
+        "unit": "count",
+        "tolerance": 0,
+        "mandatory": true,
+        "source": "approved_cleanup_mask"
+      },
+      {
+        "id": "foreground_rgba_violations",
+        "claim": "Every pixel declared as foreground preserves the exact source RGBA sample.",
+        "subject": "cleaned_raster.foreground_rgba_violations",
+        "operator": "eq",
+        "expected": 0,
+        "unit": "count",
+        "tolerance": 0,
+        "mandatory": true,
+        "source": "source_raster"
+      },
+      {
+        "id": "output_media_type",
+        "claim": "The cleaned artifact is a structurally valid PNG image.",
+        "subject": "cleaned_raster.media_type",
+        "operator": "eq",
+        "expected": "image/png",
+        "unit": null,
+        "tolerance": 0,
+        "mandatory": true,
+        "source": "certified_job_profile"
+      },
+      {
+        "id": "color_profile",
+        "claim": "The cleaned PNG contains the restricted sRGB profile signal.",
+        "subject": "cleaned_raster.color_profile",
+        "operator": "eq",
+        "expected": "sRGB IEC61966-2.1",
+        "unit": null,
+        "tolerance": 0,
+        "mandatory": true,
+        "source": "certified_job_profile"
+      },
+      {
+        "id": "source_immutable",
+        "claim": "The exact source-raster bytes remain unchanged throughout execution.",
+        "subject": "source_raster.immutable",
+        "operator": "eq",
+        "expected": true,
+        "unit": null,
+        "tolerance": 0,
+        "mandatory": true,
+        "source": "execution_record"
+      },
+      {
+        "id": "inkscape_probe_verified",
+        "claim": "The cleaned PNG is imported and exported through the pinned Inkscape integration probe with matching dimensions.",
+        "subject": "integration_probe.verified",
+        "operator": "eq",
+        "expected": true,
+        "unit": null,
+        "tolerance": 0,
+        "mandatory": true,
+        "source": "trusted_application_identity"
+      }
+    ],
+    "preferences": [
+      {
+        "id": "edge_quality_review",
+        "description": "Prefer visually natural edges without changing the approved binary-mask acceptance boundary.",
+        "weight": 1,
+        "evaluation_mode": "human_review"
+      }
+    ],
+    "unknowns": []
+  },
+  "permissions": [
+    {
+      "capability": "filesystem",
+      "resource": "contract://inputs/*",
+      "access": "read",
+      "constraints": {
+        "immutable": true
+      }
+    },
+    {
+      "capability": "filesystem",
+      "resource": "contract://outputs/*",
+      "access": "write",
+      "constraints": {
+        "overwrite": false
+      }
+    },
+    {
+      "capability": "cleanup-runtime",
+      "resource": "isolated-workspace",
+      "access": "control",
+      "constraints": {
+        "network": false
+      }
+    },
+    {
+      "capability": "design-editor",
+      "resource": "integration-probe",
+      "access": "control",
+      "constraints": {
+        "network": false
+      }
+    }
+  ],
+  "proof_obligations": [
+    {
+      "id": "proof.cleaned_width",
+      "constraint_id": "cleaned_width",
+      "validator_ids": [
+        "cleanup.png.structure"
+      ],
+      "mandatory": true,
+      "independence_class": "independent",
+      "evidence_types": [
+        "decoded_image_metadata",
+        "measurement_record"
+      ]
+    },
+    {
+      "id": "proof.cleaned_height",
+      "constraint_id": "cleaned_height",
+      "validator_ids": [
+        "cleanup.png.structure"
+      ],
+      "mandatory": true,
+      "independence_class": "independent",
+      "evidence_types": [
+        "decoded_image_metadata",
+        "measurement_record"
+      ]
+    },
+    {
+      "id": "proof.mask_dimensions_match",
+      "constraint_id": "mask_dimensions_match",
+      "validator_ids": [
+        "cleanup.mask.dimensions"
+      ],
+      "mandatory": true,
+      "independence_class": "independent",
+      "evidence_types": [
+        "decoded_image_metadata",
+        "dimension_comparison"
+      ]
+    },
+    {
+      "id": "proof.mask_is_binary",
+      "constraint_id": "mask_is_binary",
+      "validator_ids": [
+        "cleanup.mask.binary"
+      ],
+      "mandatory": true,
+      "independence_class": "independent",
+      "evidence_types": [
+        "decoded_mask_pixels",
+        "mask_histogram"
+      ]
+    },
+    {
+      "id": "proof.mask_foreground_pixels",
+      "constraint_id": "mask_foreground_pixels",
+      "validator_ids": [
+        "cleanup.mask.binary"
+      ],
+      "mandatory": true,
+      "independence_class": "independent",
+      "evidence_types": [
+        "decoded_mask_pixels",
+        "mask_histogram"
+      ]
+    },
+    {
+      "id": "proof.mask_background_pixels",
+      "constraint_id": "mask_background_pixels",
+      "validator_ids": [
+        "cleanup.mask.binary"
+      ],
+      "mandatory": true,
+      "independence_class": "independent",
+      "evidence_types": [
+        "decoded_mask_pixels",
+        "mask_histogram"
+      ]
+    },
+    {
+      "id": "proof.background_alpha_violations",
+      "constraint_id": "background_alpha_violations",
+      "validator_ids": [
+        "cleanup.alpha.background"
+      ],
+      "mandatory": true,
+      "independence_class": "independent",
+      "evidence_types": [
+        "decoded_output_pixels",
+        "mask_bound_comparison"
+      ]
+    },
+    {
+      "id": "proof.foreground_rgba_violations",
+      "constraint_id": "foreground_rgba_violations",
+      "validator_ids": [
+        "cleanup.foreground.preservation"
+      ],
+      "mandatory": true,
+      "independence_class": "independent",
+      "evidence_types": [
+        "decoded_source_pixels",
+        "decoded_output_pixels",
+        "mask_bound_comparison"
+      ]
+    },
+    {
+      "id": "proof.output_media_type",
+      "constraint_id": "output_media_type",
+      "validator_ids": [
+        "cleanup.png.structure"
+      ],
+      "mandatory": true,
+      "independence_class": "independent",
+      "evidence_types": [
+        "magic_bytes",
+        "decoded_image_metadata"
+      ]
+    },
+    {
+      "id": "proof.color_profile",
+      "constraint_id": "color_profile",
+      "validator_ids": [
+        "cleanup.png.structure"
+      ],
+      "mandatory": true,
+      "independence_class": "independent",
+      "evidence_types": [
+        "png_chunk_evidence",
+        "decoded_image_metadata"
+      ]
+    },
+    {
+      "id": "proof.source_immutable",
+      "constraint_id": "source_immutable",
+      "validator_ids": [
+        "cleanup.source.immutability"
+      ],
+      "mandatory": true,
+      "independence_class": "independent",
+      "evidence_types": [
+        "pre_execution_digest",
+        "post_execution_digest"
+      ]
+    },
+    {
+      "id": "proof.inkscape_probe_verified",
+      "constraint_id": "inkscape_probe_verified",
+      "validator_ids": [
+        "cleanup.inkscape.integration"
+      ],
+      "mandatory": true,
+      "independence_class": "independent",
+      "evidence_types": [
+        "application_identity",
+        "adapter_receipt",
+        "decoded_image_metadata"
+      ]
+    }
+  ],
+  "approval_policy": {
+    "require_pre_execution_approval": true,
+    "require_irreversible_action_approval": true,
+    "approval_ttl_seconds": 300
+  },
+  "acceptance": {
+    "minimum_assurance_level": "E3",
+    "unknowns_must_be_empty": true,
+    "all_mandatory_proofs_must_pass": true,
+    "validator_conflicts_allowed": false
+  },
+  "metadata": {
+    "example": true,
+    "mask_policy": "digest_bound_binary_alpha",
+    "subjective_edge_quality_is_hard_acceptance": false,
+    "note": "Digest values are placeholders for schema and workflow demonstrations."
+  }
+}
