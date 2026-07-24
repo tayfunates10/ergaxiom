@@ -148,10 +148,10 @@ pub fn inspect_print_pdf(
     let trim_box = read_box(page, b"TrimBox")?;
     let bleed_box = read_box(page, b"BleedBox")?;
     let crop_box = read_box(page, b"CropBox")?;
-    let vector_only = document.get_page_images(page_id)?.is_empty();
-    let fonts_outlined = document.get_page_fonts(page_id)?.is_empty();
     let annotations_absent = document.get_page_annotations(page_id)?.is_empty();
     let (resources, _) = document.get_page_resources(page_id)?;
+    let vector_only = resources.is_none_or(|resources| resources.get(b"XObject").is_err());
+    let fonts_outlined = resources.is_none_or(|resources| resources.get(b"Font").is_err());
     let resource_transparency_absent = resources.is_none_or(|resources| {
         resources.get(b"ExtGState").is_err() && resources.get(b"Pattern").is_err()
     });
