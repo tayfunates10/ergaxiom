@@ -1,0 +1,86 @@
+name: Brand export source fix
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/brand-export-source-fix.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    if: github.head_ref == 'agent/brand-compliant-export-certified-path-v1'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - name: Check out branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref }}
+          fetch-depth: 0
+
+      - name: Install Rust formatter
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+
+      - name: Apply compiler fixes
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+
+          compiler = Path('crates/brand-compliant-export-certified-path-runtime/src/compiler.rs')
+          text = compiler.read_text(encoding='utf-8')
+          old = '''use crate::model::{
+              BrandArtifactIntent, BrandExportCompileOutcome, BrandExportIntent, BrandResolutionRequest,
+              BrandRuleManifest,
+          };
+          '''
+          new = '''use crate::model::{
+              BrandArtifactIntent, BrandExportCompileOutcome, BrandExportIntent, BrandResolutionRequest,
+          };
+          '''
+          if old not in text:
+              raise SystemExit('compiler import block not found')
+          compiler.write_text(text.replace(old, new, 1), encoding='utf-8')
+
+          runtime = Path('crates/brand-compliant-export-certified-path-runtime/src/runtime.rs')
+          text = runtime.read_text(encoding='utf-8')
+          old = '''        approved_logo_digest: logo_digest,
+              editable_svg_digest: editable_digest,
+              delivery_png_digest: output_digest,
+          '''
+          new = '''        approved_logo_digest: logo_digest,
+              editable_svg_digest: editable_digest,
+              raw_export_png_digest: raw_export_digest,
+              normalization_record: execution_record.normalization_record.clone(),
+              delivery_png_digest: output_digest,
+          '''
+          if old not in text:
+              raise SystemExit('validation initializer block not found')
+          runtime.write_text(text.replace(old, new, 1), encoding='utf-8')
+
+          svg = Path('crates/brand-compliant-export-certified-path-runtime/src/svg.rs')
+          text = svg.read_text(encoding='utf-8')
+          old = '.decode_and_unescape_value(reader.decoder())'
+          new = '.decoded_and_normalized_value(quick_xml::parser::XmlVersion::Implicit1_0, reader.decoder())'
+          if old not in text:
+              raise SystemExit('quick-xml deprecated call not found')
+          svg.write_text(text.replace(old, new, 1), encoding='utf-8')
+          PY
+          cargo fmt --all
+
+      - name: Commit verified fixes
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "ergaxiom-ci"
+          git config user.email "actions@users.noreply.github.com"
+          git add crates/brand-compliant-export-certified-path-runtime/src/compiler.rs \
+            crates/brand-compliant-export-certified-path-runtime/src/runtime.rs \
+            crates/brand-compliant-export-certified-path-runtime/src/svg.rs
+          git commit -m "Fix brand export validation compilation"
+          git push origin HEAD:${{ github.head_ref }}
