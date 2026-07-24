@@ -146,7 +146,10 @@ fn real_inkscape_print_preflight_reaches_verified_acceptance_certificate()
         &execution.delivery_pdf,
         &execution.record,
     )?;
-    assert!(validation.accepted, "print preflight validation rejected: {validation:#?}");
+    assert!(
+        validation.accepted,
+        "print preflight validation rejected: {validation:#?}"
+    );
 
     let execution_key = SigningKey::from_bytes(&[67_u8; 32]);
     let signed_execution = sign_print_preflight_execution_record(
