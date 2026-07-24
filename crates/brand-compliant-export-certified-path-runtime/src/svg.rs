@@ -575,7 +575,10 @@ fn attributes(
             .map_err(|_| BrandSvgError::InvalidUtf8)?
             .to_owned();
         let value = attribute
-            .decode_and_unescape_value(reader.decoder())
+            .decoded_and_normalized_value(
+                quick_xml::parser::XmlVersion::Implicit1_0,
+                reader.decoder(),
+            )
             .map_err(|error| BrandSvgError::Xml(error.to_string()))?
             .into_owned();
         if values.insert(key.clone(), value).is_some() {

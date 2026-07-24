@@ -258,6 +258,8 @@ pub fn validate_brand_export(
         manifest_digest,
         approved_logo_digest: logo_digest,
         editable_svg_digest: editable_digest,
+        raw_export_png_digest: raw_export_digest,
+        normalization_record: execution_record.normalization_record.clone(),
         delivery_png_digest: output_digest,
         width: png.width,
         height: png.height,

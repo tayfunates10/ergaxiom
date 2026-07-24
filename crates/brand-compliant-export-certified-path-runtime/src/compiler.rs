@@ -5,7 +5,6 @@ use thiserror::Error;
 
 use crate::model::{
     BrandArtifactIntent, BrandExportCompileOutcome, BrandExportIntent, BrandResolutionRequest,
-    BrandRuleManifest,
 };
 use crate::svg::{BrandSvgError, validate_manifest};
 use crate::util::{BrandDigestError, canonical_value_digest, is_sha256};
