@@ -1,0 +1,60 @@
+name: One-shot print diagnostic cleanup
+
+on:
+  push:
+    branches:
+      - agent/print-ready-poster-preflight-certified-path-v1
+    paths:
+      - ".github/workflows/one-shot-remove-print-diagnostics.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  remove-diagnostics:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out branch
+        uses: actions/checkout@v4
+        with:
+          ref: agent/print-ready-poster-preflight-certified-path-v1
+          fetch-depth: 0
+
+      - name: Restore unconditional test cleanup
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('crates/print-ready-poster-preflight-certified-path-runtime/tests/real_certificate.rs')
+          text = path.read_text(encoding='utf-8')
+          old = (
+              'impl Drop for TestDirectory {\n'
+              '    fn drop(&mut self) {\n'
+              '        if env::var_os("ERGAXIOM_KEEP_TEST_ARTIFACTS").is_none() {\n'
+              '            let _ = fs::remove_dir_all(&self.path);\n'
+              '        }\n'
+              '    }\n'
+              '}\n'
+          )
+          new = (
+              'impl Drop for TestDirectory {\n'
+              '    fn drop(&mut self) {\n'
+              '        let _ = fs::remove_dir_all(&self.path);\n'
+              '    }\n'
+              '}\n'
+          )
+          if old in text:
+              path.write_text(text.replace(old, new, 1), encoding='utf-8')
+          elif new not in text:
+              raise SystemExit('print test cleanup profile did not match')
+          PY
+
+          cargo fmt --all
+          git config user.name "ergaxiom-maintenance"
+          git config user.email "actions@users.noreply.github.com"
+          git add crates/print-ready-poster-preflight-certified-path-runtime/tests/real_certificate.rs
+          git diff --cached --check
+          git commit -m "Remove temporary print artifact diagnostics"
+          git push origin HEAD:agent/print-ready-poster-preflight-certified-path-v1
