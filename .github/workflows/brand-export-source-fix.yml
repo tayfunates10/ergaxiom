@@ -34,42 +34,31 @@ jobs:
 
           compiler = Path('crates/brand-compliant-export-certified-path-runtime/src/compiler.rs')
           text = compiler.read_text(encoding='utf-8')
-          old = '''use crate::model::{
-              BrandArtifactIntent, BrandExportCompileOutcome, BrandExportIntent, BrandResolutionRequest,
-              BrandRuleManifest,
-          };
-          '''
-          new = '''use crate::model::{
-              BrandArtifactIntent, BrandExportCompileOutcome, BrandExportIntent, BrandResolutionRequest,
-          };
-          '''
-          if old not in text:
-              raise SystemExit('compiler import block not found')
-          compiler.write_text(text.replace(old, new, 1), encoding='utf-8')
+          needle = '    BrandRuleManifest,\n'
+          if needle not in text:
+              raise SystemExit('compiler import not found')
+          compiler.write_text(text.replace(needle, '', 1), encoding='utf-8')
 
           runtime = Path('crates/brand-compliant-export-certified-path-runtime/src/runtime.rs')
           text = runtime.read_text(encoding='utf-8')
-          old = '''        approved_logo_digest: logo_digest,
-              editable_svg_digest: editable_digest,
-              delivery_png_digest: output_digest,
-          '''
-          new = '''        approved_logo_digest: logo_digest,
-              editable_svg_digest: editable_digest,
-              raw_export_png_digest: raw_export_digest,
-              normalization_record: execution_record.normalization_record.clone(),
-              delivery_png_digest: output_digest,
-          '''
-          if old not in text:
-              raise SystemExit('validation initializer block not found')
-          runtime.write_text(text.replace(old, new, 1), encoding='utf-8')
+          needle = '        editable_svg_digest: editable_digest,\n        delivery_png_digest: output_digest,\n'
+          replacement = (
+              '        editable_svg_digest: editable_digest,\n'
+              '        raw_export_png_digest: raw_export_digest,\n'
+              '        normalization_record: execution_record.normalization_record.clone(),\n'
+              '        delivery_png_digest: output_digest,\n'
+          )
+          if needle not in text:
+              raise SystemExit('validation initializer fields not found')
+          runtime.write_text(text.replace(needle, replacement, 1), encoding='utf-8')
 
           svg = Path('crates/brand-compliant-export-certified-path-runtime/src/svg.rs')
           text = svg.read_text(encoding='utf-8')
-          old = '.decode_and_unescape_value(reader.decoder())'
-          new = '.decoded_and_normalized_value(quick_xml::parser::XmlVersion::Implicit1_0, reader.decoder())'
-          if old not in text:
+          needle = '.decode_and_unescape_value(reader.decoder())'
+          replacement = '.decoded_and_normalized_value(quick_xml::parser::XmlVersion::Implicit1_0, reader.decoder())'
+          if needle not in text:
               raise SystemExit('quick-xml deprecated call not found')
-          svg.write_text(text.replace(old, new, 1), encoding='utf-8')
+          svg.write_text(text.replace(needle, replacement, 1), encoding='utf-8')
           PY
           cargo fmt --all
 
