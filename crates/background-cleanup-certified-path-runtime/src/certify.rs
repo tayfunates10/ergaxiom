@@ -32,6 +32,7 @@ pub struct BackgroundCleanupCertificationRequest<'a> {
     pub bundle_id: &'a str,
     pub run_id: &'a str,
     pub created_at: &'a str,
+    pub operating_system: &'a str,
     pub kernel_version: &'a str,
     pub clock_source: &'a str,
     pub sandbox_id: Option<&'a str>,
@@ -189,7 +190,7 @@ pub fn certify_background_cleanup(
             policy_snapshot: None,
         },
         environment: EnvironmentEvidence {
-            os: "windows".to_owned(),
+            os: request.operating_system.to_owned(),
             kernel_version: request.kernel_version.to_owned(),
             applications: vec![ApplicationEvidence {
                 id: request.integration_report.application_id.clone(),
@@ -274,6 +275,7 @@ fn validate_required_fields(
         ("bundle_id", request.bundle_id),
         ("run_id", request.run_id),
         ("created_at", request.created_at),
+        ("operating_system", request.operating_system),
         ("kernel_version", request.kernel_version),
         ("clock_source", request.clock_source),
         ("source_uri", request.source_uri),

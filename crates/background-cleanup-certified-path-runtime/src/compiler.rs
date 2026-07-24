@@ -126,7 +126,7 @@ pub fn build_background_cleanup_contract(
         },
         "job_type": BACKGROUND_CLEANUP_JOB_TYPE,
         "environment": {
-            "os": "windows",
+            "os": null,
             "applications": [{
                 "application_id": "org.inkscape.Inkscape",
                 "required_version": required_application_version

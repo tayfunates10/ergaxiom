@@ -14,7 +14,7 @@
   },
   "job_type": "image_background_cleanup",
   "environment": {
-    "os": "windows",
+    "os": null,
     "applications": [
       {
         "application_id": "org.inkscape.Inkscape",
@@ -253,98 +253,160 @@
     {
       "id": "proof.cleaned_width",
       "constraint_id": "cleaned_width",
-      "validator_ids": ["cleanup.png.structure"],
+      "validator_ids": [
+        "cleanup.png.structure"
+      ],
       "mandatory": true,
       "independence_class": "independent",
-      "evidence_types": ["decoded_image_metadata", "measurement_record"]
+      "evidence_types": [
+        "decoded_image_metadata",
+        "measurement_record"
+      ]
     },
     {
       "id": "proof.cleaned_height",
       "constraint_id": "cleaned_height",
-      "validator_ids": ["cleanup.png.structure"],
+      "validator_ids": [
+        "cleanup.png.structure"
+      ],
       "mandatory": true,
       "independence_class": "independent",
-      "evidence_types": ["decoded_image_metadata", "measurement_record"]
+      "evidence_types": [
+        "decoded_image_metadata",
+        "measurement_record"
+      ]
     },
     {
       "id": "proof.mask_dimensions_match",
       "constraint_id": "mask_dimensions_match",
-      "validator_ids": ["cleanup.mask.dimensions"],
+      "validator_ids": [
+        "cleanup.mask.dimensions"
+      ],
       "mandatory": true,
       "independence_class": "independent",
-      "evidence_types": ["decoded_image_metadata", "dimension_comparison"]
+      "evidence_types": [
+        "decoded_image_metadata",
+        "dimension_comparison"
+      ]
     },
     {
       "id": "proof.mask_is_binary",
       "constraint_id": "mask_is_binary",
-      "validator_ids": ["cleanup.mask.binary"],
+      "validator_ids": [
+        "cleanup.mask.binary"
+      ],
       "mandatory": true,
       "independence_class": "independent",
-      "evidence_types": ["decoded_mask_pixels", "mask_histogram"]
+      "evidence_types": [
+        "decoded_mask_pixels",
+        "mask_histogram"
+      ]
     },
     {
       "id": "proof.mask_foreground_pixels",
       "constraint_id": "mask_foreground_pixels",
-      "validator_ids": ["cleanup.mask.binary"],
+      "validator_ids": [
+        "cleanup.mask.binary"
+      ],
       "mandatory": true,
       "independence_class": "independent",
-      "evidence_types": ["decoded_mask_pixels", "mask_histogram"]
+      "evidence_types": [
+        "decoded_mask_pixels",
+        "mask_histogram"
+      ]
     },
     {
       "id": "proof.mask_background_pixels",
       "constraint_id": "mask_background_pixels",
-      "validator_ids": ["cleanup.mask.binary"],
+      "validator_ids": [
+        "cleanup.mask.binary"
+      ],
       "mandatory": true,
       "independence_class": "independent",
-      "evidence_types": ["decoded_mask_pixels", "mask_histogram"]
+      "evidence_types": [
+        "decoded_mask_pixels",
+        "mask_histogram"
+      ]
     },
     {
       "id": "proof.background_alpha_violations",
       "constraint_id": "background_alpha_violations",
-      "validator_ids": ["cleanup.alpha.background"],
+      "validator_ids": [
+        "cleanup.alpha.background"
+      ],
       "mandatory": true,
       "independence_class": "independent",
-      "evidence_types": ["decoded_output_pixels", "mask_bound_comparison"]
+      "evidence_types": [
+        "decoded_output_pixels",
+        "mask_bound_comparison"
+      ]
     },
     {
       "id": "proof.foreground_rgba_violations",
       "constraint_id": "foreground_rgba_violations",
-      "validator_ids": ["cleanup.foreground.preservation"],
+      "validator_ids": [
+        "cleanup.foreground.preservation"
+      ],
       "mandatory": true,
       "independence_class": "independent",
-      "evidence_types": ["decoded_source_pixels", "decoded_output_pixels", "mask_bound_comparison"]
+      "evidence_types": [
+        "decoded_source_pixels",
+        "decoded_output_pixels",
+        "mask_bound_comparison"
+      ]
     },
     {
       "id": "proof.output_media_type",
       "constraint_id": "output_media_type",
-      "validator_ids": ["cleanup.png.structure"],
+      "validator_ids": [
+        "cleanup.png.structure"
+      ],
       "mandatory": true,
       "independence_class": "independent",
-      "evidence_types": ["magic_bytes", "decoded_image_metadata"]
+      "evidence_types": [
+        "magic_bytes",
+        "decoded_image_metadata"
+      ]
     },
     {
       "id": "proof.color_profile",
       "constraint_id": "color_profile",
-      "validator_ids": ["cleanup.png.structure"],
+      "validator_ids": [
+        "cleanup.png.structure"
+      ],
       "mandatory": true,
       "independence_class": "independent",
-      "evidence_types": ["png_chunk_evidence", "decoded_image_metadata"]
+      "evidence_types": [
+        "png_chunk_evidence",
+        "decoded_image_metadata"
+      ]
     },
     {
       "id": "proof.source_immutable",
       "constraint_id": "source_immutable",
-      "validator_ids": ["cleanup.source.immutability"],
+      "validator_ids": [
+        "cleanup.source.immutability"
+      ],
       "mandatory": true,
       "independence_class": "independent",
-      "evidence_types": ["pre_execution_digest", "post_execution_digest"]
+      "evidence_types": [
+        "pre_execution_digest",
+        "post_execution_digest"
+      ]
     },
     {
       "id": "proof.inkscape_probe_verified",
       "constraint_id": "inkscape_probe_verified",
-      "validator_ids": ["cleanup.inkscape.integration"],
+      "validator_ids": [
+        "cleanup.inkscape.integration"
+      ],
       "mandatory": true,
       "independence_class": "independent",
-      "evidence_types": ["application_identity", "adapter_receipt", "decoded_image_metadata"]
+      "evidence_types": [
+        "application_identity",
+        "adapter_receipt",
+        "decoded_image_metadata"
+      ]
     }
   ],
   "approval_policy": {

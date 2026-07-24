@@ -154,6 +154,7 @@ fn real_inkscape_background_cleanup_reaches_a_verified_acceptance_certificate()
         bundle_id: "bundle.background-cleanup.real.0001",
         run_id: "run.background-cleanup.real.0001",
         created_at: "2026-07-24T08:02:00Z",
+        operating_system: "linux",
         kernel_version: "github-actions-ubuntu-24.04",
         clock_source: "github-actions-trusted-fixture",
         sandbox_id: Some("sandbox.background-cleanup.real.0001"),
