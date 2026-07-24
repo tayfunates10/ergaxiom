@@ -1,20 +1,18 @@
-name: Brand export certified path bootstrap
+name: Brand export bootstrap cleanup
 
 on:
   pull_request:
     paths:
-      - "tools/brand-export-bootstrap-payload/**"
-      - "tools/brand-export-bootstrap-script/**"
       - ".github/workflows/brand-export-bootstrap.yml"
 
 permissions:
   contents: write
 
 jobs:
-  bootstrap:
+  cleanup:
     if: github.head_ref == 'agent/brand-compliant-export-certified-path-v1'
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
+    timeout-minutes: 5
     steps:
       - name: Check out branch
         uses: actions/checkout@v4
@@ -22,34 +20,12 @@ jobs:
           ref: ${{ github.head_ref }}
           fetch-depth: 0
 
-      - name: Install Rust formatter
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          components: rustfmt
-
-      - name: Verify and materialize certified path
-        shell: bash
-        run: |
-          set -euo pipefail
-          cat tools/brand-export-bootstrap-script/chunk-* > /tmp/brand-bootstrap.b64
-          test "$(sha256sum /tmp/brand-bootstrap.b64 | awk '{print $1}')" = "706e9d60a567879a081d26f4e13c02e45bd70709b59618880c82cc97b151c8c5"
-          base64 --decode /tmp/brand-bootstrap.b64 | gzip --decompress > tools/bootstrap_brand_export_certified_path.py
-          test "$(sha256sum tools/bootstrap_brand_export_certified_path.py | awk '{print $1}')" = "f99598aefafbb5f559e69f252d84aedde29d35840cfdfe433aed942136a8688e"
-          python tools/bootstrap_brand_export_certified_path.py
-          cargo fmt --all
-          rm tools/bootstrap_brand_export_certified_path.py
-
-      - name: Commit generated certified path
+      - name: Remove one-time payload material
         shell: bash
         run: |
           set -euo pipefail
           git config user.name "ergaxiom-ci"
           git config user.email "actions@users.noreply.github.com"
-          git add -A
-          git reset -- .github/workflows \
-            tools/brand-export-bootstrap-payload \
-            tools/brand-export-bootstrap-script
-          git diff --cached --name-only
-          test -n "$(git diff --cached --name-only)"
-          git commit -m "Certify brand-compliant image export path"
+          git rm -r tools/brand-export-bootstrap-payload tools/brand-export-bootstrap-script
+          git commit -m "Remove brand export bootstrap payload"
           git push origin HEAD:${{ github.head_ref }}
