@@ -1,0 +1,52 @@
+name: Background cleanup lifetime fix
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/background-cleanup-lifetime-fix.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    if: github.head_ref == 'agent/background-cleanup-certified-path-v1'
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref }}
+          fetch-depth: 0
+
+      - name: Elide planner lifetime
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('crates/background-cleanup-certified-path-runtime/src/planner.rs')
+          text = path.read_text(encoding='utf-8')
+          old = """fn resolve_operator_versions<'a>(
+    capsule: &'a CapsulePlanningView,
+) -> Result<BTreeMap<&'a str, &'a str>, BackgroundCleanupPlannerError> {
+"""
+          new = """fn resolve_operator_versions(
+    capsule: &CapsulePlanningView,
+) -> Result<BTreeMap<&str, &str>, BackgroundCleanupPlannerError> {
+"""
+          if old not in text:
+              raise SystemExit('expected lifetime block is missing')
+          path.write_text(text.replace(old, new, 1), encoding='utf-8')
+          PY
+          cargo fmt --all
+
+      - name: Commit lifetime cleanup
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "ergaxiom-ci"
+          git config user.email "actions@users.noreply.github.com"
+          git add crates/background-cleanup-certified-path-runtime/src/planner.rs
+          git commit -m "Elide cleanup planner lifetimes"
+          git push origin HEAD:${{ github.head_ref }}
