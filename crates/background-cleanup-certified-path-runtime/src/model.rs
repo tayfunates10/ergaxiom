@@ -155,6 +155,7 @@ pub struct InkscapeCleanupIntegrationReport {
     pub executable_digest: String,
     pub cleaned_png_digest: String,
     pub probe_png_digest: String,
+    pub probe_size_bytes: u64,
     pub probe_width: u32,
     pub probe_height: u32,
     pub adapter_record_digest: String,
