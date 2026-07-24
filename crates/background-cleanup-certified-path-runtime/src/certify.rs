@@ -20,7 +20,13 @@ use crate::model::{
     BackgroundCleanupExecutionRecord, BackgroundCleanupValidationReport,
     CertifiedBackgroundCleanup, InkscapeCleanupIntegrationReport,
 };
-use crate::util::{DigestMaterialError, canonical_record_digest, sha256_hex};
+use crate::runtime::{BackgroundCleanupRuntimeError, validate_background_cleanup};
+use crate::signing::{
+    CleanupEvidenceKeyRegistry, CleanupEvidenceSignatureError,
+    SignedBackgroundCleanupExecutionRecord, SignedInkscapeCleanupIntegrationReport,
+    verify_background_cleanup_execution_record, verify_inkscape_cleanup_integration_report,
+};
+use crate::util::{DigestMaterialError, sha256_hex};
 
 const EVIDENCE_SCHEMA: &str = "0.4.0";
 const VALIDATOR_VERSION: &str = "0.1.0";
@@ -43,9 +49,10 @@ pub struct BackgroundCleanupCertificationRequest<'a> {
     pub source_png: &'a [u8],
     pub approved_mask_png: &'a [u8],
     pub cleaned_png: &'a [u8],
-    pub execution_record: &'a BackgroundCleanupExecutionRecord,
+    pub signed_execution: &'a SignedBackgroundCleanupExecutionRecord,
     pub validation_report: &'a BackgroundCleanupValidationReport,
-    pub integration_report: &'a InkscapeCleanupIntegrationReport,
+    pub signed_integration: &'a SignedInkscapeCleanupIntegrationReport,
+    pub evidence_keys: &'a CleanupEvidenceKeyRegistry,
     pub authorized_trace: AuthorizedExecutionTrace,
     pub compiled_contract: &'a CompiledContract,
     pub compiled_plan: &'a CompiledPlan,
@@ -68,12 +75,12 @@ pub enum BackgroundCleanupCertificationError {
     PlanBindingMismatch,
     #[error("cleanup validation report is not accepted")]
     ValidationRejected,
-    #[error("Inkscape integration report is not verified")]
-    IntegrationRejected,
+    #[error(
+        "supplied cleanup validation report does not equal the independently recomputed report"
+    )]
+    ValidationReportMismatch,
     #[error("certification input digests do not match the execution and validation records")]
     ArtifactBindingMismatch,
-    #[error("validation or integration report digest is invalid")]
-    ReportDigestMismatch,
     #[error("evidence decision is {0:?}, so cleanup cannot be certified")]
     EvidenceDecisionNotAccepted(DecisionStatus),
     #[error("failed to serialize certification evidence: {0}")]
@@ -86,17 +93,45 @@ pub enum BackgroundCleanupCertificationError {
     AttestationVerify(#[from] AttestationVerifyError),
     #[error(transparent)]
     Digest(#[from] DigestMaterialError),
+    #[error(transparent)]
+    Runtime(#[from] BackgroundCleanupRuntimeError),
+    #[error(transparent)]
+    SignedEvidence(#[from] CleanupEvidenceSignatureError),
 }
 
 pub fn certify_background_cleanup(
     request: BackgroundCleanupCertificationRequest<'_>,
 ) -> Result<CertifiedBackgroundCleanup, BackgroundCleanupCertificationError> {
     validate_required_fields(&request)?;
-    validate_bindings(&request)?;
+    let _verified_execution = verify_background_cleanup_execution_record(
+        request.signed_execution,
+        request.evidence_keys,
+    )?;
+    let _verified_integration = verify_inkscape_cleanup_integration_report(
+        request.signed_integration,
+        request.evidence_keys,
+    )?;
+    let execution_record = &request.signed_execution.record;
+    let integration_report = &request.signed_integration.report;
+    let validation_report = validate_background_cleanup(
+        request.source_png,
+        request.approved_mask_png,
+        request.cleaned_png,
+        execution_record,
+    )?;
+    if validation_report != *request.validation_report {
+        return Err(BackgroundCleanupCertificationError::ValidationReportMismatch);
+    }
+    validate_bindings(
+        &request,
+        execution_record,
+        &validation_report,
+        integration_report,
+    )?;
 
-    let execution_bytes = serde_json::to_vec(request.execution_record)?;
-    let validation_bytes = serde_json::to_vec(request.validation_report)?;
-    let integration_bytes = serde_json::to_vec(request.integration_report)?;
+    let execution_bytes = serde_json::to_vec(request.signed_execution)?;
+    let validation_bytes = serde_json::to_vec(&validation_report)?;
+    let integration_bytes = serde_json::to_vec(request.signed_integration)?;
 
     let artifacts = vec![
         artifact(
@@ -128,14 +163,14 @@ pub fn certify_background_cleanup(
             ArtifactRole::Output,
             request.probe_uri,
             Some("image/png"),
-            &request.integration_report.probe_png_digest,
-            request.integration_report.probe_size_bytes,
+            &integration_report.probe_png_digest,
+            integration_report.probe_size_bytes,
         ),
         artifact(
             EXECUTION_EVIDENCE_ID,
             ArtifactRole::Evidence,
             "evidence://cleanup/execution-record.json",
-            Some("application/vnd.ergaxiom.cleanup-execution-record+json"),
+            Some("application/vnd.ergaxiom.signed-cleanup-execution-record+json"),
             &sha256_hex(&execution_bytes),
             byte_len(&execution_bytes),
         ),
@@ -151,17 +186,13 @@ pub fn certify_background_cleanup(
             INTEGRATION_EVIDENCE_ID,
             ArtifactRole::Evidence,
             "evidence://cleanup/inkscape-integration-report.json",
-            Some("application/vnd.ergaxiom.cleanup-integration-report+json"),
+            Some("application/vnd.ergaxiom.signed-cleanup-integration-report+json"),
             &sha256_hex(&integration_bytes),
             byte_len(&integration_bytes),
         ),
     ];
 
-    let proof_results = proof_results(
-        request.created_at,
-        request.validation_report,
-        request.integration_report,
-    );
+    let proof_results = proof_results(request.created_at, &validation_report, integration_report);
     let mandatory_passed = proof_results.len();
     let evidence_bundle = EvidenceBundle {
         schema_version: EVIDENCE_SCHEMA.to_owned(),
@@ -193,9 +224,9 @@ pub fn certify_background_cleanup(
             os: request.operating_system.to_owned(),
             kernel_version: request.kernel_version.to_owned(),
             applications: vec![ApplicationEvidence {
-                id: request.integration_report.application_id.clone(),
-                version: request.integration_report.application_version.clone(),
-                digest: request.integration_report.executable_digest.clone(),
+                id: integration_report.application_id.clone(),
+                version: integration_report.application_version.clone(),
+                digest: integration_report.executable_digest.clone(),
             }],
             clock_source: request.clock_source.to_owned(),
             sandbox_id: request.sandbox_id.map(str::to_owned),
@@ -263,8 +294,8 @@ pub fn certify_background_cleanup(
         evidence_bundle_digest: assessment.bundle_digest,
         attestation,
         verified_attestation,
-        validation_report: request.validation_report.clone(),
-        integration_report: request.integration_report.clone(),
+        validation_report,
+        integration_report: integration_report.clone(),
     })
 }
 
@@ -296,6 +327,9 @@ fn validate_required_fields(
 
 fn validate_bindings(
     request: &BackgroundCleanupCertificationRequest<'_>,
+    execution_record: &BackgroundCleanupExecutionRecord,
+    validation_report: &BackgroundCleanupValidationReport,
+    integration_report: &InkscapeCleanupIntegrationReport,
 ) -> Result<(), BackgroundCleanupCertificationError> {
     if request.compiled_contract.job_type != BACKGROUND_CLEANUP_JOB_TYPE {
         return Err(BackgroundCleanupCertificationError::ContractProfileMismatch);
@@ -305,32 +339,22 @@ fn validate_bindings(
     {
         return Err(BackgroundCleanupCertificationError::PlanBindingMismatch);
     }
-    if !request.validation_report.accepted {
+    if !validation_report.accepted {
         return Err(BackgroundCleanupCertificationError::ValidationRejected);
-    }
-    if !request.integration_report.verified {
-        return Err(BackgroundCleanupCertificationError::IntegrationRejected);
-    }
-    if request.validation_report.report_digest
-        != canonical_record_digest(request.validation_report, "report_digest")?
-        || request.integration_report.report_digest
-            != canonical_record_digest(request.integration_report, "report_digest")?
-    {
-        return Err(BackgroundCleanupCertificationError::ReportDigestMismatch);
     }
 
     let source_digest = sha256_hex(request.source_png);
     let mask_digest = sha256_hex(request.approved_mask_png);
     let cleaned_digest = sha256_hex(request.cleaned_png);
-    if request.execution_record.source_digest != source_digest
-        || request.execution_record.mask_digest != mask_digest
-        || request.execution_record.output_digest != cleaned_digest
-        || request.validation_report.source_digest != source_digest
-        || request.validation_report.mask_digest != mask_digest
-        || request.validation_report.output_digest != cleaned_digest
-        || request.integration_report.cleaned_png_digest != cleaned_digest
-        || request.integration_report.probe_width != request.validation_report.width
-        || request.integration_report.probe_height != request.validation_report.height
+    if execution_record.source_digest != source_digest
+        || execution_record.mask_digest != mask_digest
+        || execution_record.output_digest != cleaned_digest
+        || validation_report.source_digest != source_digest
+        || validation_report.mask_digest != mask_digest
+        || validation_report.output_digest != cleaned_digest
+        || integration_report.cleaned_png_digest != cleaned_digest
+        || integration_report.probe_width != validation_report.width
+        || integration_report.probe_height != validation_report.height
     {
         return Err(BackgroundCleanupCertificationError::ArtifactBindingMismatch);
     }

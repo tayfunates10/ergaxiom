@@ -11,10 +11,11 @@ use ed25519_dalek::{Signer, SigningKey};
 use ergaxiom_background_cleanup_certified_path_runtime::{
     BackgroundCleanupCertificationRequest, BackgroundCleanupCompileOutcome,
     BackgroundCleanupExecutionRequest, BackgroundCleanupIntent, BackgroundCleanupPlanIdentity,
-    BackgroundCleanupPlanOutcome, CleanupArtifactIntent, certify_background_cleanup,
-    compile_background_cleanup_intent, encode_restricted_srgb_rgba_png, execute_background_cleanup,
-    execute_inkscape_cleanup_probe, synthesize_background_cleanup_plan,
-    validate_background_cleanup,
+    BackgroundCleanupPlanOutcome, CleanupArtifactIntent, CleanupEvidenceKeyRegistry,
+    certify_background_cleanup, compile_background_cleanup_intent, encode_restricted_srgb_rgba_png,
+    execute_background_cleanup, execute_inkscape_cleanup_probe,
+    sign_background_cleanup_execution_record, sign_inkscape_cleanup_integration_report,
+    synthesize_background_cleanup_plan, validate_background_cleanup,
 };
 use ergaxiom_capability_runtime::{
     CapabilityAuthorizer, CapabilityBindings, CapabilityGrant, CapabilitySubject,
@@ -147,6 +148,32 @@ fn real_inkscape_background_cleanup_reaches_a_verified_acceptance_certificate()
     )?;
     assert!(integration.verified);
 
+    let cleanup_execution_key = SigningKey::from_bytes(&[31_u8; 32]);
+    let inkscape_evidence_key = SigningKey::from_bytes(&[37_u8; 32]);
+    let signed_execution = sign_background_cleanup_execution_record(
+        &execution.record,
+        "ergaxiom.cleanup-executor",
+        "cleanup-execution-ed25519-01",
+        &cleanup_execution_key,
+    )?;
+    let signed_integration = sign_inkscape_cleanup_integration_report(
+        &integration,
+        "ergaxiom.inkscape-executor",
+        "inkscape-integration-ed25519-01",
+        &inkscape_evidence_key,
+    )?;
+    let mut evidence_keys = CleanupEvidenceKeyRegistry::default();
+    evidence_keys.insert_ed25519(
+        "ergaxiom.cleanup-executor",
+        "cleanup-execution-ed25519-01",
+        cleanup_execution_key.verifying_key().to_bytes(),
+    )?;
+    evidence_keys.insert_ed25519(
+        "ergaxiom.inkscape-executor",
+        "inkscape-integration-ed25519-01",
+        inkscape_evidence_key.verifying_key().to_bytes(),
+    )?;
+
     let capability_key = SigningKey::from_bytes(&[17_u8; 32]);
     let trace = authorized_trace(&compiled_contract, &compiled_plan, &capability_key)?;
     let attestation_key = SigningKey::from_bytes(&[23_u8; 32]);
@@ -165,9 +192,10 @@ fn real_inkscape_background_cleanup_reaches_a_verified_acceptance_certificate()
         source_png: &source_png,
         approved_mask_png: &mask_png,
         cleaned_png: &execution.cleaned_png,
-        execution_record: &execution.record,
+        signed_execution: &signed_execution,
         validation_report: &validation,
-        integration_report: &integration,
+        signed_integration: &signed_integration,
+        evidence_keys: &evidence_keys,
         authorized_trace: trace,
         compiled_contract: &compiled_contract,
         compiled_plan: &compiled_plan,
