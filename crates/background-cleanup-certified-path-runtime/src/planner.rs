@@ -173,6 +173,7 @@ pub fn synthesize_background_cleanup_plan(
         capability_requirement_value,
     );
     let compiled_plan = compile_plan(&plan, capsule_value, &compiled_contract)?;
+    let mandatory_step_count = compiled_plan.mandatory_step_count();
 
     Ok(BackgroundCleanupPlanOutcome::Planned {
         job_type: BACKGROUND_CLEANUP_JOB_TYPE.to_owned(),
@@ -180,7 +181,7 @@ pub fn synthesize_background_cleanup_plan(
         plan_digest: compiled_plan.plan_digest,
         contract_digest: compiled_plan.contract_digest,
         capsule_digest: compiled_plan.capsule_digest,
-        mandatory_step_count: compiled_plan.mandatory_step_count(),
+        mandatory_step_count,
         capability_requirements,
         capability_requirement_digest,
     })
