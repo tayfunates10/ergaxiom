@@ -92,6 +92,8 @@ A separate PDF parser then reopens the normalized bytes and independently verifi
 
 An absent `/XObject` or `/Font` resource entry is measured as zero corresponding resources. If either entry is present, the bounded profile rejects it rather than relying on a renderer-side interpretation.
 
+Inkscape's structural transparency group and named graphics state are accepted only after the parser proves that every alpha value is exactly `1`, every blend mode is `Normal`, no soft mask exists, every referenced graphics-state name is declared and the group color space is present in the specification allowlist. Partial opacity or unresolved graphics-state material remains rejected.
+
 A successful Inkscape return code or normalizer record is insufficient by itself.
 
 ## Trust separation
