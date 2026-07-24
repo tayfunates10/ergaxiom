@@ -57,9 +57,7 @@ impl TestDirectory {
 
 impl Drop for TestDirectory {
     fn drop(&mut self) {
-        if env::var_os("ERGAXIOM_KEEP_TEST_ARTIFACTS").is_none() {
-            let _ = fs::remove_dir_all(&self.path);
-        }
+        let _ = fs::remove_dir_all(&self.path);
     }
 }
 
