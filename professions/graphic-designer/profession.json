@@ -1,7 +1,7 @@
 {
   "schema_version": "0.1.0",
   "capsule_id": "ergaxiom.profession.graphic-designer",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "profession": {
     "name": "graphic_designer",
     "display_name": "Graphic Designer",
@@ -64,6 +64,40 @@
         "design.place_asset",
         "design.compose_text",
         "design.export_raster"
+      ],
+      "minimum_assurance_level": "E3"
+    },
+    {
+      "id": "image_background_cleanup",
+      "description": "Remove a background by applying an explicitly approved digest-bound binary alpha mask without guessing segmentation.",
+      "specialization": "image_editing",
+      "required_inputs": [
+        "source_raster",
+        "approved_cleanup_mask"
+      ],
+      "required_outputs": [
+        "cleaned_raster",
+        "integration_probe_raster",
+        "evidence_bundle"
+      ],
+      "required_constraints": [
+        "cleaned_width",
+        "cleaned_height",
+        "mask_dimensions_match",
+        "mask_is_binary",
+        "mask_foreground_pixels",
+        "mask_background_pixels",
+        "background_alpha_violations",
+        "foreground_rgba_violations",
+        "output_media_type",
+        "color_profile",
+        "source_immutable",
+        "inkscape_probe_verified"
+      ],
+      "operator_ids": [
+        "cleanup.apply_binary_mask",
+        "cleanup.inkscape_probe",
+        "cleanup.certify_delivery"
       ],
       "minimum_assurance_level": "E3"
     }
@@ -594,6 +628,116 @@
         "export_profile",
         "authorized_output"
       ]
+    },
+    {
+      "id": "cleanup.apply_binary_mask",
+      "version": "0.1.0",
+      "description": "Apply an exact digest-bound binary alpha mask to a restricted RGBA PNG while preserving every foreground RGBA sample.",
+      "input_types": [
+        "source_raster",
+        "approved_cleanup_mask"
+      ],
+      "output_types": [
+        "cleaned_raster"
+      ],
+      "preconditions": [
+        "source_and_mask_digests_match_contract",
+        "source_and_mask_dimensions_match",
+        "mask_alpha_is_binary",
+        "workspace_is_isolated"
+      ],
+      "postconditions": [
+        "background_alpha_is_zero",
+        "foreground_rgba_matches_source",
+        "source_material_remains_immutable"
+      ],
+      "permissions": [
+        "filesystem.read:contract_inputs",
+        "filesystem.write:declared_output",
+        "application.control:cleanup_runtime"
+      ],
+      "execution_methods": [
+        "document_model",
+        "signed_adapter"
+      ],
+      "deterministic": true,
+      "randomness_seed_required": false,
+      "rollback": {
+        "supported": true,
+        "strategy": "discard partial output from isolated workspace"
+      }
+    },
+    {
+      "id": "cleanup.inkscape_probe",
+      "version": "0.1.0",
+      "description": "Import the cleaned PNG into pinned Inkscape and export a dimension-bound integration probe through the proof-bound adapter.",
+      "input_types": [
+        "cleaned_raster"
+      ],
+      "output_types": [
+        "integration_probe_raster"
+      ],
+      "preconditions": [
+        "cleaned_raster_digest_matches_execution_record",
+        "trusted_inkscape_identity_is_bound"
+      ],
+      "postconditions": [
+        "adapter_record_is_verified",
+        "probe_dimensions_match_cleaned_raster"
+      ],
+      "permissions": [
+        "filesystem.read:isolated_workspace",
+        "filesystem.write:declared_output",
+        "application.control:inkscape"
+      ],
+      "execution_methods": [
+        "application_api",
+        "cli",
+        "signed_adapter"
+      ],
+      "deterministic": true,
+      "randomness_seed_required": false,
+      "rollback": {
+        "supported": true,
+        "strategy": "discard integration probe and editable staging document"
+      }
+    },
+    {
+      "id": "cleanup.certify_delivery",
+      "version": "0.1.0",
+      "description": "Reassess independent cleanup evidence and issue an Ed25519 Acceptance Certificate only for an accepted authorized trace.",
+      "input_types": [
+        "cleaned_raster",
+        "integration_probe_raster",
+        "validator_reports",
+        "authorized_execution_trace"
+      ],
+      "output_types": [
+        "evidence_bundle",
+        "acceptance_certificate"
+      ],
+      "preconditions": [
+        "all_mandatory_validator_reports_are_bound",
+        "authorized_trace_conforms_to_plan"
+      ],
+      "postconditions": [
+        "evidence_bundle_is_independently_accepted",
+        "acceptance_certificate_verifies_against_exact_bundle"
+      ],
+      "permissions": [
+        "filesystem.read:isolated_workspace",
+        "filesystem.write:declared_output",
+        "secret.use:attestation_signing_key"
+      ],
+      "execution_methods": [
+        "signed_adapter"
+      ],
+      "deterministic": true,
+      "randomness_seed_required": false,
+      "rollback": {
+        "supported": true,
+        "strategy": "discard unsigned bundle and certificate material"
+      }
     }
   ],
   "validators": [
@@ -713,6 +857,127 @@
       "implementation": {
         "strategy": "extract and identify embedded ICC profile"
       }
+    },
+    {
+      "id": "cleanup.png.structure",
+      "version": "0.1.0",
+      "claims": [
+        "cleaned_width",
+        "cleaned_height",
+        "output_media_type",
+        "color_profile"
+      ],
+      "independence_class": "independent",
+      "evidence_types": [
+        "decoded_image_metadata",
+        "measurement_record",
+        "magic_bytes",
+        "png_chunk_evidence"
+      ],
+      "deterministic": true,
+      "implementation": {
+        "crate": "ergaxiom-png-artifact-validator-runtime"
+      }
+    },
+    {
+      "id": "cleanup.mask.dimensions",
+      "version": "0.1.0",
+      "claims": [
+        "mask_dimensions_match"
+      ],
+      "independence_class": "independent",
+      "evidence_types": [
+        "decoded_image_metadata",
+        "dimension_comparison"
+      ],
+      "deterministic": true,
+      "implementation": {
+        "crate": "ergaxiom-png-pixel-decoder-runtime"
+      }
+    },
+    {
+      "id": "cleanup.mask.binary",
+      "version": "0.1.0",
+      "claims": [
+        "mask_is_binary",
+        "mask_foreground_pixels",
+        "mask_background_pixels"
+      ],
+      "independence_class": "independent",
+      "evidence_types": [
+        "decoded_mask_pixels",
+        "mask_histogram"
+      ],
+      "deterministic": true,
+      "implementation": {
+        "crate": "ergaxiom-png-pixel-decoder-runtime"
+      }
+    },
+    {
+      "id": "cleanup.alpha.background",
+      "version": "0.1.0",
+      "claims": [
+        "background_alpha_violations"
+      ],
+      "independence_class": "independent",
+      "evidence_types": [
+        "decoded_output_pixels",
+        "mask_bound_comparison"
+      ],
+      "deterministic": true,
+      "implementation": {
+        "crate": "ergaxiom-background-cleanup-certified-path-runtime"
+      }
+    },
+    {
+      "id": "cleanup.foreground.preservation",
+      "version": "0.1.0",
+      "claims": [
+        "foreground_rgba_violations"
+      ],
+      "independence_class": "independent",
+      "evidence_types": [
+        "decoded_source_pixels",
+        "decoded_output_pixels",
+        "mask_bound_comparison"
+      ],
+      "deterministic": true,
+      "implementation": {
+        "crate": "ergaxiom-background-cleanup-certified-path-runtime"
+      }
+    },
+    {
+      "id": "cleanup.source.immutability",
+      "version": "0.1.0",
+      "claims": [
+        "source_immutable"
+      ],
+      "independence_class": "independent",
+      "evidence_types": [
+        "pre_execution_digest",
+        "post_execution_digest"
+      ],
+      "deterministic": true,
+      "implementation": {
+        "crate": "ergaxiom-background-cleanup-certified-path-runtime"
+      }
+    },
+    {
+      "id": "cleanup.inkscape.integration",
+      "version": "0.1.0",
+      "claims": [
+        "inkscape_probe_verified"
+      ],
+      "independence_class": "independent",
+      "evidence_types": [
+        "application_identity",
+        "adapter_receipt",
+        "decoded_image_metadata"
+      ],
+      "deterministic": true,
+      "implementation": {
+        "crate": "ergaxiom-inkscape-adapter-runtime"
+      }
     }
   ],
   "policies": {
@@ -721,7 +986,8 @@
     "self_verification_allowed": false,
     "irreversible_actions_require_approval": true,
     "minimum_assurance_by_job_type": {
-      "social_media_static_post": "E3"
+      "social_media_static_post": "E3",
+      "image_background_cleanup": "E3"
     }
   },
   "training": {
