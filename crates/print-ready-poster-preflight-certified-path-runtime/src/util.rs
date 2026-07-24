@@ -1,3 +1,4 @@
+use ergaxiom_proof_kernel::HashingError;
 use serde::Serialize;
 use serde_json::Value;
 use sha2::{Digest, Sha256};
@@ -7,6 +8,8 @@ use thiserror::Error;
 pub enum PrintDigestError {
     #[error("failed to serialize canonical material: {0}")]
     Serialization(#[from] serde_json::Error),
+    #[error(transparent)]
+    Hashing(#[from] HashingError),
     #[error("record must serialize as a JSON object")]
     InvalidRecordShape,
 }
@@ -40,10 +43,4 @@ pub fn canonical_record_digest<T: Serialize>(
     };
     map.insert(digest_field.to_owned(), Value::String(String::new()));
     Ok(ergaxiom_proof_kernel::canonical_json_sha256(&json)?)
-}
-
-impl From<ergaxiom_proof_kernel::HashingError> for PrintDigestError {
-    fn from(error: ergaxiom_proof_kernel::HashingError) -> Self {
-        Self::Serialization(serde_json::Error::io(std::io::Error::other(error.to_string())))
-    }
 }
