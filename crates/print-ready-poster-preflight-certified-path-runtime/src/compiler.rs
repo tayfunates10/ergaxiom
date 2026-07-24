@@ -90,12 +90,9 @@ pub fn build_print_preflight_contract(
         intent.required_application_version.as_deref(),
         "required_application_version",
     )?;
-    let specification = intent
-        .resolved_specification
-        .as_ref()
-        .ok_or(PrintPreflightCompileError::MissingResolvedField(
-            "resolved_specification",
-        ))?;
+    let specification = intent.resolved_specification.as_ref().ok_or(
+        PrintPreflightCompileError::MissingResolvedField("resolved_specification"),
+    )?;
     validate_print_specification(specification)?;
     let specification_digest = canonical_value_digest(specification)?;
     if intent.print_specification.sha256.as_deref() != Some(specification_digest.as_str()) {
@@ -248,24 +245,80 @@ pub fn build_print_preflight_contract(
 
 fn proof_obligations() -> Vec<Value> {
     [
-        ("restricted_svg_profile", "print.svg.structure", "parsed_svg_snapshot"),
-        ("canvas_dimensions_match", "print.canvas.dimensions", "parsed_svg_geometry"),
-        ("bleed_coverage", "print.bleed.coverage", "parsed_svg_geometry"),
-        ("safe_area_satisfied", "print.safe_area.geometry", "parsed_svg_geometry"),
-        ("palette_violations", "print.palette.allowlist", "parsed_svg_snapshot"),
-        ("vector_only", "print.pdf.vector_only", "parsed_pdf_resources"),
-        ("fonts_outlined", "print.pdf.fonts_outlined", "parsed_pdf_resources"),
+        (
+            "restricted_svg_profile",
+            "print.svg.structure",
+            "parsed_svg_snapshot",
+        ),
+        (
+            "canvas_dimensions_match",
+            "print.canvas.dimensions",
+            "parsed_svg_geometry",
+        ),
+        (
+            "bleed_coverage",
+            "print.bleed.coverage",
+            "parsed_svg_geometry",
+        ),
+        (
+            "safe_area_satisfied",
+            "print.safe_area.geometry",
+            "parsed_svg_geometry",
+        ),
+        (
+            "palette_violations",
+            "print.palette.allowlist",
+            "parsed_svg_snapshot",
+        ),
+        (
+            "vector_only",
+            "print.pdf.vector_only",
+            "parsed_pdf_resources",
+        ),
+        (
+            "fonts_outlined",
+            "print.pdf.fonts_outlined",
+            "parsed_pdf_resources",
+        ),
         ("page_count", "print.pdf.page", "parsed_pdf_page_tree"),
-        ("media_box_match", "print.pdf.boxes", "parsed_pdf_page_boxes"),
+        (
+            "media_box_match",
+            "print.pdf.boxes",
+            "parsed_pdf_page_boxes",
+        ),
         ("trim_box_match", "print.pdf.boxes", "parsed_pdf_page_boxes"),
-        ("bleed_box_match", "print.pdf.boxes", "parsed_pdf_page_boxes"),
+        (
+            "bleed_box_match",
+            "print.pdf.boxes",
+            "parsed_pdf_page_boxes",
+        ),
         ("crop_box_match", "print.pdf.boxes", "parsed_pdf_page_boxes"),
         ("pdf_version", "print.pdf.version", "parsed_pdf_header"),
-        ("allowed_color_spaces", "print.pdf.color_spaces", "decoded_pdf_content"),
-        ("transparency_absent", "print.pdf.transparency", "parsed_pdf_resources"),
-        ("external_actions_absent", "print.pdf.security", "parsed_pdf_catalog"),
-        ("source_immutable", "print.source.immutability", "pre_execution_digest"),
-        ("inkscape_export_verified", "print.inkscape.integration", "signed_execution_record"),
+        (
+            "allowed_color_spaces",
+            "print.pdf.color_spaces",
+            "decoded_pdf_content",
+        ),
+        (
+            "transparency_absent",
+            "print.pdf.transparency",
+            "parsed_pdf_resources",
+        ),
+        (
+            "external_actions_absent",
+            "print.pdf.security",
+            "parsed_pdf_catalog",
+        ),
+        (
+            "source_immutable",
+            "print.source.immutability",
+            "pre_execution_digest",
+        ),
+        (
+            "inkscape_export_verified",
+            "print.inkscape.integration",
+            "signed_execution_record",
+        ),
     ]
     .into_iter()
     .map(|(constraint_id, validator_id, evidence_type)| {
@@ -282,10 +335,9 @@ fn proof_obligations() -> Vec<Value> {
 }
 
 fn validate_capsule(capsule: &Value) -> Result<(), PrintPreflightCompileError> {
-    let capsule_id = capsule
-        .get("capsule_id")
-        .and_then(Value::as_str)
-        .ok_or(PrintPreflightCompileError::InvalidCapsuleField("capsule_id"))?;
+    let capsule_id = capsule.get("capsule_id").and_then(Value::as_str).ok_or(
+        PrintPreflightCompileError::InvalidCapsuleField("capsule_id"),
+    )?;
     if capsule_id != GRAPHIC_DESIGNER_CAPSULE_ID {
         return Err(PrintPreflightCompileError::UnsupportedCapsule);
     }
@@ -298,9 +350,8 @@ fn validate_capsule(capsule: &Value) -> Result<(), PrintPreflightCompileError> {
         .get("job_types")
         .and_then(Value::as_array)
         .is_some_and(|jobs| {
-            jobs.iter().any(|job| {
-                job.get("id").and_then(Value::as_str) == Some(PRINT_PREFLIGHT_JOB_TYPE)
-            })
+            jobs.iter()
+                .any(|job| job.get("id").and_then(Value::as_str) == Some(PRINT_PREFLIGHT_JOB_TYPE))
         });
     if !has_job {
         return Err(PrintPreflightCompileError::MissingJobType);
@@ -308,7 +359,9 @@ fn validate_capsule(capsule: &Value) -> Result<(), PrintPreflightCompileError> {
     Ok(())
 }
 
-fn validate_present_values(intent: &PrintPreflightIntent) -> Result<(), PrintPreflightCompileError> {
+fn validate_present_values(
+    intent: &PrintPreflightIntent,
+) -> Result<(), PrintPreflightCompileError> {
     for (field, value) in [
         ("contract_id", intent.contract_id.as_deref()),
         ("created_at", intent.created_at.as_deref()),
@@ -358,7 +411,10 @@ fn validate_artifact(
     }
     if let Some(actual) = artifact.media_type.as_deref() {
         if actual != media_type {
-            return Err(invalid(field, "media type does not match certified profile"));
+            return Err(invalid(
+                field,
+                "media type does not match certified profile",
+            ));
         }
     }
     if let Some(digest) = artifact.sha256.as_deref() {
@@ -372,13 +428,48 @@ fn validate_artifact(
 fn missing_resolution_requests(intent: &PrintPreflightIntent) -> Vec<PrintResolutionRequest> {
     let mut requests = Vec::new();
     for (field, question, reason, present) in [
-        ("contract_id", "What stable Work Contract identifier should be used?", "The identifier is part of the canonical seal.", intent.contract_id.is_some()),
-        ("created_at", "What trusted UTC timestamp should be sealed into the contract?", "The compiler does not read a hidden runtime clock.", intent.created_at.is_some()),
-        ("original_text", "What user instruction should be preserved verbatim?", "The original instruction remains auditable evidence.", intent.original_text.is_some()),
-        ("language", "What language identifies the original instruction?", "Language is required for deterministic provenance.", intent.language.is_some()),
-        ("requester_id", "Which requester identity should be bound?", "Approval provenance requires a stable requester.", intent.requester_id.is_some()),
-        ("required_application_version", "Which pinned Inkscape version is required?", "Application identity must be resolved before execution.", intent.required_application_version.is_some()),
-        ("resolved_specification", "Which fully resolved print specification governs acceptance?", "Trim, bleed, safe area, palette and PDF profile cannot be guessed.", intent.resolved_specification.is_some()),
+        (
+            "contract_id",
+            "What stable Work Contract identifier should be used?",
+            "The identifier is part of the canonical seal.",
+            intent.contract_id.is_some(),
+        ),
+        (
+            "created_at",
+            "What trusted UTC timestamp should be sealed into the contract?",
+            "The compiler does not read a hidden runtime clock.",
+            intent.created_at.is_some(),
+        ),
+        (
+            "original_text",
+            "What user instruction should be preserved verbatim?",
+            "The original instruction remains auditable evidence.",
+            intent.original_text.is_some(),
+        ),
+        (
+            "language",
+            "What language identifies the original instruction?",
+            "Language is required for deterministic provenance.",
+            intent.language.is_some(),
+        ),
+        (
+            "requester_id",
+            "Which requester identity should be bound?",
+            "Approval provenance requires a stable requester.",
+            intent.requester_id.is_some(),
+        ),
+        (
+            "required_application_version",
+            "Which pinned Inkscape version is required?",
+            "Application identity must be resolved before execution.",
+            intent.required_application_version.is_some(),
+        ),
+        (
+            "resolved_specification",
+            "Which fully resolved print specification governs acceptance?",
+            "Trim, bleed, safe area, palette and PDF profile cannot be guessed.",
+            intent.resolved_specification.is_some(),
+        ),
     ] {
         if !present {
             requests.push(resolution(field, question, reason));

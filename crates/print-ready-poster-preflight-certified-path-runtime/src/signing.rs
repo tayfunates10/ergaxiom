@@ -190,10 +190,7 @@ fn verify_value<T: Serialize>(
         .map_err(|_| PrintEvidenceSignatureError::SignatureVerificationFailed)
 }
 
-fn validate_identity(
-    field: &'static str,
-    value: &str,
-) -> Result<(), PrintEvidenceSignatureError> {
+fn validate_identity(field: &'static str, value: &str) -> Result<(), PrintEvidenceSignatureError> {
     if value.trim().is_empty() {
         Err(PrintEvidenceSignatureError::EmptyField(field))
     } else {

@@ -113,10 +113,7 @@ fn restricted_source_is_accepted_and_attacks_fail_closed() -> Result<(), Box<dyn
     assert!(!report.accepted);
     assert!(report.palette_violation_count > 0);
 
-    let unsafe_path = String::from_utf8(accepted)?.replace(
-        "M 8 8",
-        "M 1 1",
-    );
+    let unsafe_path = String::from_utf8(accepted)?.replace("M 8 8", "M 1 1");
     let report = validate_print_source(unsafe_path.as_bytes(), &spec)?;
     assert!(!report.accepted);
     assert!(!report.safe_area_satisfied);
@@ -170,11 +167,8 @@ fn signed_execution_record_rejects_tampering_and_unknown_keys() -> Result<(), Bo
     tampered.record.normalized_pdf_digest = "0".repeat(64);
     assert!(verify_print_preflight_execution_record(&tampered, &keys).is_err());
     assert!(
-        verify_print_preflight_execution_record(
-            &package,
-            &PrintEvidenceKeyRegistry::default()
-        )
-        .is_err()
+        verify_print_preflight_execution_record(&package, &PrintEvidenceKeyRegistry::default())
+            .is_err()
     );
     Ok(())
 }
@@ -202,7 +196,10 @@ fn complete_intent(
     Ok(PrintPreflightIntent {
         contract_id: Some("contract.print-preflight.0001".to_owned()),
         created_at: Some("2026-07-24T13:00:00Z".to_owned()),
-        original_text: Some("Preflight this outlined vector poster for the supplied printer specification.".to_owned()),
+        original_text: Some(
+            "Preflight this outlined vector poster for the supplied printer specification."
+                .to_owned(),
+        ),
         language: Some("en".to_owned()),
         requester_id: Some("fixture.print-preflight".to_owned()),
         source_svg: PrintArtifactIntent {
@@ -217,7 +214,9 @@ fn complete_intent(
         },
         resolved_specification: Some(spec.clone()),
         required_application_version: Some("Inkscape 1.2".to_owned()),
-        visual_preference: Some("Human reviewer may assess visual balance outside hard acceptance.".to_owned()),
+        visual_preference: Some(
+            "Human reviewer may assess visual balance outside hard acceptance.".to_owned(),
+        ),
         require_pre_execution_approval: true,
     })
 }

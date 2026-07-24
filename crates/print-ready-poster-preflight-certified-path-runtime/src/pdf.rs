@@ -223,10 +223,18 @@ pub fn expected_boxes(
     let trim_height = mm_milli_to_pt_milli(i64::from(specification.trim_height_milli_mm))?;
     let bleed = mm_milli_to_pt_milli(i64::from(specification.bleed_milli_mm))?;
     let media_width = trim_width
-        .checked_add(bleed.checked_mul(2).ok_or(PrintPdfError::GeometryOverflow)?)
+        .checked_add(
+            bleed
+                .checked_mul(2)
+                .ok_or(PrintPdfError::GeometryOverflow)?,
+        )
         .ok_or(PrintPdfError::GeometryOverflow)?;
     let media_height = trim_height
-        .checked_add(bleed.checked_mul(2).ok_or(PrintPdfError::GeometryOverflow)?)
+        .checked_add(
+            bleed
+                .checked_mul(2)
+                .ok_or(PrintPdfError::GeometryOverflow)?,
+        )
         .ok_or(PrintPdfError::GeometryOverflow)?;
     let media = PdfBoxRecord {
         left_milli_pt: 0,

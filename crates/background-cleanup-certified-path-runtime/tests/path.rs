@@ -53,7 +53,7 @@ fn resolved_cleanup_intent_and_plan_are_deterministic() -> Result<(), Box<dyn Er
     else {
         panic!("complete cleanup intent must compile");
     };
-    assert_eq!(contract["profession"]["capsule_version"], "0.5.0");
+    assert_eq!(contract["profession"]["capsule_version"], "0.6.0");
     assert_eq!(contract["job_type"], "image_background_cleanup");
     assert_eq!(proof_obligation_count, 12);
     assert_eq!(unresolved_mandatory_unknowns, 0);

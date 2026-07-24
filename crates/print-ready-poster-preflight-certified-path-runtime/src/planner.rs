@@ -7,9 +7,7 @@ use serde::Deserialize;
 use serde_json::{Value, json};
 use thiserror::Error;
 
-use crate::compiler::{
-    GRAPHIC_DESIGNER_CAPSULE_ID, PRINT_PREFLIGHT_JOB_TYPE,
-};
+use crate::compiler::{GRAPHIC_DESIGNER_CAPSULE_ID, PRINT_PREFLIGHT_JOB_TYPE};
 use crate::model::{
     PrintCapabilityRequirement, PrintPreflightPlanIdentity, PrintPreflightPlanOutcome,
     PrintResolutionRequest,
@@ -189,7 +187,9 @@ pub fn synthesize_print_preflight_plan(
     })
 }
 
-fn validate_identity(identity: &PrintPreflightPlanIdentity) -> Result<(), PrintPreflightPlannerError> {
+fn validate_identity(
+    identity: &PrintPreflightPlanIdentity,
+) -> Result<(), PrintPreflightPlannerError> {
     if let Some(plan_id) = identity.plan_id.as_deref() {
         if plan_id.is_empty()
             || !plan_id
@@ -214,12 +214,15 @@ fn validate_identity(identity: &PrintPreflightPlanIdentity) -> Result<(), PrintP
     Ok(())
 }
 
-fn missing_resolution_requests(identity: &PrintPreflightPlanIdentity) -> Vec<PrintResolutionRequest> {
+fn missing_resolution_requests(
+    identity: &PrintPreflightPlanIdentity,
+) -> Vec<PrintResolutionRequest> {
     let mut requests = Vec::new();
     if identity.plan_id.is_none() {
         requests.push(PrintResolutionRequest {
             field: "plan_id".to_owned(),
-            question: "What stable identifier should be assigned to this preflight plan?".to_owned(),
+            question: "What stable identifier should be assigned to this preflight plan?"
+                .to_owned(),
             reason: "The identifier is part of the plan digest and capability namespace."
                 .to_owned(),
             accepted_sources: vec!["trusted_orchestrator".to_owned(), "user_answer".to_owned()],

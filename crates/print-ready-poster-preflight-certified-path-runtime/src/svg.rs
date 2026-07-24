@@ -192,7 +192,10 @@ pub fn render_restricted_print_svg(spec: &PrintSpecification) -> Result<Vec<u8>,
     Ok(svg.into_bytes())
 }
 
-fn inspect_svg(source_svg: &[u8], spec: &PrintSpecification) -> Result<SvgMeasurements, PrintSvgError> {
+fn inspect_svg(
+    source_svg: &[u8],
+    spec: &PrintSpecification,
+) -> Result<SvgMeasurements, PrintSvgError> {
     std::str::from_utf8(source_svg)?;
     let mut reader = Reader::from_reader(Cursor::new(source_svg));
     reader.config_mut().trim_text(true);
@@ -272,7 +275,10 @@ fn inspect_svg(source_svg: &[u8], spec: &PrintSpecification) -> Result<SvgMeasur
                             allowed_attributes(&attributes, &["id", "d", "fill"]);
                         register_id(&mut measurements, &attributes);
                         validate_fill(&mut measurements, &attributes, &allowed_palette);
-                        match attributes.get("d").and_then(|value| simple_path_bounds(value)) {
+                        match attributes
+                            .get("d")
+                            .and_then(|value| simple_path_bounds(value))
+                        {
                             Some(bounds) => {
                                 measurements.safe_area_ok &= inside_safe_area(
                                     bounds,
@@ -299,8 +305,15 @@ fn inspect_svg(source_svg: &[u8], spec: &PrintSpecification) -> Result<SvgMeasur
                     key.starts_with("on")
                         || matches!(
                             key.as_str(),
-                            "href" | "xlink:href" | "style" | "transform" | "opacity" | "filter"
-                                | "mask" | "clip-path" | "stroke"
+                            "href"
+                                | "xlink:href"
+                                | "style"
+                                | "transform"
+                                | "opacity"
+                                | "filter"
+                                | "mask"
+                                | "clip-path"
+                                | "stroke"
                         )
                 }) {
                     measurements.restricted = false;
@@ -362,7 +375,10 @@ fn validate_fill(
     attributes: &BTreeMap<String, String>,
     allowed_palette: &BTreeSet<&str>,
 ) {
-    let Some(fill) = attributes.get("fill").and_then(|value| normalize_color(value)) else {
+    let Some(fill) = attributes
+        .get("fill")
+        .and_then(|value| normalize_color(value))
+    else {
         measurements.palette_violations += 1;
         return;
     };
@@ -397,8 +413,12 @@ fn parse_view_box(value: &str) -> Option<[i64; 4]> {
 }
 
 fn rect_bounds(attributes: &BTreeMap<String, String>) -> Option<Bounds> {
-    let x = attributes.get("x").and_then(|value| parse_decimal_milli(value))?;
-    let y = attributes.get("y").and_then(|value| parse_decimal_milli(value))?;
+    let x = attributes
+        .get("x")
+        .and_then(|value| parse_decimal_milli(value))?;
+    let y = attributes
+        .get("y")
+        .and_then(|value| parse_decimal_milli(value))?;
     let width = attributes
         .get("width")
         .and_then(|value| parse_decimal_milli(value))?;
@@ -552,17 +572,8 @@ fn parse_decimal_milli(value: &str) -> Option<i64> {
     Some(if negative { -value } else { value })
 }
 
-fn inside_safe_area(
-    bounds: Bounds,
-    left: i64,
-    top: i64,
-    right: i64,
-    bottom: i64,
-) -> bool {
-    bounds.min_x >= left
-        && bounds.min_y >= top
-        && bounds.max_x <= right
-        && bounds.max_y <= bottom
+fn inside_safe_area(bounds: Bounds, left: i64, top: i64, right: i64, bottom: i64) -> bool {
+    bounds.min_x >= left && bounds.min_y >= top && bounds.max_x <= right && bounds.max_y <= bottom
 }
 
 fn format_milli(value: i64) -> String {
@@ -571,6 +582,8 @@ fn format_milli(value: i64) -> String {
     if fraction == 0 {
         whole.to_string()
     } else {
-        format!("{whole}.{fraction:03}").trim_end_matches('0').to_owned()
+        format!("{whole}.{fraction:03}")
+            .trim_end_matches('0')
+            .to_owned()
     }
 }

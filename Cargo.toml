@@ -26,6 +26,7 @@ members = [
   "crates/png-rendered-contrast-runtime",
   "crates/png-rendered-text-bounds-runtime",
   "crates/png-srgb-normalizer-runtime",
+  "crates/print-ready-poster-preflight-certified-path-runtime",
   "crates/proof-kernel",
   "crates/svg-approved-copy-runtime",
   "crates/typed-planner-runtime",

@@ -13,8 +13,7 @@ use crate::model::{
     PrintSpecification,
 };
 use crate::pdf::{
-    PrintPdfError, expected_boxes, inspect_print_pdf, normalize_print_pdf,
-    verify_pdf_normalization,
+    PrintPdfError, expected_boxes, inspect_print_pdf, normalize_print_pdf, verify_pdf_normalization,
 };
 use crate::svg::{PrintSvgError, validate_print_source};
 use crate::util::{
@@ -83,7 +82,12 @@ pub fn execute_print_preflight(
     let editable_path = workspace.join(format!("{}-editable.svg", request.request_id));
     let raw_pdf_path = workspace.join(format!("{}-raw.pdf", request.request_id));
     let delivery_pdf_path = workspace.join(format!("{}-delivery.pdf", request.request_id));
-    for path in [&source_path, &editable_path, &raw_pdf_path, &delivery_pdf_path] {
+    for path in [
+        &source_path,
+        &editable_path,
+        &raw_pdf_path,
+        &delivery_pdf_path,
+    ] {
         if path.exists() {
             return Err(std::io::Error::new(
                 std::io::ErrorKind::AlreadyExists,
@@ -114,7 +118,12 @@ pub fn execute_print_preflight(
     let adapter_record = match adapter_result {
         Ok(record) => record,
         Err(error) => {
-            cleanup(&[&source_path, &editable_path, &raw_pdf_path, &delivery_pdf_path]);
+            cleanup(&[
+                &source_path,
+                &editable_path,
+                &raw_pdf_path,
+                &delivery_pdf_path,
+            ]);
             return Err(error.into());
         }
     };
@@ -172,7 +181,12 @@ pub fn execute_print_preflight(
         })
     })();
     if result.is_err() {
-        cleanup(&[&source_path, &editable_path, &raw_pdf_path, &delivery_pdf_path]);
+        cleanup(&[
+            &source_path,
+            &editable_path,
+            &raw_pdf_path,
+            &delivery_pdf_path,
+        ]);
     }
     result
 }
@@ -276,23 +290,125 @@ pub fn print_preflight_failure_map(
         "The SVG contains unsupported structure or effects.",
         "Use only flat svg/g/rect/path content with absolute M/L/H/V/Z outlined paths.",
     );
-    push_if(&mut failures, !report.canvas_dimensions_match, PrintFailureCode::CanvasDimensions, "The bleed canvas does not match the print specification.", "Set width, height and viewBox to trim plus twice the declared bleed.");
-    push_if(&mut failures, !report.bleed_coverage, PrintFailureCode::BleedCoverage, "The background does not cover the full bleed canvas.", "Extend the approved background rectangle to every bleed edge.");
-    push_if(&mut failures, !report.safe_area_satisfied, PrintFailureCode::SafeArea, "Content crosses the declared safe area.", "Move every non-background vector bound inside bleed plus safe margin.");
-    push_if(&mut failures, report.palette_violation_count != 0, PrintFailureCode::PaletteAllowlist, "The source uses colors outside the approved print palette.", "Replace undeclared fills with exact lowercase approved #rrggbb values.");
-    push_if(&mut failures, !report.vector_only, PrintFailureCode::VectorOnly, "The PDF contains raster image XObjects.", "Replace raster material with certified vector paths or use a future raster-print profile.");
-    push_if(&mut failures, !report.fonts_outlined, PrintFailureCode::FontsOutlined, "The PDF contains live font resources.", "Convert all text to outlined paths before preflight.");
-    push_if(&mut failures, report.page_count != 1, PrintFailureCode::PageCount, "The PDF is not exactly one page.", "Export only the declared poster page.");
-    push_if(&mut failures, !report.media_box_match, PrintFailureCode::MediaBox, "MediaBox does not match the bleed canvas.", "Regenerate the PDF from the declared page dimensions.");
-    push_if(&mut failures, !report.trim_box_match, PrintFailureCode::TrimBox, "TrimBox does not match the trim size and bleed inset.", "Use the deterministic print-box normalizer.");
-    push_if(&mut failures, !report.bleed_box_match, PrintFailureCode::BleedBox, "BleedBox is missing or incorrect.", "Set BleedBox equal to the full bleed MediaBox.");
-    push_if(&mut failures, !report.crop_box_match, PrintFailureCode::CropBox, "CropBox is missing or incorrect.", "Set CropBox equal to the full bleed MediaBox.");
-    push_if(&mut failures, report.pdf_version != "1.5", PrintFailureCode::PdfVersion, "The normalized PDF version is unsupported.", "Regenerate the certified PDF 1.5 delivery.");
-    push_if(&mut failures, !report.allowed_color_spaces_only, PrintFailureCode::ColorSpace, "The PDF uses an unapproved color space.", "Use only the color spaces explicitly allowed by the print specification.");
-    push_if(&mut failures, !report.transparency_absent, PrintFailureCode::Transparency, "Transparency or graphics-state effects are present.", "Flatten or remove transparency before certification.");
-    push_if(&mut failures, !report.external_actions_absent, PrintFailureCode::ExternalAction, "The PDF contains annotations, actions, encryption or embedded material.", "Remove interactive and externally executable PDF features.");
-    push_if(&mut failures, !report.source_immutable, PrintFailureCode::SourceImmutability, "The source digest changed during execution.", "Restart from a fresh immutable input workspace.");
-    push_if(&mut failures, !report.inkscape_export_verified, PrintFailureCode::InkscapeIntegration, "Pinned Inkscape execution evidence is invalid.", "Re-run with the trusted executable and proof-bound adapter.");
+    push_if(
+        &mut failures,
+        !report.canvas_dimensions_match,
+        PrintFailureCode::CanvasDimensions,
+        "The bleed canvas does not match the print specification.",
+        "Set width, height and viewBox to trim plus twice the declared bleed.",
+    );
+    push_if(
+        &mut failures,
+        !report.bleed_coverage,
+        PrintFailureCode::BleedCoverage,
+        "The background does not cover the full bleed canvas.",
+        "Extend the approved background rectangle to every bleed edge.",
+    );
+    push_if(
+        &mut failures,
+        !report.safe_area_satisfied,
+        PrintFailureCode::SafeArea,
+        "Content crosses the declared safe area.",
+        "Move every non-background vector bound inside bleed plus safe margin.",
+    );
+    push_if(
+        &mut failures,
+        report.palette_violation_count != 0,
+        PrintFailureCode::PaletteAllowlist,
+        "The source uses colors outside the approved print palette.",
+        "Replace undeclared fills with exact lowercase approved #rrggbb values.",
+    );
+    push_if(
+        &mut failures,
+        !report.vector_only,
+        PrintFailureCode::VectorOnly,
+        "The PDF contains raster image XObjects.",
+        "Replace raster material with certified vector paths or use a future raster-print profile.",
+    );
+    push_if(
+        &mut failures,
+        !report.fonts_outlined,
+        PrintFailureCode::FontsOutlined,
+        "The PDF contains live font resources.",
+        "Convert all text to outlined paths before preflight.",
+    );
+    push_if(
+        &mut failures,
+        report.page_count != 1,
+        PrintFailureCode::PageCount,
+        "The PDF is not exactly one page.",
+        "Export only the declared poster page.",
+    );
+    push_if(
+        &mut failures,
+        !report.media_box_match,
+        PrintFailureCode::MediaBox,
+        "MediaBox does not match the bleed canvas.",
+        "Regenerate the PDF from the declared page dimensions.",
+    );
+    push_if(
+        &mut failures,
+        !report.trim_box_match,
+        PrintFailureCode::TrimBox,
+        "TrimBox does not match the trim size and bleed inset.",
+        "Use the deterministic print-box normalizer.",
+    );
+    push_if(
+        &mut failures,
+        !report.bleed_box_match,
+        PrintFailureCode::BleedBox,
+        "BleedBox is missing or incorrect.",
+        "Set BleedBox equal to the full bleed MediaBox.",
+    );
+    push_if(
+        &mut failures,
+        !report.crop_box_match,
+        PrintFailureCode::CropBox,
+        "CropBox is missing or incorrect.",
+        "Set CropBox equal to the full bleed MediaBox.",
+    );
+    push_if(
+        &mut failures,
+        report.pdf_version != "1.5",
+        PrintFailureCode::PdfVersion,
+        "The normalized PDF version is unsupported.",
+        "Regenerate the certified PDF 1.5 delivery.",
+    );
+    push_if(
+        &mut failures,
+        !report.allowed_color_spaces_only,
+        PrintFailureCode::ColorSpace,
+        "The PDF uses an unapproved color space.",
+        "Use only the color spaces explicitly allowed by the print specification.",
+    );
+    push_if(
+        &mut failures,
+        !report.transparency_absent,
+        PrintFailureCode::Transparency,
+        "Transparency or graphics-state effects are present.",
+        "Flatten or remove transparency before certification.",
+    );
+    push_if(
+        &mut failures,
+        !report.external_actions_absent,
+        PrintFailureCode::ExternalAction,
+        "The PDF contains annotations, actions, encryption or embedded material.",
+        "Remove interactive and externally executable PDF features.",
+    );
+    push_if(
+        &mut failures,
+        !report.source_immutable,
+        PrintFailureCode::SourceImmutability,
+        "The source digest changed during execution.",
+        "Restart from a fresh immutable input workspace.",
+    );
+    push_if(
+        &mut failures,
+        !report.inkscape_export_verified,
+        PrintFailureCode::InkscapeIntegration,
+        "Pinned Inkscape execution evidence is invalid.",
+        "Re-run with the trusted executable and proof-bound adapter.",
+    );
     failures
 }
 
