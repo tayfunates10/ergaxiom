@@ -90,6 +90,8 @@ A separate PDF parser then reopens the normalized bytes and independently verifi
 - no non-opaque transparency, soft masks or unsupported transparency groups;
 - no annotations, JavaScript, launch actions, forms, embedded files or encryption.
 
+An absent `/XObject` or `/Font` resource entry is measured as zero corresponding resources. If either entry is present, the bounded profile rejects it rather than relying on a renderer-side interpretation.
+
 A successful Inkscape return code or normalizer record is insufficient by itself.
 
 ## Trust separation
