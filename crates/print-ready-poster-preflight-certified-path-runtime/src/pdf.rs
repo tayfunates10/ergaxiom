@@ -201,9 +201,13 @@ pub fn inspect_print_pdf(
     let allowed_color_spaces_only = used_color_spaces
         .iter()
         .all(|space| allowed.contains(space.as_str()));
-    let transparency_absent = !malformed_graphics_state_operator
-        && resources_transparency_safe(&document, resources, &used_graphics_states, &allowed)?
-        && document_transparency_groups_safe(&document, &allowed)?;
+    let resources_safe =
+        resources_transparency_safe(&document, resources, &used_graphics_states, &allowed)?;
+    let groups_safe = document_transparency_groups_safe(&document, &allowed)?;
+    eprintln!(
+        "print PDF transparency diagnostics: malformed_gs={malformed_graphics_state_operator} resources_safe={resources_safe} groups_safe={groups_safe} used_gs={used_graphics_states:?} resources={resources:?}"
+    );
+    let transparency_absent = !malformed_graphics_state_operator && resources_safe && groups_safe;
     let security_objects_absent = document.objects.values().all(object_is_security_safe);
     let catalog_safe = document.catalog().is_ok_and(dictionary_is_security_safe);
     let encrypted = document.is_encrypted() || document.trailer.get(b"Encrypt").is_ok();
