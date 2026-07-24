@@ -23,7 +23,10 @@ const REQUIRED_OPERATORS: [&str; 3] = [
 #[derive(Debug, Error)]
 pub enum PrintPreflightPlannerError {
     #[error("plan identity field {field} is invalid: {reason}")]
-    InvalidIdentityField { field: &'static str, reason: String },
+    InvalidIdentityField {
+        field: &'static str,
+        reason: String,
+    },
     #[error("failed to decode Work Contract planning fields: {0}")]
     ContractDecode(#[source] serde_json::Error),
     #[error("failed to decode Profession Capsule planning fields: {0}")]
@@ -175,13 +178,14 @@ pub fn synthesize_print_preflight_plan(
         }
     });
     let compiled_plan = compile_plan(&plan, capsule_value, &compiled_contract)?;
+    let mandatory_step_count = compiled_plan.mandatory_step_count();
     Ok(PrintPreflightPlanOutcome::Planned {
         job_type: PRINT_PREFLIGHT_JOB_TYPE.to_owned(),
         plan,
         plan_digest: compiled_plan.plan_digest,
         contract_digest: compiled_plan.contract_digest,
         capsule_digest: compiled_plan.capsule_digest,
-        mandatory_step_count: compiled_plan.mandatory_step_count(),
+        mandatory_step_count,
         capability_requirements,
         capability_requirement_digest,
     })
@@ -221,8 +225,7 @@ fn missing_resolution_requests(
     if identity.plan_id.is_none() {
         requests.push(PrintResolutionRequest {
             field: "plan_id".to_owned(),
-            question: "What stable identifier should be assigned to this preflight plan?"
-                .to_owned(),
+            question: "What stable identifier should be assigned to this preflight plan?".to_owned(),
             reason: "The identifier is part of the plan digest and capability namespace."
                 .to_owned(),
             accepted_sources: vec!["trusted_orchestrator".to_owned(), "user_answer".to_owned()],
@@ -274,9 +277,12 @@ fn validate_contract(contract: &ContractView) -> Result<(), PrintPreflightPlanne
         });
     }
     let expected_outputs = BTreeSet::from([
-        "delivery_pdf|delivery_pdf|contract://outputs/print-ready-poster.pdf|application/pdf",
-        "editable_master|editable_master|contract://outputs/print-ready-poster.svg|image/svg+xml",
-        "evidence_bundle|evidence_bundle|contract://outputs/print-ready-poster-evidence.json|application/json",
+        "delivery_pdf|delivery_pdf|contract://outputs/print-ready-poster.pdf|application/pdf"
+            .to_owned(),
+        "editable_master|editable_master|contract://outputs/print-ready-poster.svg|image/svg+xml"
+            .to_owned(),
+        "evidence_bundle|evidence_bundle|contract://outputs/print-ready-poster-evidence.json|application/json"
+            .to_owned(),
     ]);
     let mut actual_outputs = BTreeSet::new();
     for output in &contract.outputs {
