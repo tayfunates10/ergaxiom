@@ -43,7 +43,7 @@ For each pixel:
 - mask alpha `0`: preserve RGB and set output alpha to `0`,
 - any other mask alpha: reject.
 
-The producer records source, mask and output digests; pre-state, action-boundary and post-state digests; foreground/background counts; source immutability; and a canonical record digest.
+The producer records source, mask and output digests; pre-state, action-boundary and post-state digests; foreground/background counts; source immutability; and a canonical record digest. That complete execution record is signed by a cleanup-executor Ed25519 key. A self-declared `verified` field or reproducible record digest is not sufficient without a trusted execution signature.
 
 ## Independent validators
 
@@ -59,7 +59,7 @@ Validation uses the separate PNG container validator and pixel decoder rather th
 - restricted sRGB evidence,
 - source immutability.
 
-Every technical failure maps to a stable code, a human-readable explanation and a corrective action. Subjective edge quality is retained as a human-review preference and cannot create a technical acceptance result.
+The final certifier reruns this validation from the raw source, mask and cleaned PNG bytes and rejects a caller-supplied report that is not byte-for-byte equal to the independently recomputed report. Every technical failure maps to a stable code, a human-readable explanation and a corrective action. Subjective edge quality is retained as a human-review preference and cannot create a technical acceptance result.
 
 ## Real application integration
 
@@ -73,7 +73,7 @@ The cleaned PNG is written to an isolated workspace, inserted into a minimal SVG
 - probe dimensions,
 - proof-bound adapter record digest.
 
-An Inkscape process exit code alone is not proof. The adapter record must be verified and the generated PNG must pass independent structural inspection.
+An Inkscape process exit code alone is not proof. The adapter record must be verified and the generated PNG must pass independent structural inspection. The complete integration report is then signed by a separate Inkscape-executor Ed25519 key. The final acceptance authority trusts neither an unsigned integration summary nor an integration key that is absent from its trusted-key registry.
 
 ## Evidence and Acceptance Certificate
 
@@ -81,11 +81,13 @@ The final Evidence Bundle contains:
 
 - immutable source and mask artifacts,
 - cleaned and probe outputs,
-- execution, validation and integration reports,
+- the signed cleanup execution package,
+- the independently recomputed validation report,
+- the signed Inkscape integration package,
 - the receipt-bound authorized execution trace,
 - one independent proof result for every mandatory obligation.
 
-`assess_bundle` recomputes trace conformance and contract acceptance. Only an `ACCEPTED` bundle with zero failed or unknown mandatory obligations can be signed. The Ed25519 Acceptance Certificate is then verified again against the exact Evidence Bundle and recomputed replay manifest.
+The execution-evidence keys, capability-token authority and final acceptance key are distinct trust roles. Before bundle assessment, the certifier verifies both execution signatures, checks their canonical record digests and recomputes the PNG validation report from raw artifacts. `assess_bundle` then recomputes trace conformance and contract acceptance. Only an `ACCEPTED` bundle with zero failed or unknown mandatory obligations can be signed. The Ed25519 Acceptance Certificate is finally verified again against the exact Evidence Bundle and recomputed replay manifest.
 
 ## Threat model
 
@@ -99,7 +101,10 @@ The path rejects or blocks:
 - visible background pixels,
 - source mutation,
 - stale or mismatched execution records,
+- unsigned, tampered or unknown-key cleanup execution records,
 - unverified Inkscape identity or adapter records,
+- unsigned, tampered or unknown-key Inkscape integration reports,
+- caller-supplied validation reports that differ from independent recomputation,
 - unauthorized, incomplete or tampered traces,
 - evidence or certificate binding changes.
 
