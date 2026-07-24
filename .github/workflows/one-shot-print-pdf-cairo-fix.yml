@@ -32,60 +32,52 @@ jobs:
 
           replacements = [
               (
-                  '''    if resources.get(b"Pattern").is_ok() {
-              return Ok(false);
-          }
-          let Ok(ext_gstate_object) = resources.get(b"ExtGState") else {
-          ''',
-                  '''    for key in [b"Pattern".as_slice(), b"Shading".as_slice()] {
-              if let Ok(resource_object) = resources.get(key) {
-                  let resource_dictionary = resolved_dictionary(document, resource_object)?;
-                  if resource_dictionary.iter().next().is_some() {
-                      return Ok(false);
-                  }
-              }
-          }
-          let Ok(ext_gstate_object) = resources.get(b"ExtGState") else {
-          ''',
+                  '    if resources.get(b"Pattern").is_ok() {\n'
+                  '        return Ok(false);\n'
+                  '    }\n'
+                  '    let Ok(ext_gstate_object) = resources.get(b"ExtGState") else {\n',
+                  '    for key in [b"Pattern".as_slice(), b"Shading".as_slice()] {\n'
+                  '        if let Ok(resource_object) = resources.get(key) {\n'
+                  '            let resource_dictionary = resolved_dictionary(document, resource_object)?;\n'
+                  '            if resource_dictionary.iter().next().is_some() {\n'
+                  '                return Ok(false);\n'
+                  '            }\n'
+                  '        }\n'
+                  '    }\n'
+                  '    let Ok(ext_gstate_object) = resources.get(b"ExtGState") else {\n',
               ),
               (
-                  '''        b"BM".as_slice(),
-              b"AIS".as_slice(),
-          ];
-          ''',
-                  '''        b"BM".as_slice(),
-              b"AIS".as_slice(),
-              b"SMask".as_slice(),
-          ];
-          ''',
+                  '        b"BM".as_slice(),\n'
+                  '        b"AIS".as_slice(),\n'
+                  '    ];\n',
+                  '        b"BM".as_slice(),\n'
+                  '        b"AIS".as_slice(),\n'
+                  '        b"SMask".as_slice(),\n'
+                  '    ];\n',
               ),
               (
-                  '''    if let Ok(blend_mode) = dictionary.get(b"BM") {
-              if !is_name(blend_mode, b"Normal") {
-                  return false;
-              }
-          }
-          ''',
-                  '''    if let Ok(blend_mode) = dictionary.get(b"BM") {
-              let normal = is_name(blend_mode, b"Normal")
-                  || blend_mode.as_array().is_ok_and(|items| {
-                      !items.is_empty() && items.iter().all(|item| is_name(item, b"Normal"))
-                  });
-              if !normal {
-                  return false;
-              }
-          }
-          ''',
+                  '    if let Ok(blend_mode) = dictionary.get(b"BM") {\n'
+                  '        if !is_name(blend_mode, b"Normal") {\n'
+                  '            return false;\n'
+                  '        }\n'
+                  '    }\n',
+                  '    if let Ok(blend_mode) = dictionary.get(b"BM") {\n'
+                  '        let normal = is_name(blend_mode, b"Normal")\n'
+                  '            || blend_mode.as_array().is_ok_and(|items| {\n'
+                  '                !items.is_empty() && items.iter().all(|item| is_name(item, b"Normal"))\n'
+                  '            });\n'
+                  '        if !normal {\n'
+                  '            return false;\n'
+                  '        }\n'
+                  '    }\n',
               ),
               (
-                  '''    dictionary.get(b"SMask").is_err()
-          }
-          ''',
-                  '''    dictionary
-              .get(b"SMask")
-              .is_err_or(|mask| is_name(mask, b"None"))
-          }
-          ''',
+                  '    dictionary.get(b"SMask").is_err()\n'
+                  '}\n',
+                  '    dictionary\n'
+                  '        .get(b"SMask")\n'
+                  '        .is_err_or(|mask| is_name(mask, b"None"))\n'
+                  '}\n',
               ),
           ]
 
