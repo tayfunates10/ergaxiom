@@ -47,11 +47,12 @@ jobs:
             crates/intent-contract-compiler-runtime/tests/static_social_post.rs \
             crates/background-cleanup-certified-path-runtime/tests/path.rs \
             crates/brand-compliant-export-certified-path-runtime/tests/path.rs \
-            .github/workflows/background-cleanup-certified-path.yml \
-            .github/workflows/brand-compliant-export-certified-path.yml \
             docs/architecture/38-brand-compliant-export-certified-path.md \
             crates/print-ready-poster-preflight-certified-path-runtime
-          git reset .github/workflows/print-preflight-bootstrap.yml tools/bootstrap_print_preflight.py
+          git reset .github/workflows/print-preflight-bootstrap.yml \
+            tools/bootstrap_print_preflight.py \
+            .github/workflows/background-cleanup-certified-path.yml \
+            .github/workflows/brand-compliant-export-certified-path.yml
           git diff --cached --check
           git commit -m "Certify print-ready poster preflight foundation"
           git push origin HEAD:${{ github.head_ref }}
