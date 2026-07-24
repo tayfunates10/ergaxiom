@@ -2,9 +2,8 @@ use std::error::Error;
 
 use ed25519_dalek::SigningKey;
 use ergaxiom_background_cleanup_certified_path_runtime::{
-    BackgroundCleanupExecutionRequest, CleanupEvidenceKeyRegistry,
-    CleanupEvidenceSignatureError, InkscapeCleanupIntegrationReport,
-    encode_restricted_srgb_rgba_png, execute_background_cleanup,
+    BackgroundCleanupExecutionRequest, CleanupEvidenceKeyRegistry, CleanupEvidenceSignatureError,
+    InkscapeCleanupIntegrationReport, encode_restricted_srgb_rgba_png, execute_background_cleanup,
     sign_background_cleanup_execution_record, sign_inkscape_cleanup_integration_report,
     verify_background_cleanup_execution_record, verify_inkscape_cleanup_integration_report,
 };
@@ -140,12 +139,7 @@ fn accepted_png_fixture() -> Result<(Vec<u8>, Vec<u8>), Box<dyn Error>> {
             index.saturating_mul(5),
             255,
         ]);
-        mask.extend_from_slice(&[
-            255,
-            255,
-            255,
-            if index % 2 == 0 { 255 } else { 0 },
-        ]);
+        mask.extend_from_slice(&[255, 255, 255, if index % 2 == 0 { 255 } else { 0 }]);
     }
     Ok((
         encode_restricted_srgb_rgba_png(4, 3, &source)?,

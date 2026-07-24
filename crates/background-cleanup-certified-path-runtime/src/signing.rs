@@ -6,9 +6,7 @@ use ergaxiom_proof_kernel::{canonical_json_bytes, canonical_json_sha256};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-use crate::model::{
-    BackgroundCleanupExecutionRecord, InkscapeCleanupIntegrationReport,
-};
+use crate::model::{BackgroundCleanupExecutionRecord, InkscapeCleanupIntegrationReport};
 use crate::util::{DigestMaterialError, canonical_record_digest};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
