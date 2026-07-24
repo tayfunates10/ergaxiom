@@ -1,0 +1,115 @@
+name: One-shot bounded Cairo PDF profile fix
+
+on:
+  push:
+    branches:
+      - agent/print-ready-poster-preflight-certified-path-v1
+    paths:
+      - ".github/workflows/one-shot-print-pdf-cairo-fix.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  apply-bounded-fix:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out branch
+        uses: actions/checkout@v4
+        with:
+          ref: agent/print-ready-poster-preflight-certified-path-v1
+          fetch-depth: 0
+
+      - name: Apply permanent bounded Cairo resource handling
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('crates/print-ready-poster-preflight-certified-path-runtime/src/pdf.rs')
+          text = path.read_text(encoding='utf-8')
+
+          replacements = [
+              (
+                  '''    if resources.get(b"Pattern").is_ok() {
+              return Ok(false);
+          }
+          let Ok(ext_gstate_object) = resources.get(b"ExtGState") else {
+          ''',
+                  '''    for key in [b"Pattern".as_slice(), b"Shading".as_slice()] {
+              if let Ok(resource_object) = resources.get(key) {
+                  let resource_dictionary = resolved_dictionary(document, resource_object)?;
+                  if resource_dictionary.iter().next().is_some() {
+                      return Ok(false);
+                  }
+              }
+          }
+          let Ok(ext_gstate_object) = resources.get(b"ExtGState") else {
+          ''',
+              ),
+              (
+                  '''        b"BM".as_slice(),
+              b"AIS".as_slice(),
+          ];
+          ''',
+                  '''        b"BM".as_slice(),
+              b"AIS".as_slice(),
+              b"SMask".as_slice(),
+          ];
+          ''',
+              ),
+              (
+                  '''    if let Ok(blend_mode) = dictionary.get(b"BM") {
+              if !is_name(blend_mode, b"Normal") {
+                  return false;
+              }
+          }
+          ''',
+                  '''    if let Ok(blend_mode) = dictionary.get(b"BM") {
+              let normal = is_name(blend_mode, b"Normal")
+                  || blend_mode.as_array().is_ok_and(|items| {
+                      !items.is_empty() && items.iter().all(|item| is_name(item, b"Normal"))
+                  });
+              if !normal {
+                  return false;
+              }
+          }
+          ''',
+              ),
+              (
+                  '''    dictionary.get(b"SMask").is_err()
+          }
+          ''',
+                  '''    dictionary
+              .get(b"SMask")
+              .is_err_or(|mask| is_name(mask, b"None"))
+          }
+          ''',
+              ),
+          ]
+
+          changed = False
+          for old, new in replacements:
+              if old in text:
+                  text = text.replace(old, new, 1)
+                  changed = True
+              elif new not in text:
+                  raise SystemExit('bounded Cairo source profile did not match expected code')
+
+          if changed:
+              path.write_text(text, encoding='utf-8')
+          PY
+
+          cargo fmt --all
+          if git diff --quiet -- crates/print-ready-poster-preflight-certified-path-runtime/src/pdf.rs; then
+            echo "Bounded Cairo profile already applied"
+            exit 0
+          fi
+
+          git config user.name "ergaxiom-maintenance"
+          git config user.email "actions@users.noreply.github.com"
+          git add crates/print-ready-poster-preflight-certified-path-runtime/src/pdf.rs
+          git diff --cached --check
+          git commit -m "Handle bounded legacy Cairo PDF resources"
+          git push origin HEAD:agent/print-ready-poster-preflight-certified-path-v1
