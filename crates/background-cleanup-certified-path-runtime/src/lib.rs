@@ -4,6 +4,7 @@ mod certify;
 mod compiler;
 mod integration;
 mod model;
+#[allow(clippy::needless_lifetimes)]
 mod planner;
 mod png;
 mod runtime;
