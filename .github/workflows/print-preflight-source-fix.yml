@@ -1,7 +1,9 @@
 name: Print preflight source fix
 
 on:
-  pull_request:
+  push:
+    branches:
+      - agent/print-ready-poster-preflight-certified-path-v1
     paths:
       - ".github/workflows/print-preflight-source-fix.yml"
 
@@ -10,14 +12,14 @@ permissions:
 
 jobs:
   fix:
-    if: github.head_ref == 'agent/print-ready-poster-preflight-certified-path-v1'
+    if: github.ref_name == 'agent/print-ready-poster-preflight-certified-path-v1'
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
       - name: Check out branch
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.head_ref }}
+          ref: agent/print-ready-poster-preflight-certified-path-v1
           fetch-depth: 0
 
       - name: Install Rust formatter
@@ -140,4 +142,4 @@ jobs:
             crates/print-ready-poster-preflight-certified-path-runtime/src/svg.rs
           git diff --cached --check
           git commit -m "Fix print preflight compiler integration"
-          git push origin HEAD:${{ github.head_ref }}
+          git push origin HEAD:agent/print-ready-poster-preflight-certified-path-v1
