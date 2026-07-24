@@ -9,7 +9,7 @@
   },
   "profession": {
     "capsule_id": "ergaxiom.profession.graphic-designer",
-    "capsule_version": "0.4.0",
+    "capsule_version": "0.5.0",
     "specialization": "social_media_design"
   },
   "job_type": "social_media_static_post",

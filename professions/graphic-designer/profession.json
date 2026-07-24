@@ -1,7 +1,7 @@
 {
   "schema_version": "0.1.0",
   "capsule_id": "ergaxiom.profession.graphic-designer",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "profession": {
     "name": "graphic_designer",
     "display_name": "Graphic Designer",
@@ -98,6 +98,42 @@
         "cleanup.apply_binary_mask",
         "cleanup.inkscape_probe",
         "cleanup.certify_delivery"
+      ],
+      "minimum_assurance_level": "E3"
+    },
+    {
+      "id": "brand_compliant_image_export",
+      "description": "Export an approved restricted SVG only after independently proving exact brand rules and pinned Inkscape delivery evidence.",
+      "specialization": "brand_compliance",
+      "required_inputs": [
+        "source_svg",
+        "brand_manifest",
+        "approved_logo"
+      ],
+      "required_outputs": [
+        "editable_master",
+        "delivery_raster",
+        "evidence_bundle"
+      ],
+      "required_constraints": [
+        "canvas_width",
+        "canvas_height",
+        "restricted_svg_profile",
+        "palette_violations",
+        "logo_digest_match",
+        "logo_geometry_match",
+        "logo_clear_space",
+        "typography_match",
+        "approved_copy_match",
+        "output_media_type",
+        "color_profile",
+        "source_immutable",
+        "inkscape_export_verified"
+      ],
+      "operator_ids": [
+        "brand.validate_source",
+        "brand.export_with_inkscape",
+        "brand.certify_delivery"
       ],
       "minimum_assurance_level": "E3"
     }
@@ -738,6 +774,125 @@
         "supported": true,
         "strategy": "discard unsigned bundle and certificate material"
       }
+    },
+    {
+      "id": "brand.validate_source",
+      "version": "0.1.0",
+      "description": "Parse the immutable restricted SVG and prove exact canvas, palette, logo, typography and approved-copy rules from the digest-bound brand manifest.",
+      "input_types": [
+        "source_svg",
+        "brand_manifest",
+        "approved_logo"
+      ],
+      "output_types": [
+        "brand_source_validation_report"
+      ],
+      "preconditions": [
+        "all_input_digests_match_contract",
+        "brand_manifest_is_resolved",
+        "workspace_is_isolated"
+      ],
+      "postconditions": [
+        "all_mandatory_source_brand_rules_are_measured",
+        "source_material_remains_immutable"
+      ],
+      "permissions": [
+        "filesystem.read:contract_inputs",
+        "application.control:brand_validator"
+      ],
+      "execution_methods": [
+        "document_model",
+        "signed_adapter"
+      ],
+      "deterministic": true,
+      "randomness_seed_required": false,
+      "rollback": {
+        "supported": true,
+        "strategy": "discard validation report and isolated parse state"
+      }
+    },
+    {
+      "id": "brand.export_with_inkscape",
+      "version": "0.1.0",
+      "description": "Export the validated SVG through the pinned proof-bound Inkscape adapter and add verified IDAT-preserving sRGB delivery evidence.",
+      "input_types": [
+        "source_svg",
+        "brand_source_validation_report",
+        "export_profile"
+      ],
+      "output_types": [
+        "editable_master",
+        "delivery_raster",
+        "brand_export_execution_record"
+      ],
+      "preconditions": [
+        "source_brand_validation_is_accepted",
+        "trusted_inkscape_identity_is_bound",
+        "output_paths_are_new"
+      ],
+      "postconditions": [
+        "adapter_record_is_verified",
+        "source_material_remains_immutable",
+        "delivery_png_is_srgb",
+        "normalization_preserves_idat"
+      ],
+      "permissions": [
+        "filesystem.read:contract_inputs",
+        "filesystem.write:declared_output",
+        "application.control:inkscape"
+      ],
+      "execution_methods": [
+        "application_api",
+        "cli",
+        "signed_adapter"
+      ],
+      "deterministic": true,
+      "randomness_seed_required": false,
+      "rollback": {
+        "supported": true,
+        "strategy": "discard raw export, normalized delivery and editable staging document"
+      }
+    },
+    {
+      "id": "brand.certify_delivery",
+      "version": "0.1.0",
+      "description": "Verify signed brand-export evidence, recompute independent validators and issue an Ed25519 Acceptance Certificate only for an accepted authorized trace.",
+      "input_types": [
+        "source_svg",
+        "brand_manifest",
+        "approved_logo",
+        "editable_master",
+        "delivery_raster",
+        "validator_reports",
+        "authorized_execution_trace"
+      ],
+      "output_types": [
+        "evidence_bundle",
+        "acceptance_certificate"
+      ],
+      "preconditions": [
+        "signed_execution_evidence_verifies",
+        "all_mandatory_validator_reports_are_bound",
+        "authorized_trace_conforms_to_plan"
+      ],
+      "postconditions": [
+        "evidence_bundle_is_independently_accepted",
+        "acceptance_certificate_verifies_against_exact_bundle"
+      ],
+      "permissions": [
+        "filesystem.read:isolated_workspace",
+        "filesystem.write:declared_output",
+        "secret.use:attestation_signing_key"
+      ],
+      "execution_methods": [
+        "signed_adapter"
+      ],
+      "deterministic": true,
+      "randomness_seed_required": false,
+      "rollback": {
+        "supported": true,
+        "strategy": "discard unsigned bundle and certificate material"
+      }
     }
   ],
   "validators": [
@@ -978,6 +1133,193 @@
       "implementation": {
         "crate": "ergaxiom-inkscape-adapter-runtime"
       }
+    },
+    {
+      "id": "brand.canvas.dimensions",
+      "version": "0.1.0",
+      "claims": [
+        "canvas_width",
+        "canvas_height"
+      ],
+      "independence_class": "independent",
+      "evidence_types": [
+        "parsed_svg_snapshot",
+        "decoded_image_metadata"
+      ],
+      "deterministic": true,
+      "implementation": {
+        "crate": "ergaxiom-brand-compliant-export-certified-path-runtime",
+        "strategy": "compare exact root SVG and delivery PNG dimensions with the manifest"
+      }
+    },
+    {
+      "id": "brand.svg.structure",
+      "version": "0.1.0",
+      "claims": [
+        "restricted_svg_profile"
+      ],
+      "independence_class": "independent",
+      "evidence_types": [
+        "parsed_svg_snapshot"
+      ],
+      "deterministic": true,
+      "implementation": {
+        "crate": "ergaxiom-brand-compliant-export-certified-path-runtime",
+        "strategy": "fail closed on undeclared elements, attributes, external resources or nested text"
+      }
+    },
+    {
+      "id": "brand.palette.allowlist",
+      "version": "0.1.0",
+      "claims": [
+        "palette_violations"
+      ],
+      "independence_class": "independent",
+      "evidence_types": [
+        "parsed_svg_snapshot",
+        "color_allowlist_comparison"
+      ],
+      "deterministic": true,
+      "implementation": {
+        "crate": "ergaxiom-brand-compliant-export-certified-path-runtime",
+        "strategy": "compare every declared fill against exact approved #rrggbb values"
+      }
+    },
+    {
+      "id": "brand.logo.identity",
+      "version": "0.1.0",
+      "claims": [
+        "logo_digest_match"
+      ],
+      "independence_class": "independent",
+      "evidence_types": [
+        "embedded_asset_digest",
+        "approved_asset_digest"
+      ],
+      "deterministic": true,
+      "implementation": {
+        "crate": "ergaxiom-brand-compliant-export-certified-path-runtime",
+        "strategy": "decode the embedded PNG and compare its SHA-256 with the approved logo"
+      }
+    },
+    {
+      "id": "brand.logo.geometry",
+      "version": "0.1.0",
+      "claims": [
+        "logo_geometry_match"
+      ],
+      "independence_class": "independent",
+      "evidence_types": [
+        "parsed_svg_geometry"
+      ],
+      "deterministic": true,
+      "implementation": {
+        "crate": "ergaxiom-brand-compliant-export-certified-path-runtime",
+        "strategy": "compare exact logo x, y, width and height with the manifest"
+      }
+    },
+    {
+      "id": "brand.logo.clear_space",
+      "version": "0.1.0",
+      "claims": [
+        "logo_clear_space"
+      ],
+      "independence_class": "independent",
+      "evidence_types": [
+        "parsed_svg_geometry",
+        "measurement_record"
+      ],
+      "deterministic": true,
+      "implementation": {
+        "crate": "ergaxiom-brand-compliant-export-certified-path-runtime",
+        "strategy": "measure logo bounds against all canvas edges"
+      }
+    },
+    {
+      "id": "brand.typography",
+      "version": "0.1.0",
+      "claims": [
+        "typography_match"
+      ],
+      "independence_class": "independent",
+      "evidence_types": [
+        "parsed_svg_typography"
+      ],
+      "deterministic": true,
+      "implementation": {
+        "crate": "ergaxiom-brand-compliant-export-certified-path-runtime",
+        "strategy": "compare exact family, size, weight, coordinates, fill and anchor"
+      }
+    },
+    {
+      "id": "brand.copy.identity",
+      "version": "0.1.0",
+      "claims": [
+        "approved_copy_match"
+      ],
+      "independence_class": "independent",
+      "evidence_types": [
+        "parsed_direct_text"
+      ],
+      "deterministic": true,
+      "implementation": {
+        "crate": "ergaxiom-brand-compliant-export-certified-path-runtime",
+        "strategy": "compare exact decoded UTF-8 direct text with approved copy"
+      }
+    },
+    {
+      "id": "brand.png.structure",
+      "version": "0.1.0",
+      "claims": [
+        "output_media_type",
+        "color_profile"
+      ],
+      "independence_class": "independent",
+      "evidence_types": [
+        "decoded_image_metadata",
+        "png_chunk_evidence",
+        "idat_payload_digest"
+      ],
+      "deterministic": true,
+      "implementation": {
+        "crate": "ergaxiom-brand-compliant-export-certified-path-runtime",
+        "strategy": "inspect PNG structure and recompute IDAT-preserving sRGB normalization"
+      }
+    },
+    {
+      "id": "brand.source.immutability",
+      "version": "0.1.0",
+      "claims": [
+        "source_immutable"
+      ],
+      "independence_class": "independent",
+      "evidence_types": [
+        "pre_execution_digest",
+        "post_execution_digest"
+      ],
+      "deterministic": true,
+      "implementation": {
+        "crate": "ergaxiom-brand-compliant-export-certified-path-runtime",
+        "strategy": "compare sealed source SVG bytes before and after execution"
+      }
+    },
+    {
+      "id": "brand.inkscape.integration",
+      "version": "0.1.0",
+      "claims": [
+        "inkscape_export_verified"
+      ],
+      "independence_class": "independent",
+      "evidence_types": [
+        "application_identity",
+        "adapter_receipt",
+        "signed_execution_record"
+      ],
+      "deterministic": true,
+      "implementation": {
+        "crate": "ergaxiom-brand-compliant-export-certified-path-runtime",
+        "strategy": "verify pinned Inkscape identity and proof-bound adapter record bindings"
+      }
     }
   ],
   "policies": {
@@ -987,7 +1329,8 @@
     "irreversible_actions_require_approval": true,
     "minimum_assurance_by_job_type": {
       "social_media_static_post": "E3",
-      "image_background_cleanup": "E3"
+      "image_background_cleanup": "E3",
+      "brand_compliant_image_export": "E3"
     }
   },
   "training": {
