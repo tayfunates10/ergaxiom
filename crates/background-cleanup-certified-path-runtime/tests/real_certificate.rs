@@ -12,9 +12,9 @@ use ergaxiom_background_cleanup_certified_path_runtime::{
     BackgroundCleanupCertificationRequest, BackgroundCleanupCompileOutcome,
     BackgroundCleanupExecutionRequest, BackgroundCleanupIntent, BackgroundCleanupPlanIdentity,
     BackgroundCleanupPlanOutcome, CleanupArtifactIntent, certify_background_cleanup,
-    compile_background_cleanup_intent, encode_restricted_srgb_rgba_png,
-    execute_background_cleanup, execute_inkscape_cleanup_probe,
-    synthesize_background_cleanup_plan, validate_background_cleanup,
+    compile_background_cleanup_intent, encode_restricted_srgb_rgba_png, execute_background_cleanup,
+    execute_inkscape_cleanup_probe, synthesize_background_cleanup_plan,
+    validate_background_cleanup,
 };
 use ergaxiom_capability_runtime::{
     CapabilityAuthorizer, CapabilityBindings, CapabilityGrant, CapabilitySubject,
@@ -27,7 +27,9 @@ use ergaxiom_execution_runtime::{
 };
 use ergaxiom_inkscape_adapter_runtime::VerifiedInkscape;
 use ergaxiom_operator_plan_runtime::{CompiledPlan, TraceEvent, TraceStatus, compile_plan};
-use ergaxiom_proof_kernel::{AssuranceLevel, DecisionStatus, canonical_json_bytes, canonical_json_sha256};
+use ergaxiom_proof_kernel::{
+    AssuranceLevel, DecisionStatus, canonical_json_bytes, canonical_json_sha256,
+};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 
@@ -60,8 +62,8 @@ impl Drop for TestDirectory {
 }
 
 #[test]
-fn real_inkscape_background_cleanup_reaches_a_verified_acceptance_certificate(
-) -> Result<(), Box<dyn Error>> {
+fn real_inkscape_background_cleanup_reaches_a_verified_acceptance_certificate()
+-> Result<(), Box<dyn Error>> {
     let executable = match env::var("ERGAXIOM_INKSCAPE") {
         Ok(value) => value,
         Err(env::VarError::NotPresent) => return Ok(()),
@@ -186,8 +188,14 @@ fn real_inkscape_background_cleanup_reaches_a_verified_acceptance_certificate(
         certified.attestation.certificate.payload.mandatory_passed,
         12
     );
-    assert_eq!(certified.attestation.certificate.payload.mandatory_failed, 0);
-    assert_eq!(certified.attestation.certificate.payload.mandatory_unknown, 0);
+    assert_eq!(
+        certified.attestation.certificate.payload.mandatory_failed,
+        0
+    );
+    assert_eq!(
+        certified.attestation.certificate.payload.mandatory_unknown,
+        0
+    );
     assert_eq!(certified.evidence_bundle_digest.len(), 64);
     Ok(())
 }
@@ -329,12 +337,7 @@ fn accepted_pixels() -> (Vec<u8>, Vec<u8>) {
             index.saturating_mul(5),
             255,
         ]);
-        mask.extend_from_slice(&[
-            255,
-            255,
-            255,
-            if index % 2 == 0 { 255 } else { 0 },
-        ]);
+        mask.extend_from_slice(&[255, 255, 255, if index % 2 == 0 { 255 } else { 0 }]);
     }
     (source, mask)
 }

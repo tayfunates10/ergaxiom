@@ -30,7 +30,9 @@ pub(crate) fn canonical_record_digest<T: Serialize>(
     digest_field: &str,
 ) -> Result<String, DigestMaterialError> {
     let mut serialized = serde_json::to_value(value)?;
-    let object = serialized.as_object_mut().ok_or(DigestMaterialError::InvalidShape)?;
+    let object = serialized
+        .as_object_mut()
+        .ok_or(DigestMaterialError::InvalidShape)?;
     if !object.contains_key(digest_field) {
         return Err(DigestMaterialError::MissingDigestField(
             digest_field.to_owned(),

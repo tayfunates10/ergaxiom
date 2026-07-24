@@ -15,10 +15,8 @@ use sha2::{Digest, Sha256};
 
 #[test]
 fn unresolved_cleanup_intent_returns_questions_without_a_contract() -> Result<(), Box<dyn Error>> {
-    let outcome = compile_background_cleanup_intent(
-        &BackgroundCleanupIntent::default(),
-        &capsule()?,
-    )?;
+    let outcome =
+        compile_background_cleanup_intent(&BackgroundCleanupIntent::default(), &capsule()?)?;
     let BackgroundCleanupCompileOutcome::NeedsResolution {
         resolution_requests,
         resolution_digest,
@@ -104,12 +102,8 @@ fn binary_mask_execution_is_independently_accepted() -> Result<(), Box<dyn Error
     assert_eq!(execution.record.foreground_pixels, 6);
     assert_eq!(execution.record.background_pixels, 6);
 
-    let validation = validate_background_cleanup(
-        &source,
-        &mask,
-        &execution.cleaned_png,
-        &execution.record,
-    )?;
+    let validation =
+        validate_background_cleanup(&source, &mask, &execution.cleaned_png, &execution.record)?;
     assert!(validation.accepted);
     assert_eq!(validation.background_alpha_violations, 0);
     assert_eq!(validation.foreground_rgba_violations, 0);

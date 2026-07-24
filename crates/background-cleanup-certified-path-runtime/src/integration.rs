@@ -5,9 +5,7 @@ use ergaxiom_inkscape_adapter_runtime::{
     ApprovedAssetMediaType, ExportMediaType, InkscapeAdapterError, ProofBoundDesignRequest,
     ProofBoundExportRequest, ProofBoundOperation, ProofBoundOperatorError, VerifiedInkscape,
 };
-use ergaxiom_png_artifact_validator_runtime::{
-    PngArtifactError, PngColorType, inspect_png_bytes,
-};
+use ergaxiom_png_artifact_validator_runtime::{PngArtifactError, PngColorType, inspect_png_bytes};
 use thiserror::Error;
 
 use crate::model::InkscapeCleanupIntegrationReport;

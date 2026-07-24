@@ -298,7 +298,9 @@ fn validate_input_profile(
             });
         }
         if !input.immutable {
-            return Err(BackgroundCleanupPlannerError::MutableInput(input.id.clone()));
+            return Err(BackgroundCleanupPlannerError::MutableInput(
+                input.id.clone(),
+            ));
         }
     }
     if actual != expected {
@@ -450,10 +452,9 @@ fn resolve_operator_versions<'a>(
     }
     let mut selected = BTreeMap::new();
     for operator_id in REQUIRED_OPERATORS {
-        let version = operators
-            .get(operator_id)
-            .copied()
-            .ok_or_else(|| BackgroundCleanupPlannerError::MissingOperator(operator_id.to_owned()))?;
+        let version = operators.get(operator_id).copied().ok_or_else(|| {
+            BackgroundCleanupPlannerError::MissingOperator(operator_id.to_owned())
+        })?;
         if version.trim().is_empty() {
             return Err(BackgroundCleanupPlannerError::EmptyOperatorVersion(
                 operator_id.to_owned(),

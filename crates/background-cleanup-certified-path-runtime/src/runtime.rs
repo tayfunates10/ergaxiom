@@ -7,13 +7,11 @@ use thiserror::Error;
 
 use crate::model::{
     BackgroundCleanupExecution, BackgroundCleanupExecutionRecord,
-    BackgroundCleanupExecutionRequest, BackgroundCleanupFailure,
-    BackgroundCleanupValidationReport, CleanupFailureCode,
+    BackgroundCleanupExecutionRequest, BackgroundCleanupFailure, BackgroundCleanupValidationReport,
+    CleanupFailureCode,
 };
 use crate::png::{RestrictedPngError, decode_restricted_rgba_png, encode_restricted_srgb_rgba_png};
-use crate::util::{
-    DigestMaterialError, canonical_digest, canonical_record_digest, sha256_hex,
-};
+use crate::util::{DigestMaterialError, canonical_digest, canonical_record_digest, sha256_hex};
 
 const EXECUTION_SCHEMA: &str = "0.1.0";
 const VALIDATION_SCHEMA: &str = "0.1.0";

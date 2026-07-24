@@ -255,7 +255,8 @@ fn zlib_store(bytes: &[u8]) -> Result<Vec<u8>, RestrictedPngError> {
         let chunk_count = bytes.chunks(65_535).len();
         for (index, chunk) in bytes.chunks(65_535).enumerate() {
             output.push(if index + 1 == chunk_count { 1 } else { 0 });
-            let length = u16::try_from(chunk.len()).map_err(|_| RestrictedPngError::SizeOverflow)?;
+            let length =
+                u16::try_from(chunk.len()).map_err(|_| RestrictedPngError::SizeOverflow)?;
             output.extend_from_slice(&length.to_le_bytes());
             output.extend_from_slice(&(!length).to_le_bytes());
             output.extend_from_slice(chunk);

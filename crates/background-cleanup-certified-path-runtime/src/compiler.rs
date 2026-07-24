@@ -78,10 +78,9 @@ pub fn build_background_cleanup_contract(
     intent: &BackgroundCleanupIntent,
     capsule: &Value,
 ) -> Result<Value, BackgroundCleanupCompileError> {
-    let capsule_version = capsule
-        .get("version")
-        .and_then(Value::as_str)
-        .ok_or(BackgroundCleanupCompileError::InvalidCapsuleField("version"))?;
+    let capsule_version = capsule.get("version").and_then(Value::as_str).ok_or(
+        BackgroundCleanupCompileError::InvalidCapsuleField("version"),
+    )?;
     let contract_id = resolved(intent.contract_id.as_deref(), "contract_id")?;
     let created_at = resolved(intent.created_at.as_deref(), "created_at")?;
     let original_text = resolved(intent.original_text.as_deref(), "original_text")?;
@@ -227,10 +226,9 @@ pub fn build_background_cleanup_contract(
 }
 
 fn validate_capsule(capsule: &Value) -> Result<(), BackgroundCleanupCompileError> {
-    let capsule_id = capsule
-        .get("capsule_id")
-        .and_then(Value::as_str)
-        .ok_or(BackgroundCleanupCompileError::InvalidCapsuleField("capsule_id"))?;
+    let capsule_id = capsule.get("capsule_id").and_then(Value::as_str).ok_or(
+        BackgroundCleanupCompileError::InvalidCapsuleField("capsule_id"),
+    )?;
     if capsule_id != GRAPHIC_DESIGNER_CAPSULE_ID {
         return Err(BackgroundCleanupCompileError::UnsupportedCapsule {
             actual: capsule_id.to_owned(),
@@ -241,7 +239,9 @@ fn validate_capsule(capsule: &Value) -> Result<(), BackgroundCleanupCompileError
         .get("version")
         .and_then(Value::as_str)
         .filter(|value| !value.trim().is_empty())
-        .ok_or(BackgroundCleanupCompileError::InvalidCapsuleField("version"))?;
+        .ok_or(BackgroundCleanupCompileError::InvalidCapsuleField(
+            "version",
+        ))?;
     let has_job = capsule
         .get("job_types")
         .and_then(Value::as_array)
@@ -513,27 +513,90 @@ fn constraint(
 
 fn proof_obligations() -> Vec<Value> {
     vec![
-        obligation("proof.cleaned_width", "cleaned_width", "cleanup.png.structure", &["decoded_image_metadata", "measurement_record"]),
-        obligation("proof.cleaned_height", "cleaned_height", "cleanup.png.structure", &["decoded_image_metadata", "measurement_record"]),
-        obligation("proof.mask_dimensions_match", "mask_dimensions_match", "cleanup.mask.dimensions", &["decoded_image_metadata", "dimension_comparison"]),
-        obligation("proof.mask_is_binary", "mask_is_binary", "cleanup.mask.binary", &["decoded_mask_pixels", "mask_histogram"]),
-        obligation("proof.mask_foreground_pixels", "mask_foreground_pixels", "cleanup.mask.binary", &["decoded_mask_pixels", "mask_histogram"]),
-        obligation("proof.mask_background_pixels", "mask_background_pixels", "cleanup.mask.binary", &["decoded_mask_pixels", "mask_histogram"]),
-        obligation("proof.background_alpha_violations", "background_alpha_violations", "cleanup.alpha.background", &["decoded_output_pixels", "mask_bound_comparison"]),
-        obligation("proof.foreground_rgba_violations", "foreground_rgba_violations", "cleanup.foreground.preservation", &["decoded_source_pixels", "decoded_output_pixels", "mask_bound_comparison"]),
-        obligation("proof.output_media_type", "output_media_type", "cleanup.png.structure", &["magic_bytes", "decoded_image_metadata"]),
-        obligation("proof.color_profile", "color_profile", "cleanup.png.structure", &["png_chunk_evidence", "decoded_image_metadata"]),
-        obligation("proof.source_immutable", "source_immutable", "cleanup.source.immutability", &["pre_execution_digest", "post_execution_digest"]),
-        obligation("proof.inkscape_probe_verified", "inkscape_probe_verified", "cleanup.inkscape.integration", &["application_identity", "adapter_receipt", "decoded_image_metadata"]),
+        obligation(
+            "proof.cleaned_width",
+            "cleaned_width",
+            "cleanup.png.structure",
+            &["decoded_image_metadata", "measurement_record"],
+        ),
+        obligation(
+            "proof.cleaned_height",
+            "cleaned_height",
+            "cleanup.png.structure",
+            &["decoded_image_metadata", "measurement_record"],
+        ),
+        obligation(
+            "proof.mask_dimensions_match",
+            "mask_dimensions_match",
+            "cleanup.mask.dimensions",
+            &["decoded_image_metadata", "dimension_comparison"],
+        ),
+        obligation(
+            "proof.mask_is_binary",
+            "mask_is_binary",
+            "cleanup.mask.binary",
+            &["decoded_mask_pixels", "mask_histogram"],
+        ),
+        obligation(
+            "proof.mask_foreground_pixels",
+            "mask_foreground_pixels",
+            "cleanup.mask.binary",
+            &["decoded_mask_pixels", "mask_histogram"],
+        ),
+        obligation(
+            "proof.mask_background_pixels",
+            "mask_background_pixels",
+            "cleanup.mask.binary",
+            &["decoded_mask_pixels", "mask_histogram"],
+        ),
+        obligation(
+            "proof.background_alpha_violations",
+            "background_alpha_violations",
+            "cleanup.alpha.background",
+            &["decoded_output_pixels", "mask_bound_comparison"],
+        ),
+        obligation(
+            "proof.foreground_rgba_violations",
+            "foreground_rgba_violations",
+            "cleanup.foreground.preservation",
+            &[
+                "decoded_source_pixels",
+                "decoded_output_pixels",
+                "mask_bound_comparison",
+            ],
+        ),
+        obligation(
+            "proof.output_media_type",
+            "output_media_type",
+            "cleanup.png.structure",
+            &["magic_bytes", "decoded_image_metadata"],
+        ),
+        obligation(
+            "proof.color_profile",
+            "color_profile",
+            "cleanup.png.structure",
+            &["png_chunk_evidence", "decoded_image_metadata"],
+        ),
+        obligation(
+            "proof.source_immutable",
+            "source_immutable",
+            "cleanup.source.immutability",
+            &["pre_execution_digest", "post_execution_digest"],
+        ),
+        obligation(
+            "proof.inkscape_probe_verified",
+            "inkscape_probe_verified",
+            "cleanup.inkscape.integration",
+            &[
+                "application_identity",
+                "adapter_receipt",
+                "decoded_image_metadata",
+            ],
+        ),
     ]
 }
 
-fn obligation(
-    id: &str,
-    constraint_id: &str,
-    validator_id: &str,
-    evidence_types: &[&str],
-) -> Value {
+fn obligation(id: &str, constraint_id: &str, validator_id: &str, evidence_types: &[&str]) -> Value {
     json!({
         "id": id,
         "constraint_id": constraint_id,
