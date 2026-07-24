@@ -23,10 +23,7 @@ const REQUIRED_OPERATORS: [&str; 3] = [
 #[derive(Debug, Error)]
 pub enum PrintPreflightPlannerError {
     #[error("plan identity field {field} is invalid: {reason}")]
-    InvalidIdentityField {
-        field: &'static str,
-        reason: String,
-    },
+    InvalidIdentityField { field: &'static str, reason: String },
     #[error("failed to decode Work Contract planning fields: {0}")]
     ContractDecode(#[source] serde_json::Error),
     #[error("failed to decode Profession Capsule planning fields: {0}")]
@@ -225,7 +222,8 @@ fn missing_resolution_requests(
     if identity.plan_id.is_none() {
         requests.push(PrintResolutionRequest {
             field: "plan_id".to_owned(),
-            question: "What stable identifier should be assigned to this preflight plan?".to_owned(),
+            question: "What stable identifier should be assigned to this preflight plan?"
+                .to_owned(),
             reason: "The identifier is part of the plan digest and capability namespace."
                 .to_owned(),
             accepted_sources: vec!["trusted_orchestrator".to_owned(), "user_answer".to_owned()],

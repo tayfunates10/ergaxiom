@@ -277,7 +277,10 @@ fn inspect_svg(
                             allowed_attributes(&attributes, &["id", "d", "fill"]);
                         register_id(&mut measurements, &attributes);
                         validate_fill(&mut measurements, &attributes, &allowed_palette);
-                        match attributes.get("d").and_then(|value| simple_path_bounds(value)) {
+                        match attributes
+                            .get("d")
+                            .and_then(|value| simple_path_bounds(value))
+                        {
                             Some(bounds) => {
                                 measurements.safe_area_ok &= inside_safe_area(
                                     bounds,
@@ -374,7 +377,10 @@ fn validate_fill(
     attributes: &BTreeMap<String, String>,
     allowed_palette: &BTreeSet<&str>,
 ) {
-    let Some(fill) = attributes.get("fill").and_then(|value| normalize_color(value)) else {
+    let Some(fill) = attributes
+        .get("fill")
+        .and_then(|value| normalize_color(value))
+    else {
         measurements.palette_violations += 1;
         return;
     };
@@ -568,17 +574,8 @@ fn parse_decimal_milli(value: &str) -> Option<i64> {
     Some(if negative { -value } else { value })
 }
 
-fn inside_safe_area(
-    bounds: Bounds,
-    left: i64,
-    top: i64,
-    right: i64,
-    bottom: i64,
-) -> bool {
-    bounds.min_x >= left
-        && bounds.min_y >= top
-        && bounds.max_x <= right
-        && bounds.max_y <= bottom
+fn inside_safe_area(bounds: Bounds, left: i64, top: i64, right: i64, bottom: i64) -> bool {
+    bounds.min_x >= left && bounds.min_y >= top && bounds.max_x <= right && bounds.max_y <= bottom
 }
 
 fn format_milli(value: i64) -> String {

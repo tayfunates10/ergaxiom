@@ -192,10 +192,7 @@ pub fn inspect_print_pdf(
     let allowed_color_spaces_only = used_color_spaces
         .iter()
         .all(|space| allowed.contains(space.as_str()));
-    let dangerous_objects_absent = document
-        .objects
-        .values()
-        .all(object_is_safe);
+    let dangerous_objects_absent = document.objects.values().all(object_is_safe);
     let catalog_safe = document.catalog().is_ok_and(dictionary_is_safe);
     let encrypted = document.is_encrypted() || document.trailer.get(b"Encrypt").is_ok();
     Ok(PrintPdfInspection {
