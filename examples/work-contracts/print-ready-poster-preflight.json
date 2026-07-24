@@ -1,0 +1,550 @@
+{
+  "schema_version": "0.2.0",
+  "contract_id": "contract.example.print-ready-poster-preflight.0001",
+  "created_at": "2026-07-24T13:00:00Z",
+  "request": {
+    "original_text": "Preflight this outlined vector poster against the supplied A4 print specification.",
+    "language": "en",
+    "requester_id": "example.print-preflight"
+  },
+  "profession": {
+    "capsule_id": "ergaxiom.profession.graphic-designer",
+    "capsule_version": "0.6.0",
+    "specialization": "print_production"
+  },
+  "job_type": "print_ready_poster_preflight",
+  "environment": {
+    "os": null,
+    "applications": [
+      {
+        "application_id": "org.inkscape.Inkscape",
+        "required_version": "1.2-1.4"
+      }
+    ],
+    "network_mode": "denied"
+  },
+  "inputs": [
+    {
+      "id": "source_svg",
+      "kind": "source_svg",
+      "uri": "contract://inputs/poster.svg",
+      "integrity": {
+        "algorithm": "sha256",
+        "digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      "media_type": "image/svg+xml",
+      "immutable": true
+    },
+    {
+      "id": "print_specification",
+      "kind": "print_specification",
+      "uri": "contract://inputs/print-specification.json",
+      "integrity": {
+        "algorithm": "sha256",
+        "digest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+      },
+      "media_type": "application/json",
+      "immutable": true
+    }
+  ],
+  "outputs": [
+    {
+      "id": "editable_master",
+      "kind": "editable_master",
+      "destination": "contract://outputs/print-ready-poster.svg",
+      "media_type": "image/svg+xml",
+      "required": true
+    },
+    {
+      "id": "delivery_pdf",
+      "kind": "delivery_pdf",
+      "destination": "contract://outputs/print-ready-poster.pdf",
+      "media_type": "application/pdf",
+      "required": true
+    },
+    {
+      "id": "evidence_bundle",
+      "kind": "evidence_bundle",
+      "destination": "contract://outputs/print-ready-poster-evidence.json",
+      "media_type": "application/json",
+      "required": true
+    }
+  ],
+  "requirements": {
+    "hard": [
+      {
+        "id": "restricted_svg_profile",
+        "claim": "The source uses only the certified vector poster SVG profile.",
+        "subject": "source_svg.restricted_profile",
+        "operator": "eq",
+        "expected": true,
+        "unit": null,
+        "tolerance": 0,
+        "mandatory": true,
+        "source": "certified_job_profile"
+      },
+      {
+        "id": "canvas_dimensions_match",
+        "claim": "The bleed canvas matches trim plus twice the declared bleed.",
+        "subject": "source_svg.canvas_dimensions_match",
+        "operator": "eq",
+        "expected": true,
+        "unit": null,
+        "tolerance": 0,
+        "mandatory": true,
+        "source": "print_specification"
+      },
+      {
+        "id": "bleed_coverage",
+        "claim": "The approved background covers the complete bleed canvas.",
+        "subject": "source_svg.bleed_coverage",
+        "operator": "eq",
+        "expected": true,
+        "unit": null,
+        "tolerance": 0,
+        "mandatory": true,
+        "source": "print_specification"
+      },
+      {
+        "id": "safe_area_satisfied",
+        "claim": "Every non-background vector bound is inside the safe area.",
+        "subject": "source_svg.safe_area_satisfied",
+        "operator": "eq",
+        "expected": true,
+        "unit": null,
+        "tolerance": 0,
+        "mandatory": true,
+        "source": "print_specification"
+      },
+      {
+        "id": "palette_violations",
+        "claim": "Every fill belongs to the exact approved print palette.",
+        "subject": "source_svg.palette_violations",
+        "operator": "eq",
+        "expected": 0,
+        "unit": "count",
+        "tolerance": 0,
+        "mandatory": true,
+        "source": "print_specification"
+      },
+      {
+        "id": "vector_only",
+        "claim": "The PDF contains no raster image XObjects.",
+        "subject": "delivery_pdf.vector_only",
+        "operator": "eq",
+        "expected": true,
+        "unit": null,
+        "tolerance": 0,
+        "mandatory": true,
+        "source": "certified_job_profile"
+      },
+      {
+        "id": "fonts_outlined",
+        "claim": "The source and PDF contain no live text or fonts.",
+        "subject": "delivery_pdf.fonts_outlined",
+        "operator": "eq",
+        "expected": true,
+        "unit": null,
+        "tolerance": 0,
+        "mandatory": true,
+        "source": "certified_job_profile"
+      },
+      {
+        "id": "page_count",
+        "claim": "The PDF contains exactly one page.",
+        "subject": "delivery_pdf.page_count",
+        "operator": "eq",
+        "expected": 1,
+        "unit": "page",
+        "tolerance": 0,
+        "mandatory": true,
+        "source": "print_specification"
+      },
+      {
+        "id": "media_box_match",
+        "claim": "MediaBox matches the bleed canvas.",
+        "subject": "delivery_pdf.media_box_match",
+        "operator": "eq",
+        "expected": true,
+        "unit": null,
+        "tolerance": 0,
+        "mandatory": true,
+        "source": "print_specification"
+      },
+      {
+        "id": "trim_box_match",
+        "claim": "TrimBox matches trim and bleed inset.",
+        "subject": "delivery_pdf.trim_box_match",
+        "operator": "eq",
+        "expected": true,
+        "unit": null,
+        "tolerance": 0,
+        "mandatory": true,
+        "source": "print_specification"
+      },
+      {
+        "id": "bleed_box_match",
+        "claim": "BleedBox equals MediaBox.",
+        "subject": "delivery_pdf.bleed_box_match",
+        "operator": "eq",
+        "expected": true,
+        "unit": null,
+        "tolerance": 0,
+        "mandatory": true,
+        "source": "print_specification"
+      },
+      {
+        "id": "crop_box_match",
+        "claim": "CropBox equals MediaBox.",
+        "subject": "delivery_pdf.crop_box_match",
+        "operator": "eq",
+        "expected": true,
+        "unit": null,
+        "tolerance": 0,
+        "mandatory": true,
+        "source": "print_specification"
+      },
+      {
+        "id": "pdf_version",
+        "claim": "The normalized PDF version is 1.5.",
+        "subject": "delivery_pdf.pdf_version",
+        "operator": "eq",
+        "expected": "1.5",
+        "unit": null,
+        "tolerance": 0,
+        "mandatory": true,
+        "source": "print_specification"
+      },
+      {
+        "id": "allowed_color_spaces",
+        "claim": "Only allowed PDF color spaces are used.",
+        "subject": "delivery_pdf.allowed_color_spaces",
+        "operator": "eq",
+        "expected": true,
+        "unit": null,
+        "tolerance": 0,
+        "mandatory": true,
+        "source": "print_specification"
+      },
+      {
+        "id": "transparency_absent",
+        "claim": "Unsupported transparency is absent.",
+        "subject": "delivery_pdf.transparency_absent",
+        "operator": "eq",
+        "expected": true,
+        "unit": null,
+        "tolerance": 0,
+        "mandatory": true,
+        "source": "certified_job_profile"
+      },
+      {
+        "id": "external_actions_absent",
+        "claim": "Interactive, encrypted and external-action PDF features are absent.",
+        "subject": "delivery_pdf.external_actions_absent",
+        "operator": "eq",
+        "expected": true,
+        "unit": null,
+        "tolerance": 0,
+        "mandatory": true,
+        "source": "certified_job_profile"
+      },
+      {
+        "id": "source_immutable",
+        "claim": "The source SVG remains byte-identical.",
+        "subject": "source_svg.immutable",
+        "operator": "eq",
+        "expected": true,
+        "unit": null,
+        "tolerance": 0,
+        "mandatory": true,
+        "source": "execution_record"
+      },
+      {
+        "id": "inkscape_export_verified",
+        "claim": "The PDF is exported through pinned Inkscape evidence.",
+        "subject": "delivery_pdf.inkscape_export_verified",
+        "operator": "eq",
+        "expected": true,
+        "unit": null,
+        "tolerance": 0,
+        "mandatory": true,
+        "source": "trusted_application_identity"
+      }
+    ],
+    "preferences": [],
+    "unknowns": []
+  },
+  "permissions": [
+    {
+      "capability": "filesystem",
+      "resource": "contract://inputs/*",
+      "access": "read",
+      "constraints": {
+        "immutable": true
+      }
+    },
+    {
+      "capability": "filesystem",
+      "resource": "contract://outputs/*",
+      "access": "write",
+      "constraints": {
+        "overwrite": false
+      }
+    },
+    {
+      "capability": "print-validator",
+      "resource": "isolated-workspace",
+      "access": "control",
+      "constraints": {
+        "network": false
+      }
+    },
+    {
+      "capability": "design-editor",
+      "resource": "print-export",
+      "access": "control",
+      "constraints": {
+        "network": false
+      }
+    }
+  ],
+  "proof_obligations": [
+    {
+      "id": "proof.restricted_svg_profile",
+      "constraint_id": "restricted_svg_profile",
+      "validator_ids": [
+        "print.svg.structure"
+      ],
+      "mandatory": true,
+      "independence_class": "independent",
+      "evidence_types": [
+        "parsed_svg_snapshot"
+      ]
+    },
+    {
+      "id": "proof.canvas_dimensions_match",
+      "constraint_id": "canvas_dimensions_match",
+      "validator_ids": [
+        "print.canvas.dimensions"
+      ],
+      "mandatory": true,
+      "independence_class": "independent",
+      "evidence_types": [
+        "parsed_svg_geometry"
+      ]
+    },
+    {
+      "id": "proof.bleed_coverage",
+      "constraint_id": "bleed_coverage",
+      "validator_ids": [
+        "print.bleed.coverage"
+      ],
+      "mandatory": true,
+      "independence_class": "independent",
+      "evidence_types": [
+        "parsed_svg_geometry"
+      ]
+    },
+    {
+      "id": "proof.safe_area_satisfied",
+      "constraint_id": "safe_area_satisfied",
+      "validator_ids": [
+        "print.safe_area.geometry"
+      ],
+      "mandatory": true,
+      "independence_class": "independent",
+      "evidence_types": [
+        "parsed_svg_geometry"
+      ]
+    },
+    {
+      "id": "proof.palette_violations",
+      "constraint_id": "palette_violations",
+      "validator_ids": [
+        "print.palette.allowlist"
+      ],
+      "mandatory": true,
+      "independence_class": "independent",
+      "evidence_types": [
+        "parsed_svg_snapshot"
+      ]
+    },
+    {
+      "id": "proof.vector_only",
+      "constraint_id": "vector_only",
+      "validator_ids": [
+        "print.pdf.vector_only"
+      ],
+      "mandatory": true,
+      "independence_class": "independent",
+      "evidence_types": [
+        "parsed_pdf_resources"
+      ]
+    },
+    {
+      "id": "proof.fonts_outlined",
+      "constraint_id": "fonts_outlined",
+      "validator_ids": [
+        "print.pdf.fonts_outlined"
+      ],
+      "mandatory": true,
+      "independence_class": "independent",
+      "evidence_types": [
+        "parsed_pdf_resources"
+      ]
+    },
+    {
+      "id": "proof.page_count",
+      "constraint_id": "page_count",
+      "validator_ids": [
+        "print.pdf.page"
+      ],
+      "mandatory": true,
+      "independence_class": "independent",
+      "evidence_types": [
+        "parsed_pdf_page_tree"
+      ]
+    },
+    {
+      "id": "proof.media_box_match",
+      "constraint_id": "media_box_match",
+      "validator_ids": [
+        "print.pdf.boxes"
+      ],
+      "mandatory": true,
+      "independence_class": "independent",
+      "evidence_types": [
+        "parsed_pdf_page_boxes"
+      ]
+    },
+    {
+      "id": "proof.trim_box_match",
+      "constraint_id": "trim_box_match",
+      "validator_ids": [
+        "print.pdf.boxes"
+      ],
+      "mandatory": true,
+      "independence_class": "independent",
+      "evidence_types": [
+        "parsed_pdf_page_boxes"
+      ]
+    },
+    {
+      "id": "proof.bleed_box_match",
+      "constraint_id": "bleed_box_match",
+      "validator_ids": [
+        "print.pdf.boxes"
+      ],
+      "mandatory": true,
+      "independence_class": "independent",
+      "evidence_types": [
+        "parsed_pdf_page_boxes"
+      ]
+    },
+    {
+      "id": "proof.crop_box_match",
+      "constraint_id": "crop_box_match",
+      "validator_ids": [
+        "print.pdf.boxes"
+      ],
+      "mandatory": true,
+      "independence_class": "independent",
+      "evidence_types": [
+        "parsed_pdf_page_boxes"
+      ]
+    },
+    {
+      "id": "proof.pdf_version",
+      "constraint_id": "pdf_version",
+      "validator_ids": [
+        "print.pdf.version"
+      ],
+      "mandatory": true,
+      "independence_class": "independent",
+      "evidence_types": [
+        "parsed_pdf_header"
+      ]
+    },
+    {
+      "id": "proof.allowed_color_spaces",
+      "constraint_id": "allowed_color_spaces",
+      "validator_ids": [
+        "print.pdf.color_spaces"
+      ],
+      "mandatory": true,
+      "independence_class": "independent",
+      "evidence_types": [
+        "decoded_pdf_content"
+      ]
+    },
+    {
+      "id": "proof.transparency_absent",
+      "constraint_id": "transparency_absent",
+      "validator_ids": [
+        "print.pdf.transparency"
+      ],
+      "mandatory": true,
+      "independence_class": "independent",
+      "evidence_types": [
+        "parsed_pdf_resources"
+      ]
+    },
+    {
+      "id": "proof.external_actions_absent",
+      "constraint_id": "external_actions_absent",
+      "validator_ids": [
+        "print.pdf.security"
+      ],
+      "mandatory": true,
+      "independence_class": "independent",
+      "evidence_types": [
+        "parsed_pdf_catalog"
+      ]
+    },
+    {
+      "id": "proof.source_immutable",
+      "constraint_id": "source_immutable",
+      "validator_ids": [
+        "print.source.immutability"
+      ],
+      "mandatory": true,
+      "independence_class": "independent",
+      "evidence_types": [
+        "pre_execution_digest"
+      ]
+    },
+    {
+      "id": "proof.inkscape_export_verified",
+      "constraint_id": "inkscape_export_verified",
+      "validator_ids": [
+        "print.inkscape.integration"
+      ],
+      "mandatory": true,
+      "independence_class": "independent",
+      "evidence_types": [
+        "signed_execution_record"
+      ]
+    }
+  ],
+  "approval_policy": {
+    "require_pre_execution_approval": true,
+    "require_irreversible_action_approval": true,
+    "approval_ttl_seconds": 300
+  },
+  "acceptance": {
+    "minimum_assurance_level": "E3",
+    "unknowns_must_be_empty": true,
+    "all_mandatory_proofs_must_pass": true,
+    "validator_conflicts_allowed": false
+  },
+  "metadata": {
+    "compiler": "ergaxiom-print-ready-poster-preflight-certified-path-runtime",
+    "compiler_version": "0.1.0",
+    "intent_kind": "print_ready_poster_preflight",
+    "print_specification_digest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "restricted_svg_profile": "flat_vector_outlined_path_poster_v1",
+    "subjective_print_quality_is_hard_acceptance": false,
+    "deterministic": true,
+    "implicit_defaults": false
+  }
+}
