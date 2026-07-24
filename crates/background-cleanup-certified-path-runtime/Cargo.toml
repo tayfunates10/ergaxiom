@@ -1,0 +1,35 @@
+[package]
+name = "ergaxiom-background-cleanup-certified-path-runtime"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+publish = false
+
+[features]
+default = []
+real-inkscape-tests = []
+
+[dependencies]
+ed25519-dalek.workspace = true
+ergaxiom-attestation-runtime = { path = "../attestation-runtime" }
+ergaxiom-contract-runtime = { path = "../contract-runtime" }
+ergaxiom-evidence-runtime = { path = "../evidence-runtime" }
+ergaxiom-execution-runtime = { path = "../execution-runtime" }
+ergaxiom-inkscape-adapter-runtime = { path = "../inkscape-adapter-runtime" }
+ergaxiom-operator-plan-runtime = { path = "../operator-plan-runtime" }
+ergaxiom-png-artifact-validator-runtime = { path = "../png-artifact-validator-runtime" }
+ergaxiom-png-pixel-decoder-runtime = { path = "../png-pixel-decoder-runtime" }
+ergaxiom-proof-kernel = { path = "../proof-kernel" }
+flate2.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+base64.workspace = true
+ergaxiom-capability-runtime = { path = "../capability-runtime" }
+
+[lints]
+workspace = true
