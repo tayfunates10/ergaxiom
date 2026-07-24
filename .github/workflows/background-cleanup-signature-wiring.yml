@@ -4,6 +4,7 @@ on:
   pull_request:
     paths:
       - "tools/patch_cleanup_signed_evidence.py"
+      - "tools/normalize_cleanup_test_import.py"
       - ".github/workflows/background-cleanup-signature-wiring.yml"
 
 permissions:
@@ -24,6 +25,7 @@ jobs:
       - name: Apply and format signed evidence wiring
         run: |
           set -euo pipefail
+          python tools/normalize_cleanup_test_import.py
           python tools/patch_cleanup_signed_evidence.py
           cargo fmt --all
 
