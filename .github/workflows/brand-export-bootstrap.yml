@@ -45,13 +45,11 @@ jobs:
           set -euo pipefail
           git config user.name "ergaxiom-ci"
           git config user.email "actions@users.noreply.github.com"
-          git add Cargo.toml \
-            crates/brand-compliant-export-certified-path-runtime \
-            professions/graphic-designer/profession.json \
-            examples/work-contracts \
-            docs/status.md \
-            docs/architecture/38-brand-compliant-export-certified-path.md \
-            .github/workflows/background-cleanup-certified-path.yml \
-            .github/workflows/brand-compliant-export-certified-path.yml
+          git add -A
+          git reset -- .github/workflows/brand-export-bootstrap.yml \
+            tools/brand-export-bootstrap-payload \
+            tools/brand-export-bootstrap-script
+          git diff --cached --name-only
+          test -n "$(git diff --cached --name-only)"
           git commit -m "Certify brand-compliant image export path"
           git push origin HEAD:${{ github.head_ref }}
