@@ -1,7 +1,9 @@
 name: Print preflight legacy Cairo fix
 
 on:
-  pull_request:
+  push:
+    branches:
+      - agent/print-ready-poster-preflight-certified-path-v1
     paths:
       - ".github/workflows/print-preflight-legacy-cairo-fix.yml"
 
@@ -10,14 +12,14 @@ permissions:
 
 jobs:
   fix:
-    if: github.head_ref == 'agent/print-ready-poster-preflight-certified-path-v1'
+    if: github.ref_name == 'agent/print-ready-poster-preflight-certified-path-v1'
     runs-on: ubuntu-24.04
     timeout-minutes: 12
     steps:
       - name: Check out branch
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.head_ref }}
+          ref: agent/print-ready-poster-preflight-certified-path-v1
           fetch-depth: 0
 
       - name: Install Rust toolchain
@@ -109,4 +111,4 @@ jobs:
           git add crates/print-ready-poster-preflight-certified-path-runtime/src/pdf.rs
           git diff --cached --check
           git commit -m "Handle bounded legacy Cairo PDF resources"
-          git push origin HEAD:${{ github.head_ref }}
+          git push origin HEAD:agent/print-ready-poster-preflight-certified-path-v1
