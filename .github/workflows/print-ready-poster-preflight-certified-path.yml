@@ -151,6 +151,7 @@ jobs:
         shell: bash
         env:
           ERGAXIOM_KEEP_TEST_ARTIFACTS: "1"
+          RUST_BACKTRACE: "1"
         run: |
           set -euo pipefail
           cargo test \
