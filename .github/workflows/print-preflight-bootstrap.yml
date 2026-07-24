@@ -1,0 +1,57 @@
+name: Print preflight bootstrap
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/print-preflight-bootstrap.yml"
+      - "tools/bootstrap_print_preflight.py"
+
+permissions:
+  contents: write
+
+jobs:
+  bootstrap:
+    if: github.head_ref == 'agent/print-ready-poster-preflight-certified-path-v1'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Check out branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref }}
+          fetch-depth: 0
+
+      - name: Install Rust formatter
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+
+      - name: Materialize capsule and normative contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          python tools/bootstrap_print_preflight.py
+          cargo fmt --all
+          python tools/validate_schema_catalog.py
+          python tools/validate_foundation.py
+
+      - name: Commit deterministic bootstrap result
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "ergaxiom-ci"
+          git config user.email "actions@users.noreply.github.com"
+          git add Cargo.toml Cargo.lock \
+            professions/graphic-designer/profession.json \
+            examples/work-contracts \
+            crates/intent-contract-compiler-runtime/tests/static_social_post.rs \
+            crates/background-cleanup-certified-path-runtime/tests/path.rs \
+            crates/brand-compliant-export-certified-path-runtime/tests/path.rs \
+            .github/workflows/background-cleanup-certified-path.yml \
+            .github/workflows/brand-compliant-export-certified-path.yml \
+            docs/architecture/38-brand-compliant-export-certified-path.md \
+            crates/print-ready-poster-preflight-certified-path-runtime
+          git reset .github/workflows/print-preflight-bootstrap.yml tools/bootstrap_print_preflight.py
+          git diff --cached --check
+          git commit -m "Certify print-ready poster preflight foundation"
+          git push origin HEAD:${{ github.head_ref }}
