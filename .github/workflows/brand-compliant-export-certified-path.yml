@@ -112,31 +112,40 @@ jobs:
           PY
 
       - name: Check workspace formatting
-        run: cargo fmt --all -- --check 2>&1 | tee rustfmt-diagnostics.log
+        shell: bash
+        run: |
+          set -o pipefail
+          cargo fmt --all -- --check 2>&1 | tee rustfmt-diagnostics.log
 
       - name: Lint certified path
-        run: >-
-          cargo clippy
-          -p ergaxiom-brand-compliant-export-certified-path-runtime
-          --all-targets
-          --all-features
-          -- -D warnings
-          2>&1 | tee clippy-diagnostics.log
+        shell: bash
+        run: |
+          set -o pipefail
+          cargo clippy \
+            -p ergaxiom-brand-compliant-export-certified-path-runtime \
+            --all-targets \
+            --all-features \
+            -- -D warnings \
+            2>&1 | tee clippy-diagnostics.log
 
       - name: Run deterministic and adversarial fixtures
-        run: >-
-          cargo test
-          -p ergaxiom-brand-compliant-export-certified-path-runtime
-          2>&1 | tee deterministic-test-diagnostics.log
+        shell: bash
+        run: |
+          set -o pipefail
+          cargo test \
+            -p ergaxiom-brand-compliant-export-certified-path-runtime \
+            2>&1 | tee deterministic-test-diagnostics.log
 
       - name: Run real Inkscape Acceptance Certificate regression
-        run: >-
-          cargo test
-          -p ergaxiom-brand-compliant-export-certified-path-runtime
-          --features real-inkscape-tests
-          --test real_certificate
-          -- --nocapture
-          2>&1 | tee real-certificate-diagnostics.log
+        shell: bash
+        run: |
+          set -o pipefail
+          cargo test \
+            -p ergaxiom-brand-compliant-export-certified-path-runtime \
+            --features real-inkscape-tests \
+            --test real_certificate \
+            -- --nocapture \
+            2>&1 | tee real-certificate-diagnostics.log
 
       - name: Upload certification diagnostics
         if: always()
