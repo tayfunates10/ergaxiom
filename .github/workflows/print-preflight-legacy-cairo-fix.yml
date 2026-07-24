@@ -1,0 +1,112 @@
+name: Print preflight legacy Cairo fix
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/print-preflight-legacy-cairo-fix.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    if: github.head_ref == 'agent/print-ready-poster-preflight-certified-path-v1'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - name: Check out branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref }}
+          fetch-depth: 0
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+
+      - name: Apply bounded legacy Cairo handling
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('crates/print-ready-poster-preflight-certified-path-runtime/src/pdf.rs')
+          text = path.read_text(encoding='utf-8')
+          old = '''    if resources.get(b"Pattern").is_ok() {
+        return Ok(false);
+    }
+    let Ok(ext_gstate_object) = resources.get(b"ExtGState") else {
+'''
+          new = '''    for key in [b"Pattern".as_slice(), b"Shading".as_slice()] {
+        if let Ok(resource_object) = resources.get(key) {
+            let resource_dictionary = resolved_dictionary(document, resource_object)?;
+            if resource_dictionary.iter().next().is_some() {
+                return Ok(false);
+            }
+        }
+    }
+    let Ok(ext_gstate_object) = resources.get(b"ExtGState") else {
+'''
+          if old not in text:
+              raise SystemExit('pattern resource block not found')
+          text = text.replace(old, new, 1)
+
+          old = '''        b"BM".as_slice(),
+        b"AIS".as_slice(),
+    ];
+'''
+          new = '''        b"BM".as_slice(),
+        b"AIS".as_slice(),
+        b"SMask".as_slice(),
+    ];
+'''
+          if old not in text:
+              raise SystemExit('opaque key allowlist not found')
+          text = text.replace(old, new, 1)
+
+          old = '''    if let Ok(blend_mode) = dictionary.get(b"BM") {
+        if !is_name(blend_mode, b"Normal") {
+            return false;
+        }
+    }
+'''
+          new = '''    if let Ok(blend_mode) = dictionary.get(b"BM") {
+        let normal = is_name(blend_mode, b"Normal")
+            || blend_mode.as_array().is_ok_and(|items| {
+                !items.is_empty() && items.iter().all(|item| is_name(item, b"Normal"))
+            });
+        if !normal {
+            return false;
+        }
+    }
+'''
+          if old not in text:
+              raise SystemExit('blend mode block not found')
+          text = text.replace(old, new, 1)
+
+          old = '''    dictionary.get(b"SMask").is_err()
+}
+'''
+          new = '''    dictionary
+        .get(b"SMask")
+        .is_err_or(|mask| is_name(mask, b"None"))
+}
+'''
+          if old not in text:
+              raise SystemExit('soft-mask result block not found')
+          path.write_text(text.replace(old, new, 1), encoding='utf-8')
+          PY
+          cargo fmt --all
+          cargo test -p ergaxiom-print-ready-poster-preflight-certified-path-runtime --test path
+
+      - name: Commit bounded parser fix
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "ergaxiom-ci"
+          git config user.email "actions@users.noreply.github.com"
+          git add crates/print-ready-poster-preflight-certified-path-runtime/src/pdf.rs
+          git diff --cached --check
+          git commit -m "Handle bounded legacy Cairo PDF resources"
+          git push origin HEAD:${{ github.head_ref }}
