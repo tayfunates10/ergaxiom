@@ -1,0 +1,60 @@
+name: One-shot print PDF Rust compatibility fix
+
+on:
+  push:
+    branches:
+      - agent/print-ready-poster-preflight-certified-path-v1
+    paths:
+      - ".github/workflows/one-shot-print-pdf-rust-compat.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  apply-rust-compatibility-fix:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out branch
+        uses: actions/checkout@v4
+        with:
+          ref: agent/print-ready-poster-preflight-certified-path-v1
+          fetch-depth: 0
+
+      - name: Replace unsupported Result helper
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('crates/print-ready-poster-preflight-certified-path-runtime/src/pdf.rs')
+          text = path.read_text(encoding='utf-8')
+          old = (
+              '    dictionary\n'
+              '        .get(b"SMask")\n'
+              '        .is_err_or(|mask| is_name(mask, b"None"))\n'
+          )
+          new = (
+              '    match dictionary.get(b"SMask") {\n'
+              '        Err(_) => true,\n'
+              '        Ok(mask) => is_name(mask, b"None"),\n'
+              '    }\n'
+          )
+          if old in text:
+              path.write_text(text.replace(old, new, 1), encoding='utf-8')
+          elif new not in text:
+              raise SystemExit('SMask compatibility source profile did not match')
+          PY
+
+          cargo fmt --all
+          if git diff --quiet -- crates/print-ready-poster-preflight-certified-path-runtime/src/pdf.rs; then
+            echo "Rust compatibility fix already applied"
+            exit 0
+          fi
+
+          git config user.name "ergaxiom-maintenance"
+          git config user.email "actions@users.noreply.github.com"
+          git add crates/print-ready-poster-preflight-certified-path-runtime/src/pdf.rs
+          git diff --cached --check
+          git commit -m "Use stable Rust for bounded SMask handling"
+          git push origin HEAD:agent/print-ready-poster-preflight-certified-path-v1
