@@ -1,0 +1,42 @@
+name: Brand export quick-xml fix
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/brand-export-xml-fix.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    if: github.head_ref == 'agent/brand-compliant-export-certified-path-v1'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Check out branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref }}
+          fetch-depth: 0
+
+      - name: Fix quick-xml API path
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('crates/brand-compliant-export-certified-path-runtime/src/svg.rs')
+          text = path.read_text(encoding='utf-8')
+          old = 'quick_xml::parser::XmlVersion::Implicit1_0'
+          new = 'quick_xml::XmlVersion::Implicit1_0'
+          if old not in text:
+              raise SystemExit('quick-xml enum path not found')
+          path.write_text(text.replace(old, new, 1), encoding='utf-8')
+          PY
+          cargo fmt --all
+          git config user.name "ergaxiom-ci"
+          git config user.email "actions@users.noreply.github.com"
+          git add crates/brand-compliant-export-certified-path-runtime/src/svg.rs
+          git commit -m "Fix quick-xml version binding"
+          git push origin HEAD:${{ github.head_ref }}
