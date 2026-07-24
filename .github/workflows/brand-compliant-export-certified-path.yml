@@ -76,8 +76,8 @@ jobs:
           contract = json.loads((root / 'examples/work-contracts/brand-compliant-image-export.json').read_text(encoding='utf-8'))
           schema = json.loads((root / 'schemas/work-contract.schema.json').read_text(encoding='utf-8'))
           Draft202012Validator(schema, format_checker=FormatChecker()).validate(contract)
-          if capsule['version'] != '0.5.0':
-              raise SystemExit('Graphic Designer capsule must be 0.5.0')
+          if capsule['version'] != '0.6.0':
+              raise SystemExit('Graphic Designer capsule must be 0.6.0')
           jobs = {item['id']: item for item in capsule['job_types']}
           expected_operators = [
               'brand.validate_source',
