@@ -89,6 +89,7 @@ A capability is marked **certified path** only when the repository has an automa
 6. Expanded proof-bound Inkscape operator set with per-operator attack coverage and real regression.
 7. Binary-mask Image Background Cleanup with authorized trace reassessment, independent PNG proofs, real Inkscape integration and a verified Acceptance Certificate.
 8. Brand-Compliant Image Export with restricted SVG rules, signed execution, IDAT-preserving sRGB normalization, real Inkscape export and a verified Acceptance Certificate.
+8. Brand-Compliant Image Export with restricted SVG rules, signed execution, IDAT-preserving sRGB normalization, real Inkscape export and a verified Acceptance Certificate.
 
 ## Next gates
 
