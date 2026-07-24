@@ -1,0 +1,51 @@
+name: Brand export evidence type fix
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/brand-export-evidence-type-fix.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    if: github.head_ref == 'agent/brand-compliant-export-certified-path-v1'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Check out branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref }}
+          fetch-depth: 0
+
+      - name: Align contract evidence identifiers with validators
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          paths = [
+              Path('crates/brand-compliant-export-certified-path-runtime/src/compiler.rs'),
+              Path('examples/work-contracts/brand-compliant-image-export.json'),
+          ]
+          replacements = {
+              'pre_post_digest': 'pre_execution_digest',
+              'signed_application_record': 'signed_execution_record',
+          }
+          for path in paths:
+              text = path.read_text(encoding='utf-8')
+              for old, new in replacements.items():
+                  if old not in text:
+                      raise SystemExit(f'{old} not found in {path}')
+                  text = text.replace(old, new, 1)
+              path.write_text(text, encoding='utf-8')
+          PY
+          cargo fmt --all
+          git config user.name "ergaxiom-ci"
+          git config user.email "actions@users.noreply.github.com"
+          git add crates/brand-compliant-export-certified-path-runtime/src/compiler.rs \
+            examples/work-contracts/brand-compliant-image-export.json
+          git commit -m "Align brand export evidence identifiers"
+          git push origin HEAD:${{ github.head_ref }}
