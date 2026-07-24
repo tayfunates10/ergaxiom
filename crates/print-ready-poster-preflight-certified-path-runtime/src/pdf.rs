@@ -378,9 +378,10 @@ fn opaque_graphics_state(dictionary: &Dictionary) -> bool {
             return false;
         }
     }
-    dictionary
-        .get(b"SMask")
-        .is_err_or(|mask| is_name(mask, b"None"))
+    match dictionary.get(b"SMask") {
+        Err(_) => true,
+        Ok(mask) => is_name(mask, b"None"),
+    }
 }
 
 fn safe_transparency_group(dictionary: &Dictionary, allowed_color_spaces: &BTreeSet<&str>) -> bool {
