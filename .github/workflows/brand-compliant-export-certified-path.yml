@@ -1,0 +1,153 @@
+name: Brand-compliant export certified path
+
+on:
+  pull_request:
+    paths:
+      - "Cargo.toml"
+      - "crates/brand-compliant-export-certified-path-runtime/**"
+      - "professions/graphic-designer/profession.json"
+      - "examples/work-contracts/**"
+      - "docs/architecture/38-brand-compliant-export-certified-path.md"
+      - "docs/status.md"
+      - ".github/workflows/brand-compliant-export-certified-path.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "Cargo.toml"
+      - "crates/brand-compliant-export-certified-path-runtime/**"
+      - "professions/graphic-designer/profession.json"
+      - "examples/work-contracts/**"
+      - "docs/architecture/38-brand-compliant-export-certified-path.md"
+      - "docs/status.md"
+      - ".github/workflows/brand-compliant-export-certified-path.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  verify-brand-export-certificate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements-dev.txt
+
+      - name: Install validation dependencies
+        run: python -m pip install --requirement requirements-dev.txt
+
+      - name: Install and bind Inkscape
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends inkscape fonts-dejavu-core
+          executable="$(command -v inkscape)"
+          digest="$(sha256sum "$executable" | awk '{print $1}')"
+          echo "ERGAXIOM_INKSCAPE=$executable" >> "$GITHUB_ENV"
+          echo "ERGAXIOM_INKSCAPE_SHA256=$digest" >> "$GITHUB_ENV"
+          inkscape --version
+
+      - name: Validate schemas, capsule and normative contracts
+        shell: bash
+        run: |
+          set -euo pipefail
+          python tools/validate_schema_catalog.py 2>&1 | tee foundation-diagnostics.log
+          python tools/validate_foundation.py 2>&1 | tee -a foundation-diagnostics.log
+          python - <<'PY' 2>&1 | tee -a foundation-diagnostics.log
+          import json
+          from pathlib import Path
+          from jsonschema import Draft202012Validator, FormatChecker
+
+          root = Path('.')
+          capsule = json.loads((root / 'professions/graphic-designer/profession.json').read_text(encoding='utf-8'))
+          contract = json.loads((root / 'examples/work-contracts/brand-compliant-image-export.json').read_text(encoding='utf-8'))
+          schema = json.loads((root / 'schemas/work-contract.schema.json').read_text(encoding='utf-8'))
+          Draft202012Validator(schema, format_checker=FormatChecker()).validate(contract)
+          if capsule['version'] != '0.5.0':
+              raise SystemExit('Graphic Designer capsule must be 0.5.0')
+          jobs = {item['id']: item for item in capsule['job_types']}
+          expected_operators = [
+              'brand.validate_source',
+              'brand.export_with_inkscape',
+              'brand.certify_delivery',
+          ]
+          if jobs['brand_compliant_image_export']['operator_ids'] != expected_operators:
+              raise SystemExit('brand-export operator allowlist changed')
+          operators = {item['id']: item for item in capsule['operators']}
+          for operator_id in expected_operators:
+              item = operators[operator_id]
+              if item['version'] != '0.1.0' or not item.get('deterministic'):
+                  raise SystemExit(f'untrusted brand-export operator: {operator_id}')
+              if not item.get('rollback', {}).get('supported'):
+                  raise SystemExit(f'operator lacks rollback: {operator_id}')
+          expected_validators = {
+              'brand.canvas.dimensions', 'brand.svg.structure', 'brand.palette.allowlist',
+              'brand.logo.identity', 'brand.logo.geometry', 'brand.logo.clear_space',
+              'brand.typography', 'brand.copy.identity', 'brand.png.structure',
+              'brand.source.immutability', 'brand.inkscape.integration',
+          }
+          actual_validators = {item['id'] for item in capsule['validators']}
+          if not expected_validators.issubset(actual_validators):
+              raise SystemExit(f'missing brand validators: {sorted(expected_validators - actual_validators)}')
+          if contract['profession']['capsule_version'] != capsule['version']:
+              raise SystemExit('brand-export contract capsule mismatch')
+          if contract['job_type'] != 'brand_compliant_image_export':
+              raise SystemExit('brand-export contract job type mismatch')
+          if len(contract['proof_obligations']) != 13:
+              raise SystemExit('brand-export contract must contain 13 proof obligations')
+          print('BRAND EXPORT FOUNDATION PASSED')
+          PY
+
+      - name: Check workspace formatting
+        run: cargo fmt --all -- --check 2>&1 | tee rustfmt-diagnostics.log
+
+      - name: Lint certified path
+        run: >-
+          cargo clippy
+          -p ergaxiom-brand-compliant-export-certified-path-runtime
+          --all-targets
+          --all-features
+          -- -D warnings
+          2>&1 | tee clippy-diagnostics.log
+
+      - name: Run deterministic and adversarial fixtures
+        run: >-
+          cargo test
+          -p ergaxiom-brand-compliant-export-certified-path-runtime
+          2>&1 | tee deterministic-test-diagnostics.log
+
+      - name: Run real Inkscape Acceptance Certificate regression
+        run: >-
+          cargo test
+          -p ergaxiom-brand-compliant-export-certified-path-runtime
+          --features real-inkscape-tests
+          --test real_certificate
+          -- --nocapture
+          2>&1 | tee real-certificate-diagnostics.log
+
+      - name: Upload certification diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: brand-compliant-export-certification-diagnostics
+          path: |
+            foundation-diagnostics.log
+            rustfmt-diagnostics.log
+            clippy-diagnostics.log
+            deterministic-test-diagnostics.log
+            real-certificate-diagnostics.log
+          if-no-files-found: ignore
+          retention-days: 7
