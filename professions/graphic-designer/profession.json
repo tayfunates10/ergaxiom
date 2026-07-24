@@ -1,7 +1,7 @@
 {
   "schema_version": "0.1.0",
   "capsule_id": "ergaxiom.profession.graphic-designer",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "profession": {
     "name": "graphic_designer",
     "display_name": "Graphic Designer",
@@ -134,6 +134,46 @@
         "brand.validate_source",
         "brand.export_with_inkscape",
         "brand.certify_delivery"
+      ],
+      "minimum_assurance_level": "E3"
+    },
+    {
+      "id": "print_ready_poster_preflight",
+      "description": "Preflight and export one flat vector outlined poster only after independently proving bleed, safe area, PDF page boxes, resources, color spaces and security boundaries.",
+      "specialization": "print_preflight",
+      "required_inputs": [
+        "source_svg",
+        "print_specification"
+      ],
+      "required_outputs": [
+        "editable_master",
+        "delivery_pdf",
+        "evidence_bundle"
+      ],
+      "required_constraints": [
+        "restricted_svg_profile",
+        "canvas_dimensions_match",
+        "bleed_coverage",
+        "safe_area_satisfied",
+        "palette_violations",
+        "vector_only",
+        "fonts_outlined",
+        "page_count",
+        "media_box_match",
+        "trim_box_match",
+        "bleed_box_match",
+        "crop_box_match",
+        "pdf_version",
+        "allowed_color_spaces",
+        "transparency_absent",
+        "external_actions_absent",
+        "source_immutable",
+        "inkscape_export_verified"
+      ],
+      "operator_ids": [
+        "print.validate_source",
+        "print.export_pdf_with_inkscape",
+        "print.certify_preflight"
       ],
       "minimum_assurance_level": "E3"
     }
@@ -893,6 +933,124 @@
         "supported": true,
         "strategy": "discard unsigned bundle and certificate material"
       }
+    },
+    {
+      "id": "print.validate_source",
+      "version": "0.1.0",
+      "description": "Parse the immutable restricted SVG and independently measure bleed canvas, background coverage, safe area, palette, raster count, live text and path profile.",
+      "input_types": [
+        "source_svg",
+        "print_specification"
+      ],
+      "output_types": [
+        "print_source_validation_report"
+      ],
+      "preconditions": [
+        "input_digests_match_contract",
+        "print_specification_is_resolved",
+        "workspace_is_isolated"
+      ],
+      "postconditions": [
+        "all_mandatory_source_print_rules_are_measured",
+        "source_material_remains_immutable"
+      ],
+      "permissions": [
+        "filesystem.read:contract_inputs",
+        "application.control:print_validator"
+      ],
+      "execution_methods": [
+        "document_model",
+        "signed_adapter"
+      ],
+      "deterministic": true,
+      "randomness_seed_required": false,
+      "rollback": {
+        "supported": true,
+        "strategy": "discard validation report and isolated parse state"
+      }
+    },
+    {
+      "id": "print.export_pdf_with_inkscape",
+      "version": "0.1.0",
+      "description": "Export the accepted outlined vector SVG through pinned Inkscape and deterministically normalize PDF MediaBox, TrimBox, BleedBox and CropBox.",
+      "input_types": [
+        "source_svg",
+        "print_specification",
+        "print_source_validation_report"
+      ],
+      "output_types": [
+        "editable_master",
+        "raw_pdf",
+        "delivery_pdf",
+        "print_execution_record"
+      ],
+      "preconditions": [
+        "source_validation_is_accepted",
+        "trusted_inkscape_identity_is_bound",
+        "output_paths_are_new"
+      ],
+      "postconditions": [
+        "adapter_record_is_verified",
+        "source_material_remains_immutable",
+        "normalized_pdf_boxes_match_specification"
+      ],
+      "permissions": [
+        "filesystem.read:contract_inputs",
+        "filesystem.write:declared_output",
+        "application.control:inkscape"
+      ],
+      "execution_methods": [
+        "application_api",
+        "cli",
+        "signed_adapter"
+      ],
+      "deterministic": true,
+      "randomness_seed_required": false,
+      "rollback": {
+        "supported": true,
+        "strategy": "discard editable staging document, raw PDF and normalized PDF"
+      }
+    },
+    {
+      "id": "print.certify_preflight",
+      "version": "0.1.0",
+      "description": "Verify signed execution evidence, independently reparse source SVG and delivery PDF, reassess the authorized trace and issue an Ed25519 Acceptance Certificate.",
+      "input_types": [
+        "source_svg",
+        "print_specification",
+        "editable_master",
+        "raw_pdf",
+        "delivery_pdf",
+        "validator_reports",
+        "authorized_execution_trace"
+      ],
+      "output_types": [
+        "evidence_bundle",
+        "acceptance_certificate"
+      ],
+      "preconditions": [
+        "signed_execution_evidence_verifies",
+        "all_mandatory_validator_reports_are_bound",
+        "authorized_trace_conforms_to_plan"
+      ],
+      "postconditions": [
+        "evidence_bundle_is_independently_accepted",
+        "acceptance_certificate_verifies_against_exact_bundle"
+      ],
+      "permissions": [
+        "filesystem.read:isolated_workspace",
+        "filesystem.write:declared_output",
+        "secret.use:attestation_signing_key"
+      ],
+      "execution_methods": [
+        "signed_adapter"
+      ],
+      "deterministic": true,
+      "randomness_seed_required": false,
+      "rollback": {
+        "supported": true,
+        "strategy": "discard unsigned bundle and certificate material"
+      }
     }
   ],
   "validators": [
@@ -1320,6 +1478,252 @@
         "crate": "ergaxiom-brand-compliant-export-certified-path-runtime",
         "strategy": "verify pinned Inkscape identity and proof-bound adapter record bindings"
       }
+    },
+    {
+      "id": "print.svg.structure",
+      "version": "0.1.0",
+      "claims": [
+        "restricted_svg_profile"
+      ],
+      "independence_class": "independent",
+      "evidence_types": [
+        "parsed_svg_snapshot"
+      ],
+      "deterministic": true,
+      "implementation": {
+        "crate": "ergaxiom-print-ready-poster-preflight-certified-path-runtime",
+        "strategy": "allow only svg, g, rect and absolute M/L/H/V/Z path material with no effects or external references"
+      }
+    },
+    {
+      "id": "print.canvas.dimensions",
+      "version": "0.1.0",
+      "claims": [
+        "canvas_dimensions_match"
+      ],
+      "independence_class": "independent",
+      "evidence_types": [
+        "parsed_svg_geometry"
+      ],
+      "deterministic": true,
+      "implementation": {
+        "crate": "ergaxiom-print-ready-poster-preflight-certified-path-runtime",
+        "strategy": "compare width, height and viewBox with trim plus twice the declared bleed"
+      }
+    },
+    {
+      "id": "print.bleed.coverage",
+      "version": "0.1.0",
+      "claims": [
+        "bleed_coverage"
+      ],
+      "independence_class": "independent",
+      "evidence_types": [
+        "parsed_svg_geometry"
+      ],
+      "deterministic": true,
+      "implementation": {
+        "crate": "ergaxiom-print-ready-poster-preflight-certified-path-runtime",
+        "strategy": "measure the declared background rectangle against every bleed-canvas edge"
+      }
+    },
+    {
+      "id": "print.safe_area.geometry",
+      "version": "0.1.0",
+      "claims": [
+        "safe_area_satisfied"
+      ],
+      "independence_class": "independent",
+      "evidence_types": [
+        "parsed_svg_geometry"
+      ],
+      "deterministic": true,
+      "implementation": {
+        "crate": "ergaxiom-print-ready-poster-preflight-certified-path-runtime",
+        "strategy": "bound every non-background rectangle and certified path inside bleed plus safe margin"
+      }
+    },
+    {
+      "id": "print.palette.allowlist",
+      "version": "0.1.0",
+      "claims": [
+        "palette_violations"
+      ],
+      "independence_class": "independent",
+      "evidence_types": [
+        "parsed_svg_snapshot"
+      ],
+      "deterministic": true,
+      "implementation": {
+        "crate": "ergaxiom-print-ready-poster-preflight-certified-path-runtime",
+        "strategy": "compare every flat fill with exact lowercase approved #rrggbb values"
+      }
+    },
+    {
+      "id": "print.pdf.vector_only",
+      "version": "0.1.0",
+      "claims": [
+        "vector_only"
+      ],
+      "independence_class": "independent",
+      "evidence_types": [
+        "parsed_pdf_resources"
+      ],
+      "deterministic": true,
+      "implementation": {
+        "crate": "ergaxiom-print-ready-poster-preflight-certified-path-runtime",
+        "strategy": "independently prove the page contains no raster image XObjects"
+      }
+    },
+    {
+      "id": "print.pdf.fonts_outlined",
+      "version": "0.1.0",
+      "claims": [
+        "fonts_outlined"
+      ],
+      "independence_class": "independent",
+      "evidence_types": [
+        "parsed_pdf_resources"
+      ],
+      "deterministic": true,
+      "implementation": {
+        "crate": "ergaxiom-print-ready-poster-preflight-certified-path-runtime",
+        "strategy": "independently prove the page contains no PDF font resources or live SVG text"
+      }
+    },
+    {
+      "id": "print.pdf.page",
+      "version": "0.1.0",
+      "claims": [
+        "page_count"
+      ],
+      "independence_class": "independent",
+      "evidence_types": [
+        "parsed_pdf_page_tree"
+      ],
+      "deterministic": true,
+      "implementation": {
+        "crate": "ergaxiom-print-ready-poster-preflight-certified-path-runtime",
+        "strategy": "recompute the page tree and require exactly one poster page"
+      }
+    },
+    {
+      "id": "print.pdf.boxes",
+      "version": "0.1.0",
+      "claims": [
+        "media_box_match",
+        "trim_box_match",
+        "bleed_box_match",
+        "crop_box_match"
+      ],
+      "independence_class": "independent",
+      "evidence_types": [
+        "parsed_pdf_page_boxes"
+      ],
+      "deterministic": true,
+      "implementation": {
+        "crate": "ergaxiom-print-ready-poster-preflight-certified-path-runtime",
+        "strategy": "recompute MediaBox, TrimBox, BleedBox and CropBox from the print specification"
+      }
+    },
+    {
+      "id": "print.pdf.version",
+      "version": "0.1.0",
+      "claims": [
+        "pdf_version"
+      ],
+      "independence_class": "independent",
+      "evidence_types": [
+        "parsed_pdf_header"
+      ],
+      "deterministic": true,
+      "implementation": {
+        "crate": "ergaxiom-print-ready-poster-preflight-certified-path-runtime",
+        "strategy": "parse and compare the normalized PDF header version"
+      }
+    },
+    {
+      "id": "print.pdf.color_spaces",
+      "version": "0.1.0",
+      "claims": [
+        "allowed_color_spaces"
+      ],
+      "independence_class": "independent",
+      "evidence_types": [
+        "decoded_pdf_content"
+      ],
+      "deterministic": true,
+      "implementation": {
+        "crate": "ergaxiom-print-ready-poster-preflight-certified-path-runtime",
+        "strategy": "decode page content and accept only explicitly allowed DeviceRGB or DeviceGray operators"
+      }
+    },
+    {
+      "id": "print.pdf.transparency",
+      "version": "0.1.0",
+      "claims": [
+        "transparency_absent"
+      ],
+      "independence_class": "independent",
+      "evidence_types": [
+        "parsed_pdf_resources"
+      ],
+      "deterministic": true,
+      "implementation": {
+        "crate": "ergaxiom-print-ready-poster-preflight-certified-path-runtime",
+        "strategy": "reject soft masks, transparent ExtGState values and unsupported transparency groups"
+      }
+    },
+    {
+      "id": "print.pdf.security",
+      "version": "0.1.0",
+      "claims": [
+        "external_actions_absent"
+      ],
+      "independence_class": "independent",
+      "evidence_types": [
+        "parsed_pdf_catalog"
+      ],
+      "deterministic": true,
+      "implementation": {
+        "crate": "ergaxiom-print-ready-poster-preflight-certified-path-runtime",
+        "strategy": "reject encryption, annotations, JavaScript, launch actions, AcroForm and embedded files"
+      }
+    },
+    {
+      "id": "print.source.immutability",
+      "version": "0.1.0",
+      "claims": [
+        "source_immutable"
+      ],
+      "independence_class": "independent",
+      "evidence_types": [
+        "pre_execution_digest",
+        "post_execution_digest"
+      ],
+      "deterministic": true,
+      "implementation": {
+        "crate": "ergaxiom-print-ready-poster-preflight-certified-path-runtime",
+        "strategy": "compare sealed source SVG bytes before and after execution"
+      }
+    },
+    {
+      "id": "print.inkscape.integration",
+      "version": "0.1.0",
+      "claims": [
+        "inkscape_export_verified"
+      ],
+      "independence_class": "independent",
+      "evidence_types": [
+        "application_identity",
+        "adapter_receipt",
+        "signed_execution_record"
+      ],
+      "deterministic": true,
+      "implementation": {
+        "crate": "ergaxiom-print-ready-poster-preflight-certified-path-runtime",
+        "strategy": "verify pinned Inkscape identity and proof-bound PDF export receipt bindings"
+      }
     }
   ],
   "policies": {
@@ -1330,7 +1734,8 @@
     "minimum_assurance_by_job_type": {
       "social_media_static_post": "E3",
       "image_background_cleanup": "E3",
-      "brand_compliant_image_export": "E3"
+      "brand_compliant_image_export": "E3",
+      "print_ready_poster_preflight": "E3"
     }
   },
   "training": {
