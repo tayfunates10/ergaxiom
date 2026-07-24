@@ -330,7 +330,13 @@ fn document_transparency_groups_safe(
 }
 
 fn opaque_graphics_state(dictionary: &Dictionary) -> bool {
-    let allowed_keys = [b"Type".as_slice(), b"CA".as_slice(), b"ca".as_slice(), b"BM".as_slice(), b"AIS".as_slice()];
+    let allowed_keys = [
+        b"Type".as_slice(),
+        b"CA".as_slice(),
+        b"ca".as_slice(),
+        b"BM".as_slice(),
+        b"AIS".as_slice(),
+    ];
     if dictionary
         .iter()
         .any(|(key, _)| !allowed_keys.contains(&key.as_slice()))
@@ -365,10 +371,7 @@ fn opaque_graphics_state(dictionary: &Dictionary) -> bool {
     dictionary.get(b"SMask").is_err()
 }
 
-fn safe_transparency_group(
-    dictionary: &Dictionary,
-    allowed_color_spaces: &BTreeSet<&str>,
-) -> bool {
+fn safe_transparency_group(dictionary: &Dictionary, allowed_color_spaces: &BTreeSet<&str>) -> bool {
     let allowed_keys = [
         b"Type".as_slice(),
         b"S".as_slice(),
