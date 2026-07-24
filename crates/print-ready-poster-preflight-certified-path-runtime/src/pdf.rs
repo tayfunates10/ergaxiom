@@ -1,6 +1,6 @@
 use std::collections::BTreeSet;
 
-use lopdf::{Dictionary, Document, Object};
+use lopdf::{Dictionary, Document, Object, ObjectId};
 use thiserror::Error;
 
 use crate::model::{PdfBoxRecord, PdfNormalizationRecord, PrintSpecification};
@@ -149,9 +149,13 @@ pub fn inspect_print_pdf(
     let bleed_box = read_box(page, b"BleedBox")?;
     let crop_box = read_box(page, b"CropBox")?;
     let annotations_absent = document.get_page_annotations(page_id)?.is_empty();
-    let (resources, _) = document.get_page_resources(page_id)?;
-    let vector_only = resources.is_none_or(|resources| resources.get(b"XObject").is_err());
-    let fonts_outlined = resources.is_none_or(|resources| resources.get(b"Font").is_err());
+    let resources = page_resource_dictionaries(&document, page_id)?;
+    let vector_only = resources
+        .iter()
+        .all(|resources| resources.get(b"XObject").is_err());
+    let fonts_outlined = resources
+        .iter()
+        .all(|resources| resources.get(b"Font").is_err());
 
     let content = document.get_and_decode_page_content(page_id)?;
     let mut used_color_spaces = BTreeSet::new();
@@ -201,13 +205,9 @@ pub fn inspect_print_pdf(
     let allowed_color_spaces_only = used_color_spaces
         .iter()
         .all(|space| allowed.contains(space.as_str()));
-    let resources_safe =
-        resources_transparency_safe(&document, resources, &used_graphics_states, &allowed)?;
-    let groups_safe = document_transparency_groups_safe(&document, &allowed)?;
-    eprintln!(
-        "print PDF transparency diagnostics: malformed_gs={malformed_graphics_state_operator} resources_safe={resources_safe} groups_safe={groups_safe} used_gs={used_graphics_states:?} resources={resources:?}"
-    );
-    let transparency_absent = !malformed_graphics_state_operator && resources_safe && groups_safe;
+    let transparency_absent = !malformed_graphics_state_operator
+        && resources_transparency_safe(&document, &resources, &used_graphics_states, &allowed)?
+        && document_transparency_groups_safe(&document, &allowed)?;
     let security_objects_absent = document.objects.values().all(object_is_security_safe);
     let catalog_safe = document.catalog().is_ok_and(dictionary_is_security_safe);
     let encrypted = document.is_encrypted() || document.trailer.get(b"Encrypt").is_ok();
@@ -268,34 +268,51 @@ pub fn expected_boxes(
     Ok((media.clone(), trim, media.clone(), media))
 }
 
+fn page_resource_dictionaries(
+    document: &Document,
+    page_id: ObjectId,
+) -> Result<Vec<&Dictionary>, PrintPdfError> {
+    let (direct_resources, resource_ids) = document.get_page_resources(page_id)?;
+    let mut resources = Vec::new();
+    if let Some(direct_resources) = direct_resources {
+        resources.push(direct_resources);
+    }
+    for resource_id in resource_ids {
+        resources.push(document.get_dictionary(resource_id)?);
+    }
+    Ok(resources)
+}
+
 fn resources_transparency_safe(
     document: &Document,
-    resources: Option<&Dictionary>,
+    resources: &[&Dictionary],
     used_graphics_states: &BTreeSet<String>,
     allowed_color_spaces: &BTreeSet<&str>,
 ) -> Result<bool, PrintPdfError> {
-    let Some(resources) = resources else {
+    if resources.is_empty() {
         return Ok(used_graphics_states.is_empty());
-    };
-    for key in [b"Pattern".as_slice(), b"Shading".as_slice()] {
-        if let Ok(resource_object) = resources.get(key) {
-            let resource_dictionary = resolved_dictionary(document, resource_object)?;
-            if resource_dictionary.iter().next().is_some() {
-                return Ok(false);
+    }
+    let mut declared_names = BTreeSet::new();
+    for resources in resources {
+        for key in [b"Pattern".as_slice(), b"Shading".as_slice()] {
+            if let Ok(resource_object) = resources.get(key) {
+                let resource_dictionary = resolved_dictionary(document, resource_object)?;
+                if resource_dictionary.iter().next().is_some() {
+                    return Ok(false);
+                }
             }
         }
-    }
-    let Ok(ext_gstate_object) = resources.get(b"ExtGState") else {
-        return Ok(used_graphics_states.is_empty());
-    };
-    let ext_gstates = resolved_dictionary(document, ext_gstate_object)?;
-    let mut declared_names = BTreeSet::new();
-    for (name, state_object) in ext_gstates.iter() {
-        let name = String::from_utf8_lossy(name).into_owned();
-        declared_names.insert(name);
-        let state = resolved_dictionary(document, state_object)?;
-        if !opaque_graphics_state(state) {
-            return Ok(false);
+        let Ok(ext_gstate_object) = resources.get(b"ExtGState") else {
+            continue;
+        };
+        let ext_gstates = resolved_dictionary(document, ext_gstate_object)?;
+        for (name, state_object) in ext_gstates.iter() {
+            let name = String::from_utf8_lossy(name).into_owned();
+            declared_names.insert(name);
+            let state = resolved_dictionary(document, state_object)?;
+            if !opaque_graphics_state(state) {
+                return Ok(false);
+            }
         }
     }
     if !used_graphics_states.is_subset(&declared_names) {

@@ -227,9 +227,16 @@ fn minimal_vector_pdf() -> Result<Vec<u8>, Box<dyn Error>> {
     let page_id = document.new_object_id();
     let content_id = document.add_object(Stream::new(
         dictionary! {},
-        b"0.1 0.2 0.3 rg 0 0 100 100 re f".to_vec(),
+        b"0.1 0.2 0.3 rg /a0 gs 0 0 100 100 re f".to_vec(),
     ));
-    let resources_id = document.add_object(dictionary! {});
+    let resources_id = document.add_object(dictionary! {
+        "ExtGState" => dictionary! {
+            "a0" => dictionary! {
+                "CA" => 1,
+                "ca" => 1,
+            },
+        },
+    });
     document.objects.insert(
         page_id,
         Object::Dictionary(dictionary! {
@@ -237,6 +244,12 @@ fn minimal_vector_pdf() -> Result<Vec<u8>, Box<dyn Error>> {
             "Parent" => pages_id,
             "Contents" => content_id,
             "Resources" => resources_id,
+            "Group" => dictionary! {
+                "Type" => "Group",
+                "S" => "Transparency",
+                "I" => true,
+                "CS" => "DeviceRGB",
+            },
             "MediaBox" => vec![0.into(), 0.into(), 612.into(), 792.into()],
         }),
     );
