@@ -11,6 +11,7 @@ on:
       - "examples/work-contracts/**"
       - "docs/architecture/39-print-ready-poster-preflight-certified-path.md"
       - "docs/status.md"
+      - "docs/roadmap.md"
       - ".github/workflows/print-ready-poster-preflight-certified-path.yml"
   push:
     branches:
@@ -23,6 +24,7 @@ on:
       - "examples/work-contracts/**"
       - "docs/architecture/39-print-ready-poster-preflight-certified-path.md"
       - "docs/status.md"
+      - "docs/roadmap.md"
       - ".github/workflows/print-ready-poster-preflight-certified-path.yml"
 
 permissions:
@@ -149,9 +151,6 @@ jobs:
 
       - name: Run real Inkscape Acceptance Certificate regression
         shell: bash
-        env:
-          ERGAXIOM_KEEP_TEST_ARTIFACTS: "1"
-          RUST_BACKTRACE: "full"
         run: |
           set -euo pipefail
           cargo test \
@@ -172,7 +171,5 @@ jobs:
             clippy-diagnostics.log
             deterministic-test-diagnostics.log
             real-certificate-diagnostics.log
-            /tmp/ergaxiom-print-preflight-certificate-*/*.svg
-            /tmp/ergaxiom-print-preflight-certificate-*/*.pdf
           if-no-files-found: ignore
           retention-days: 7
