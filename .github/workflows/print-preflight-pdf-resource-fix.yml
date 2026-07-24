@@ -1,0 +1,64 @@
+name: Print preflight PDF resource fix
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/print-preflight-pdf-resource-fix.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    if: github.head_ref == 'agent/print-ready-poster-preflight-certified-path-v1'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - name: Check out branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref }}
+          fetch-depth: 0
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+
+      - name: Fix absent PDF resource handling
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('crates/print-ready-poster-preflight-certified-path-runtime/src/pdf.rs')
+          text = path.read_text(encoding='utf-8')
+          old = '''    let vector_only = document.get_page_images(page_id)?.is_empty();
+    let fonts_outlined = document.get_page_fonts(page_id)?.is_empty();
+    let annotations_absent = document.get_page_annotations(page_id)?.is_empty();
+    let (resources, _) = document.get_page_resources(page_id)?;
+    let resource_transparency_absent = resources.is_none_or(|resources| {
+'''
+          new = '''    let annotations_absent = document.get_page_annotations(page_id)?.is_empty();
+    let (resources, _) = document.get_page_resources(page_id)?;
+    let vector_only = resources.is_none_or(|resources| resources.get(b"XObject").is_err());
+    let fonts_outlined = resources.is_none_or(|resources| resources.get(b"Font").is_err());
+    let resource_transparency_absent = resources.is_none_or(|resources| {
+'''
+          if old not in text:
+              raise SystemExit('PDF resource block not found')
+          path.write_text(text.replace(old, new, 1), encoding='utf-8')
+          PY
+          cargo fmt --all
+          cargo test -p ergaxiom-print-ready-poster-preflight-certified-path-runtime --test path
+
+      - name: Commit verified PDF parser fix
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "ergaxiom-ci"
+          git config user.email "actions@users.noreply.github.com"
+          git add crates/print-ready-poster-preflight-certified-path-runtime/src/pdf.rs
+          git diff --cached --check
+          git commit -m "Handle absent PDF resource dictionaries"
+          git push origin HEAD:${{ github.head_ref }}
