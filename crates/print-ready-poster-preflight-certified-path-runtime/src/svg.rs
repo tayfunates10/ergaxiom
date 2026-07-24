@@ -211,9 +211,11 @@ fn inspect_svg(
     let safe_top = safe_left;
     let safe_right = total_width - safe_left;
     let safe_bottom = total_height - safe_top;
+    let mut buffer = Vec::new();
 
     loop {
-        match reader.read_event() {
+        buffer.clear();
+        match reader.read_event_into(&mut buffer) {
             Ok(Event::Start(element)) | Ok(Event::Empty(element)) => {
                 let name = local_name(element.name().as_ref());
                 let attributes = decode_attributes(&reader, &element)?;
@@ -275,10 +277,7 @@ fn inspect_svg(
                             allowed_attributes(&attributes, &["id", "d", "fill"]);
                         register_id(&mut measurements, &attributes);
                         validate_fill(&mut measurements, &attributes, &allowed_palette);
-                        match attributes
-                            .get("d")
-                            .and_then(|value| simple_path_bounds(value))
-                        {
+                        match attributes.get("d").and_then(|value| simple_path_bounds(value)) {
                             Some(bounds) => {
                                 measurements.safe_area_ok &= inside_safe_area(
                                     bounds,
@@ -375,10 +374,7 @@ fn validate_fill(
     attributes: &BTreeMap<String, String>,
     allowed_palette: &BTreeSet<&str>,
 ) {
-    let Some(fill) = attributes
-        .get("fill")
-        .and_then(|value| normalize_color(value))
-    else {
+    let Some(fill) = attributes.get("fill").and_then(|value| normalize_color(value)) else {
         measurements.palette_violations += 1;
         return;
     };
@@ -572,8 +568,17 @@ fn parse_decimal_milli(value: &str) -> Option<i64> {
     Some(if negative { -value } else { value })
 }
 
-fn inside_safe_area(bounds: Bounds, left: i64, top: i64, right: i64, bottom: i64) -> bool {
-    bounds.min_x >= left && bounds.min_y >= top && bounds.max_x <= right && bounds.max_y <= bottom
+fn inside_safe_area(
+    bounds: Bounds,
+    left: i64,
+    top: i64,
+    right: i64,
+    bottom: i64,
+) -> bool {
+    bounds.min_x >= left
+        && bounds.min_y >= top
+        && bounds.max_x <= right
+        && bounds.max_y <= bottom
 }
 
 fn format_milli(value: i64) -> String {
