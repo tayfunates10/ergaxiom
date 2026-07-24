@@ -1,6 +1,6 @@
 use std::collections::BTreeSet;
 
-use lopdf::{Dictionary, Document, Object, ObjectId};
+use lopdf::{Dictionary, Document, Object};
 use thiserror::Error;
 
 use crate::model::{PdfBoxRecord, PdfNormalizationRecord, PrintSpecification};
@@ -12,6 +12,8 @@ const NORMALIZATION_SCHEMA: &str = "0.1.0";
 pub enum PrintPdfError {
     #[error("PDF parsing or writing failed: {0}")]
     Pdf(#[from] lopdf::Error),
+    #[error("PDF I/O failed: {0}")]
+    Io(#[from] std::io::Error),
     #[error("PDF must contain exactly one page")]
     PageCount,
     #[error("PDF is encrypted")]
@@ -193,7 +195,7 @@ pub fn inspect_print_pdf(
     let dangerous_objects_absent = document
         .objects
         .values()
-        .all(|object| object_is_safe(object));
+        .all(object_is_safe);
     let catalog_safe = document.catalog().is_ok_and(dictionary_is_safe);
     let encrypted = document.is_encrypted() || document.trailer.get(b"Encrypt").is_ok();
     Ok(PrintPdfInspection {
@@ -337,16 +339,18 @@ fn dictionary_is_safe(dictionary: &Dictionary) -> bool {
     }
     for key in [b"Type".as_slice(), b"S".as_slice(), b"Subtype".as_slice()] {
         if let Ok(name) = dictionary.get(key).and_then(Object::as_name) {
-            if matches!(
-                name,
-                b"Action" | b"JavaScript" | b"Launch" | b"EmbeddedFile" | b"FileAttachment"
-            ) {
+            if [
+                b"Action".as_slice(),
+                b"JavaScript".as_slice(),
+                b"Launch".as_slice(),
+                b"EmbeddedFile".as_slice(),
+                b"FileAttachment".as_slice(),
+            ]
+            .contains(&name)
+            {
                 return false;
             }
         }
     }
     true
 }
-
-#[allow(dead_code)]
-fn _object_id_type_check(_: ObjectId) {}
