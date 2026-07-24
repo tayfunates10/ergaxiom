@@ -273,8 +273,13 @@ fn resources_transparency_safe(
     let Some(resources) = resources else {
         return Ok(used_graphics_states.is_empty());
     };
-    if resources.get(b"Pattern").is_ok() {
-        return Ok(false);
+    for key in [b"Pattern".as_slice(), b"Shading".as_slice()] {
+        if let Ok(resource_object) = resources.get(key) {
+            let resource_dictionary = resolved_dictionary(document, resource_object)?;
+            if resource_dictionary.iter().next().is_some() {
+                return Ok(false);
+            }
+        }
     }
     let Ok(ext_gstate_object) = resources.get(b"ExtGState") else {
         return Ok(used_graphics_states.is_empty());
@@ -336,6 +341,7 @@ fn opaque_graphics_state(dictionary: &Dictionary) -> bool {
         b"ca".as_slice(),
         b"BM".as_slice(),
         b"AIS".as_slice(),
+        b"SMask".as_slice(),
     ];
     if dictionary
         .iter()
@@ -359,7 +365,11 @@ fn opaque_graphics_state(dictionary: &Dictionary) -> bool {
         }
     }
     if let Ok(blend_mode) = dictionary.get(b"BM") {
-        if !is_name(blend_mode, b"Normal") {
+        let normal = is_name(blend_mode, b"Normal")
+            || blend_mode.as_array().is_ok_and(|items| {
+                !items.is_empty() && items.iter().all(|item| is_name(item, b"Normal"))
+            });
+        if !normal {
             return false;
         }
     }
@@ -368,7 +378,9 @@ fn opaque_graphics_state(dictionary: &Dictionary) -> bool {
             return false;
         }
     }
-    dictionary.get(b"SMask").is_err()
+    dictionary
+        .get(b"SMask")
+        .is_err_or(|mask| is_name(mask, b"None"))
 }
 
 fn safe_transparency_group(dictionary: &Dictionary, allowed_color_spaces: &BTreeSet<&str>) -> bool {
