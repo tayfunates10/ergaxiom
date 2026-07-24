@@ -420,9 +420,9 @@ fn validate_permission_profile(
     Ok(())
 }
 
-fn resolve_operator_versions<'a>(
-    capsule: &'a CapsulePlanningView,
-) -> Result<BTreeMap<&'a str, &'a str>, BrandExportPlannerError> {
+fn resolve_operator_versions(
+    capsule: &CapsulePlanningView,
+) -> Result<BTreeMap<&str, &str>, BrandExportPlannerError> {
     let mut operators = BTreeMap::new();
     for operator in &capsule.operators {
         if operators
