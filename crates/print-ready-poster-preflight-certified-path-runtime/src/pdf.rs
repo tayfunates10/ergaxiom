@@ -152,12 +152,11 @@ pub fn inspect_print_pdf(
     let (resources, _) = document.get_page_resources(page_id)?;
     let vector_only = resources.is_none_or(|resources| resources.get(b"XObject").is_err());
     let fonts_outlined = resources.is_none_or(|resources| resources.get(b"Font").is_err());
-    let resource_transparency_absent = resources.is_none_or(|resources| {
-        resources.get(b"ExtGState").is_err() && resources.get(b"Pattern").is_err()
-    });
+
     let content = document.get_and_decode_page_content(page_id)?;
     let mut used_color_spaces = BTreeSet::new();
-    let mut graphics_state_operator_absent = true;
+    let mut used_graphics_states = BTreeSet::new();
+    let mut malformed_graphics_state_operator = false;
     for operation in content.operations {
         match operation.operator.as_str() {
             "rg" | "RG" => {
@@ -180,7 +179,17 @@ pub fn inspect_print_pdf(
                     used_color_spaces.insert("UNKNOWN".to_owned());
                 }
             }
-            "gs" => graphics_state_operator_absent = false,
+            "gs" => {
+                if let Some(name) = operation
+                    .operands
+                    .first()
+                    .and_then(|object| object.as_name().ok())
+                {
+                    used_graphics_states.insert(String::from_utf8_lossy(name).into_owned());
+                } else {
+                    malformed_graphics_state_operator = true;
+                }
+            }
             _ => {}
         }
     }
@@ -192,8 +201,11 @@ pub fn inspect_print_pdf(
     let allowed_color_spaces_only = used_color_spaces
         .iter()
         .all(|space| allowed.contains(space.as_str()));
-    let dangerous_objects_absent = document.objects.values().all(object_is_safe);
-    let catalog_safe = document.catalog().is_ok_and(dictionary_is_safe);
+    let transparency_absent = !malformed_graphics_state_operator
+        && resources_transparency_safe(&document, resources, &used_graphics_states, &allowed)?
+        && document_transparency_groups_safe(&document, &allowed)?;
+    let security_objects_absent = document.objects.values().all(object_is_security_safe);
+    let catalog_safe = document.catalog().is_ok_and(dictionary_is_security_safe);
     let encrypted = document.is_encrypted() || document.trailer.get(b"Encrypt").is_ok();
     Ok(PrintPdfInspection {
         page_count,
@@ -205,12 +217,10 @@ pub fn inspect_print_pdf(
         vector_only,
         fonts_outlined,
         allowed_color_spaces_only,
-        transparency_absent: resource_transparency_absent
-            && graphics_state_operator_absent
-            && dangerous_objects_absent,
+        transparency_absent,
         external_actions_absent: annotations_absent
             && catalog_safe
-            && dangerous_objects_absent
+            && security_objects_absent
             && !encrypted,
     })
 }
@@ -252,6 +262,178 @@ pub fn expected_boxes(
             .ok_or(PrintPdfError::GeometryOverflow)?,
     };
     Ok((media.clone(), trim, media.clone(), media))
+}
+
+fn resources_transparency_safe(
+    document: &Document,
+    resources: Option<&Dictionary>,
+    used_graphics_states: &BTreeSet<String>,
+    allowed_color_spaces: &BTreeSet<&str>,
+) -> Result<bool, PrintPdfError> {
+    let Some(resources) = resources else {
+        return Ok(used_graphics_states.is_empty());
+    };
+    if resources.get(b"Pattern").is_ok() {
+        return Ok(false);
+    }
+    let Ok(ext_gstate_object) = resources.get(b"ExtGState") else {
+        return Ok(used_graphics_states.is_empty());
+    };
+    let ext_gstates = resolved_dictionary(document, ext_gstate_object)?;
+    let mut declared_names = BTreeSet::new();
+    for (name, state_object) in ext_gstates.iter() {
+        let name = String::from_utf8_lossy(name).into_owned();
+        declared_names.insert(name);
+        let state = resolved_dictionary(document, state_object)?;
+        if !opaque_graphics_state(state) {
+            return Ok(false);
+        }
+    }
+    if !used_graphics_states.is_subset(&declared_names) {
+        return Ok(false);
+    }
+    for object in document.objects.values() {
+        let Some(dictionary) = object_dictionary(object) else {
+            continue;
+        };
+        if let Ok(group_object) = dictionary.get(b"Group") {
+            let group = resolved_dictionary(document, group_object)?;
+            if !safe_transparency_group(group, allowed_color_spaces) {
+                return Ok(false);
+            }
+        }
+    }
+    Ok(true)
+}
+
+fn document_transparency_groups_safe(
+    document: &Document,
+    allowed_color_spaces: &BTreeSet<&str>,
+) -> Result<bool, PrintPdfError> {
+    for object in document.objects.values() {
+        let Some(dictionary) = object_dictionary(object) else {
+            continue;
+        };
+        if let Ok(mask) = dictionary.get(b"SMask") {
+            if !is_name(mask, b"None") {
+                return Ok(false);
+            }
+        }
+        if let Ok(group_object) = dictionary.get(b"Group") {
+            let group = resolved_dictionary(document, group_object)?;
+            if !safe_transparency_group(group, allowed_color_spaces) {
+                return Ok(false);
+            }
+        }
+    }
+    Ok(true)
+}
+
+fn opaque_graphics_state(dictionary: &Dictionary) -> bool {
+    let allowed_keys = [b"Type".as_slice(), b"CA".as_slice(), b"ca".as_slice(), b"BM".as_slice(), b"AIS".as_slice()];
+    if dictionary
+        .iter()
+        .any(|(key, _)| !allowed_keys.contains(&key.as_slice()))
+    {
+        return false;
+    }
+    if let Ok(kind) = dictionary.get(b"Type") {
+        if !is_name(kind, b"ExtGState") {
+            return false;
+        }
+    }
+    for key in [b"CA".as_slice(), b"ca".as_slice()] {
+        if let Ok(value) = dictionary.get(key) {
+            let Ok(value) = value.as_float() else {
+                return false;
+            };
+            if (value - 1.0).abs() > f32::EPSILON {
+                return false;
+            }
+        }
+    }
+    if let Ok(blend_mode) = dictionary.get(b"BM") {
+        if !is_name(blend_mode, b"Normal") {
+            return false;
+        }
+    }
+    if let Ok(alpha_source) = dictionary.get(b"AIS") {
+        if !matches!(alpha_source, Object::Boolean(false)) {
+            return false;
+        }
+    }
+    dictionary.get(b"SMask").is_err()
+}
+
+fn safe_transparency_group(
+    dictionary: &Dictionary,
+    allowed_color_spaces: &BTreeSet<&str>,
+) -> bool {
+    let allowed_keys = [
+        b"Type".as_slice(),
+        b"S".as_slice(),
+        b"CS".as_slice(),
+        b"I".as_slice(),
+        b"K".as_slice(),
+    ];
+    if dictionary
+        .iter()
+        .any(|(key, _)| !allowed_keys.contains(&key.as_slice()))
+    {
+        return false;
+    }
+    if let Ok(kind) = dictionary.get(b"Type") {
+        if !is_name(kind, b"Group") {
+            return false;
+        }
+    }
+    if !dictionary
+        .get(b"S")
+        .is_ok_and(|value| is_name(value, b"Transparency"))
+    {
+        return false;
+    }
+    if let Ok(color_space) = dictionary.get(b"CS") {
+        let Ok(name) = color_space.as_name() else {
+            return false;
+        };
+        if !allowed_color_spaces.contains(String::from_utf8_lossy(name).as_ref()) {
+            return false;
+        }
+    }
+    for key in [b"I".as_slice(), b"K".as_slice()] {
+        if let Ok(value) = dictionary.get(key) {
+            if !matches!(value, Object::Boolean(_)) {
+                return false;
+            }
+        }
+    }
+    true
+}
+
+fn resolved_dictionary<'a>(
+    document: &'a Document,
+    object: &'a Object,
+) -> Result<&'a Dictionary, PrintPdfError> {
+    let object = match object {
+        Object::Reference(id) => document.get_object(*id)?,
+        _ => object,
+    };
+    object
+        .as_dict()
+        .map_err(|_| PrintPdfError::InvalidPageEntry("resource dictionary"))
+}
+
+fn object_dictionary(object: &Object) -> Option<&Dictionary> {
+    match object {
+        Object::Dictionary(dictionary) => Some(dictionary),
+        Object::Stream(stream) => Some(&stream.dict),
+        _ => None,
+    }
+}
+
+fn is_name(object: &Object, expected: &[u8]) -> bool {
+    object.as_name().is_ok_and(|name| name == expected)
 }
 
 fn mm_milli_to_pt_milli(value: i64) -> Result<i64, PrintPdfError> {
@@ -309,26 +491,21 @@ fn object_to_milli_pt(object: &Object) -> Result<i64, PrintPdfError> {
     Ok((value * 1000.0).round() as i64)
 }
 
-fn object_is_safe(object: &Object) -> bool {
-    match object {
-        Object::Dictionary(dictionary) => dictionary_is_safe(dictionary),
-        Object::Stream(stream) => dictionary_is_safe(&stream.dict),
-        _ => true,
-    }
+fn object_is_security_safe(object: &Object) -> bool {
+    object_dictionary(object).is_none_or(dictionary_is_security_safe)
 }
 
-fn dictionary_is_safe(dictionary: &Dictionary) -> bool {
+fn dictionary_is_security_safe(dictionary: &Dictionary) -> bool {
     for key in [
+        b"A".as_slice(),
         b"AA".as_slice(),
+        b"Next".as_slice(),
         b"OpenAction".as_slice(),
         b"JavaScript".as_slice(),
         b"JS".as_slice(),
         b"Launch".as_slice(),
         b"EmbeddedFiles".as_slice(),
         b"AcroForm".as_slice(),
-        b"SMask".as_slice(),
-        b"ExtGState".as_slice(),
-        b"Group".as_slice(),
     ] {
         if dictionary.get(key).is_ok() {
             return false;
