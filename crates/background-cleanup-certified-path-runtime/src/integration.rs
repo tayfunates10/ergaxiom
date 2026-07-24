@@ -120,6 +120,7 @@ pub fn execute_inkscape_cleanup_probe(
         executable_digest: identity.executable_digest.clone(),
         cleaned_png_digest,
         probe_png_digest: sha256_hex(&probe_bytes),
+        probe_size_bytes: u64::try_from(probe_bytes.len()).unwrap_or(u64::MAX),
         probe_width: probe_report.width,
         probe_height: probe_report.height,
         adapter_record_digest,
