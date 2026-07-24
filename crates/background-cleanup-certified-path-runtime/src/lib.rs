@@ -8,6 +8,7 @@ mod model;
 mod planner;
 mod png;
 mod runtime;
+mod signing;
 mod util;
 
 pub use certify::{
@@ -30,4 +31,12 @@ pub use png::{RestrictedPngError, encode_restricted_srgb_rgba_png};
 pub use runtime::{
     BackgroundCleanupRuntimeError, background_cleanup_failure_map, execute_background_cleanup,
     validate_background_cleanup,
+};
+pub use signing::{
+    CleanupEvidenceKeyRegistry, CleanupEvidenceSignature, CleanupEvidenceSignatureAlgorithm,
+    CleanupEvidenceSignatureEncoding, CleanupEvidenceSignatureError,
+    SignedBackgroundCleanupExecutionRecord, SignedInkscapeCleanupIntegrationReport,
+    VerifiedCleanupExecutionEvidence, VerifiedCleanupIntegrationEvidence,
+    sign_background_cleanup_execution_record, sign_inkscape_cleanup_integration_report,
+    verify_background_cleanup_execution_record, verify_inkscape_cleanup_integration_report,
 };
