@@ -1,0 +1,1124 @@
+name: One-shot desktop control backend implementation
+
+on:
+  push:
+    branches:
+      - agent/desktop-digest-bound-control-v1
+    paths:
+      - ".github/workflows/one-shot-desktop-control-backend.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  implement:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out branch
+        uses: actions/checkout@v4
+        with:
+          ref: agent/desktop-digest-bound-control-v1
+          fetch-depth: 0
+
+      - name: Implement digest-bound desktop control backend
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          cat >> crates/desktop-shell-runtime/src/lib.rs <<'RUST'
+
+const CONTROL_SCHEMA: &str = "0.1.0";
+const MAX_APPROVAL_TTL_S: u64 = 3_600;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DesktopControlStatus {
+    AwaitingApproval,
+    Approved,
+    Executed,
+    Cancelled,
+    RolledBack,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DesktopCommandAction {
+    Approve,
+    Execute,
+    Cancel,
+    Rollback,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DesktopApprovalRequest {
+    pub expected_snapshot_digest: String,
+    pub contract_digest: String,
+    pub plan_digest: String,
+    pub permission_digest: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DesktopApprovalRecord {
+    pub schema_version: String,
+    pub approval_id: String,
+    pub job_id: String,
+    pub actor_id: String,
+    pub pre_snapshot_digest: String,
+    pub contract_digest: String,
+    pub plan_digest: String,
+    pub permission_digest: String,
+    pub issued_at_epoch_s: u64,
+    pub expires_at_epoch_s: u64,
+    pub approval_digest: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DesktopCommandReceipt {
+    pub schema_version: String,
+    pub command_id: String,
+    pub action: DesktopCommandAction,
+    pub job_id: String,
+    pub actor_id: String,
+    pub pre_snapshot_digest: String,
+    pub post_snapshot_digest: String,
+    pub approval_digest: Option<String>,
+    pub issued_at_epoch_s: u64,
+    pub applied: bool,
+    pub receipt_digest: String,
+}
+
+#[derive(Debug, Error)]
+pub enum DesktopControlError {
+    #[error(transparent)]
+    Shell(#[from] DesktopShellError),
+    #[error("desktop snapshot failed independent digest verification")]
+    SnapshotVerificationFailed,
+    #[error("desktop control request contains an invalid identifier: {0}")]
+    InvalidIdentifier(&'static str),
+    #[error("desktop control request contains an invalid digest: {0}")]
+    InvalidControlDigest(&'static str),
+    #[error("desktop control request targets a stale snapshot")]
+    StaleSnapshot,
+    #[error("desktop snapshot is missing required contract, plan, approval or job binding")]
+    MissingBinding,
+    #[error("desktop approval binding does not match the authoritative snapshot")]
+    ApprovalBindingMismatch,
+    #[error("desktop approval time-to-live is invalid")]
+    InvalidApprovalTtl,
+    #[error("desktop approval has expired")]
+    ApprovalExpired,
+    #[error("desktop control metadata is missing or invalid")]
+    InvalidControlMetadata,
+    #[error("desktop control transition is not allowed from the current state")]
+    InvalidTransition,
+    #[error("desktop command receipt is not an applied authoritative transition")]
+    ReceiptNotApplied,
+    #[error("failed to serialize desktop control material: {0}")]
+    ControlSerialization(#[from] serde_json::Error),
+    #[error(transparent)]
+    ControlHashing(#[from] HashingError),
+}
+
+pub fn issue_desktop_approval(
+    snapshot: &DesktopShellSnapshot,
+    request: &DesktopApprovalRequest,
+    actor_id: &str,
+    issued_at_epoch_s: u64,
+    ttl_s: u64,
+) -> Result<DesktopApprovalRecord, DesktopControlError> {
+    verify_authoritative_snapshot(snapshot)?;
+    validate_control_identifier("actor_id", actor_id)?;
+    validate_control_digest(
+        "expected_snapshot_digest",
+        &request.expected_snapshot_digest,
+    )?;
+    validate_control_digest("contract_digest", &request.contract_digest)?;
+    validate_control_digest("plan_digest", &request.plan_digest)?;
+    validate_control_digest("permission_digest", &request.permission_digest)?;
+    if request.expected_snapshot_digest != snapshot.snapshot_digest {
+        return Err(DesktopControlError::StaleSnapshot);
+    }
+    if control_status_from_snapshot(snapshot)? != DesktopControlStatus::AwaitingApproval {
+        return Err(DesktopControlError::InvalidTransition);
+    }
+    if ttl_s == 0 || ttl_s > MAX_APPROVAL_TTL_S {
+        return Err(DesktopControlError::InvalidApprovalTtl);
+    }
+    let expires_at_epoch_s = issued_at_epoch_s
+        .checked_add(ttl_s)
+        .ok_or(DesktopControlError::InvalidApprovalTtl)?;
+    let job_id = snapshot
+        .job_id
+        .as_ref()
+        .ok_or(DesktopControlError::MissingBinding)?;
+    let contract = snapshot
+        .contract
+        .as_ref()
+        .ok_or(DesktopControlError::MissingBinding)?;
+    let plan = snapshot
+        .plan
+        .as_ref()
+        .ok_or(DesktopControlError::MissingBinding)?;
+    let approval = snapshot
+        .approval
+        .as_ref()
+        .ok_or(DesktopControlError::MissingBinding)?;
+    if !snapshot.unresolved.is_empty()
+        || contract.status != StageStatus::Passed
+        || plan.status != StageStatus::Passed
+        || approval.status != StageStatus::Pending
+        || contract.digest != request.contract_digest
+        || plan.digest != request.plan_digest
+        || approval.contract_digest != request.contract_digest
+        || approval.plan_digest != request.plan_digest
+        || approval.permission_digest != request.permission_digest
+    {
+        return Err(DesktopControlError::ApprovalBindingMismatch);
+    }
+    let identity_seed = serde_json::json!({
+        "actor_id": actor_id,
+        "issued_at_epoch_s": issued_at_epoch_s,
+        "job_id": job_id,
+        "request": request,
+    });
+    let identity_digest = canonical_json_sha256(&identity_seed)?;
+    let mut record = DesktopApprovalRecord {
+        schema_version: CONTROL_SCHEMA.to_owned(),
+        approval_id: format!("approval.desktop.{}", &identity_digest[..16]),
+        job_id: job_id.clone(),
+        actor_id: actor_id.to_owned(),
+        pre_snapshot_digest: snapshot.snapshot_digest.clone(),
+        contract_digest: request.contract_digest.clone(),
+        plan_digest: request.plan_digest.clone(),
+        permission_digest: request.permission_digest.clone(),
+        issued_at_epoch_s,
+        expires_at_epoch_s,
+        approval_digest: String::new(),
+    };
+    record.approval_digest = desktop_control_record_digest(&record, "approval_digest")?;
+    Ok(record)
+}
+
+pub fn verify_desktop_approval(
+    record: &DesktopApprovalRecord,
+) -> Result<bool, DesktopControlError> {
+    if record.schema_version != CONTROL_SCHEMA {
+        return Ok(false);
+    }
+    validate_control_identifier("approval_id", &record.approval_id)?;
+    validate_control_identifier("job_id", &record.job_id)?;
+    validate_control_identifier("actor_id", &record.actor_id)?;
+    validate_control_digest("pre_snapshot_digest", &record.pre_snapshot_digest)?;
+    validate_control_digest("contract_digest", &record.contract_digest)?;
+    validate_control_digest("plan_digest", &record.plan_digest)?;
+    validate_control_digest("permission_digest", &record.permission_digest)?;
+    validate_control_digest("approval_digest", &record.approval_digest)?;
+    if record.expires_at_epoch_s <= record.issued_at_epoch_s {
+        return Ok(false);
+    }
+    Ok(record.approval_digest == desktop_control_record_digest(record, "approval_digest")?)
+}
+
+pub fn verify_desktop_approval_binding(
+    snapshot: &DesktopShellSnapshot,
+    record: &DesktopApprovalRecord,
+    presented_approval_digest: &str,
+) -> Result<(), DesktopControlError> {
+    verify_authoritative_snapshot(snapshot)?;
+    if !verify_desktop_approval(record)? {
+        return Err(DesktopControlError::ApprovalBindingMismatch);
+    }
+    validate_control_digest("presented_approval_digest", presented_approval_digest)?;
+    let job_id = snapshot
+        .job_id
+        .as_ref()
+        .ok_or(DesktopControlError::MissingBinding)?;
+    let contract = snapshot
+        .contract
+        .as_ref()
+        .ok_or(DesktopControlError::MissingBinding)?;
+    let plan = snapshot
+        .plan
+        .as_ref()
+        .ok_or(DesktopControlError::MissingBinding)?;
+    let approval = snapshot
+        .approval
+        .as_ref()
+        .ok_or(DesktopControlError::MissingBinding)?;
+    let metadata_approval_digest = snapshot
+        .metadata
+        .get("approval_digest")
+        .and_then(Value::as_str)
+        .ok_or(DesktopControlError::InvalidControlMetadata)?;
+    if presented_approval_digest != record.approval_digest
+        || metadata_approval_digest != record.approval_digest
+        || job_id != &record.job_id
+        || contract.digest != record.contract_digest
+        || plan.digest != record.plan_digest
+        || approval.contract_digest != record.contract_digest
+        || approval.plan_digest != record.plan_digest
+        || approval.permission_digest != record.permission_digest
+        || approval.status != StageStatus::Passed
+    {
+        return Err(DesktopControlError::ApprovalBindingMismatch);
+    }
+    Ok(())
+}
+
+pub fn verify_desktop_approval_for_execution(
+    snapshot: &DesktopShellSnapshot,
+    record: &DesktopApprovalRecord,
+    presented_approval_digest: &str,
+    now_epoch_s: u64,
+) -> Result<(), DesktopControlError> {
+    verify_desktop_approval_binding(snapshot, record, presented_approval_digest)?;
+    if control_status_from_snapshot(snapshot)? != DesktopControlStatus::Approved {
+        return Err(DesktopControlError::InvalidTransition);
+    }
+    if now_epoch_s > record.expires_at_epoch_s {
+        return Err(DesktopControlError::ApprovalExpired);
+    }
+    Ok(())
+}
+
+pub fn issue_desktop_command_receipt(
+    action: DesktopCommandAction,
+    actor_id: &str,
+    pre_snapshot: &DesktopShellSnapshot,
+    post_snapshot: &DesktopShellSnapshot,
+    approval_digest: Option<&str>,
+    issued_at_epoch_s: u64,
+) -> Result<DesktopCommandReceipt, DesktopControlError> {
+    verify_authoritative_snapshot(pre_snapshot)?;
+    verify_authoritative_snapshot(post_snapshot)?;
+    validate_control_identifier("actor_id", actor_id)?;
+    if let Some(digest) = approval_digest {
+        validate_control_digest("approval_digest", digest)?;
+    }
+    let job_id = post_snapshot
+        .job_id
+        .as_ref()
+        .ok_or(DesktopControlError::MissingBinding)?;
+    if pre_snapshot.job_id.as_ref() != Some(job_id) {
+        return Err(DesktopControlError::ApprovalBindingMismatch);
+    }
+    let identity_seed = serde_json::json!({
+        "action": action,
+        "actor_id": actor_id,
+        "approval_digest": approval_digest,
+        "issued_at_epoch_s": issued_at_epoch_s,
+        "post_snapshot_digest": post_snapshot.snapshot_digest,
+        "pre_snapshot_digest": pre_snapshot.snapshot_digest,
+    });
+    let identity_digest = canonical_json_sha256(&identity_seed)?;
+    let mut receipt = DesktopCommandReceipt {
+        schema_version: CONTROL_SCHEMA.to_owned(),
+        command_id: format!("command.desktop.{}", &identity_digest[..16]),
+        action,
+        job_id: job_id.clone(),
+        actor_id: actor_id.to_owned(),
+        pre_snapshot_digest: pre_snapshot.snapshot_digest.clone(),
+        post_snapshot_digest: post_snapshot.snapshot_digest.clone(),
+        approval_digest: approval_digest.map(str::to_owned),
+        issued_at_epoch_s,
+        applied: true,
+        receipt_digest: String::new(),
+    };
+    receipt.receipt_digest = desktop_control_record_digest(&receipt, "receipt_digest")?;
+    Ok(receipt)
+}
+
+pub fn verify_desktop_command_receipt(
+    receipt: &DesktopCommandReceipt,
+) -> Result<bool, DesktopControlError> {
+    if receipt.schema_version != CONTROL_SCHEMA || !receipt.applied {
+        return Ok(false);
+    }
+    validate_control_identifier("command_id", &receipt.command_id)?;
+    validate_control_identifier("job_id", &receipt.job_id)?;
+    validate_control_identifier("actor_id", &receipt.actor_id)?;
+    validate_control_digest("pre_snapshot_digest", &receipt.pre_snapshot_digest)?;
+    validate_control_digest("post_snapshot_digest", &receipt.post_snapshot_digest)?;
+    if let Some(digest) = &receipt.approval_digest {
+        validate_control_digest("approval_digest", digest)?;
+    }
+    validate_control_digest("receipt_digest", &receipt.receipt_digest)?;
+    Ok(receipt.receipt_digest == desktop_control_record_digest(receipt, "receipt_digest")?)
+}
+
+pub fn control_status_from_snapshot(
+    snapshot: &DesktopShellSnapshot,
+) -> Result<DesktopControlStatus, DesktopControlError> {
+    let status = snapshot
+        .metadata
+        .get("control_status")
+        .and_then(Value::as_str)
+        .ok_or(DesktopControlError::InvalidControlMetadata)?;
+    match status {
+        "awaiting_approval" => Ok(DesktopControlStatus::AwaitingApproval),
+        "approved" => Ok(DesktopControlStatus::Approved),
+        "executed" => Ok(DesktopControlStatus::Executed),
+        "cancelled" => Ok(DesktopControlStatus::Cancelled),
+        "rolled_back" => Ok(DesktopControlStatus::RolledBack),
+        _ => Err(DesktopControlError::InvalidControlMetadata),
+    }
+}
+
+fn verify_authoritative_snapshot(
+    snapshot: &DesktopShellSnapshot,
+) -> Result<(), DesktopControlError> {
+    if verify_desktop_shell_snapshot(snapshot)? {
+        Ok(())
+    } else {
+        Err(DesktopControlError::SnapshotVerificationFailed)
+    }
+}
+
+fn validate_control_identifier(
+    field: &'static str,
+    value: &str,
+) -> Result<(), DesktopControlError> {
+    if value.is_empty()
+        || value.len() > 160
+        || !value.bytes().all(|byte| {
+            byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'-' | b'_' | b':')
+        })
+    {
+        Err(DesktopControlError::InvalidIdentifier(field))
+    } else {
+        Ok(())
+    }
+}
+
+fn validate_control_digest(
+    field: &'static str,
+    value: &str,
+) -> Result<(), DesktopControlError> {
+    if is_sha256(value) {
+        Ok(())
+    } else {
+        Err(DesktopControlError::InvalidControlDigest(field))
+    }
+}
+
+fn desktop_control_record_digest<T: Serialize>(
+    record: &T,
+    digest_field: &str,
+) -> Result<String, DesktopControlError> {
+    let mut value = serde_json::to_value(record)?;
+    let object = value
+        .as_object_mut()
+        .ok_or_else(|| serde_json::Error::io(std::io::Error::other("control record is not an object")))?;
+    object.insert(digest_field.to_owned(), Value::String(String::new()));
+    Ok(canonical_json_sha256(&value)?)
+}
+RUST
+
+          cat > crates/desktop-shell-runtime/tests/control.rs <<'RUST'
+use std::error::Error;
+
+use ergaxiom_desktop_shell_runtime::{
+    ApprovalSummary, DesktopApprovalRequest, DesktopCommandAction, DesktopControlStatus,
+    DesktopShellMaterial, DigestItem, StageStatus, build_desktop_shell_snapshot,
+    control_status_from_snapshot, issue_desktop_approval, issue_desktop_command_receipt,
+    verify_desktop_approval, verify_desktop_approval_for_execution,
+    verify_desktop_command_receipt,
+};
+use serde_json::json;
+
+#[test]
+fn exact_digest_tuple_issues_a_verifiable_approval() -> Result<(), Box<dyn Error>> {
+    let awaiting = snapshot(
+        DesktopControlStatus::AwaitingApproval,
+        StageStatus::Pending,
+        None,
+    )?;
+    let request = request(&awaiting);
+    let approval = issue_desktop_approval(&awaiting, &request, "ergaxiom.local.operator", 1_000, 900)?;
+    assert!(verify_desktop_approval(&approval)?);
+    assert_eq!(approval.pre_snapshot_digest, awaiting.snapshot_digest);
+
+    let approved = snapshot(
+        DesktopControlStatus::Approved,
+        StageStatus::Passed,
+        Some(&approval.approval_digest),
+    )?;
+    verify_desktop_approval_for_execution(
+        &approved,
+        &approval,
+        &approval.approval_digest,
+        1_500,
+    )?;
+    Ok(())
+}
+
+#[test]
+fn stale_or_altered_renderer_material_fails_closed() -> Result<(), Box<dyn Error>> {
+    let awaiting = snapshot(
+        DesktopControlStatus::AwaitingApproval,
+        StageStatus::Pending,
+        None,
+    )?;
+    let mut stale = request(&awaiting);
+    stale.expected_snapshot_digest = "9".repeat(64);
+    assert!(
+        issue_desktop_approval(&awaiting, &stale, "ergaxiom.local.operator", 1_000, 900)
+            .is_err()
+    );
+
+    let mut altered = request(&awaiting);
+    altered.permission_digest = "8".repeat(64);
+    assert!(
+        issue_desktop_approval(&awaiting, &altered, "ergaxiom.local.operator", 1_000, 900)
+            .is_err()
+    );
+    Ok(())
+}
+
+#[test]
+fn expired_approval_and_receipt_tampering_fail_closed() -> Result<(), Box<dyn Error>> {
+    let awaiting = snapshot(
+        DesktopControlStatus::AwaitingApproval,
+        StageStatus::Pending,
+        None,
+    )?;
+    let approval = issue_desktop_approval(
+        &awaiting,
+        &request(&awaiting),
+        "ergaxiom.local.operator",
+        1_000,
+        30,
+    )?;
+    let approved = snapshot(
+        DesktopControlStatus::Approved,
+        StageStatus::Passed,
+        Some(&approval.approval_digest),
+    )?;
+    assert!(
+        verify_desktop_approval_for_execution(
+            &approved,
+            &approval,
+            &approval.approval_digest,
+            1_031,
+        )
+        .is_err()
+    );
+
+    let executed = snapshot(
+        DesktopControlStatus::Executed,
+        StageStatus::Passed,
+        Some(&approval.approval_digest),
+    )?;
+    let receipt = issue_desktop_command_receipt(
+        DesktopCommandAction::Execute,
+        "ergaxiom.local.operator",
+        &approved,
+        &executed,
+        Some(&approval.approval_digest),
+        1_020,
+    )?;
+    assert!(verify_desktop_command_receipt(&receipt)?);
+    let mut tampered = receipt;
+    tampered.post_snapshot_digest = "7".repeat(64);
+    assert!(!verify_desktop_command_receipt(&tampered)?);
+    Ok(())
+}
+
+fn request(snapshot: &ergaxiom_desktop_shell_runtime::DesktopShellSnapshot) -> DesktopApprovalRequest {
+    let approval = snapshot.approval.as_ref().expect("fixture approval");
+    DesktopApprovalRequest {
+        expected_snapshot_digest: snapshot.snapshot_digest.clone(),
+        contract_digest: approval.contract_digest.clone(),
+        plan_digest: approval.plan_digest.clone(),
+        permission_digest: approval.permission_digest.clone(),
+    }
+}
+
+fn snapshot(
+    control_status: DesktopControlStatus,
+    approval_status: StageStatus,
+    approval_digest: Option<&str>,
+) -> Result<ergaxiom_desktop_shell_runtime::DesktopShellSnapshot, Box<dyn Error>> {
+    let status = match control_status {
+        DesktopControlStatus::AwaitingApproval => "awaiting_approval",
+        DesktopControlStatus::Approved => "approved",
+        DesktopControlStatus::Executed => "executed",
+        DesktopControlStatus::Cancelled => "cancelled",
+        DesktopControlStatus::RolledBack => "rolled_back",
+    };
+    let snapshot = build_desktop_shell_snapshot(DesktopShellMaterial {
+        generated_at: "2026-07-25T00:00:00Z".to_owned(),
+        job_id: Some("job.desktop.control.0001".to_owned()),
+        unresolved: Vec::new(),
+        staged_inputs: Vec::new(),
+        contract: Some(DigestItem {
+            id: "contract.desktop.control.0001".to_owned(),
+            media_type: Some("application/json".to_owned()),
+            digest: "a".repeat(64),
+            status: StageStatus::Passed,
+        }),
+        approval: Some(ApprovalSummary {
+            approval_id: "approval.desktop.pending".to_owned(),
+            contract_digest: "a".repeat(64),
+            plan_digest: "b".repeat(64),
+            permission_digest: "c".repeat(64),
+            expires_at_epoch_s: 0,
+            status: approval_status,
+        }),
+        plan: Some(DigestItem {
+            id: "plan.desktop.control.0001".to_owned(),
+            media_type: Some("application/json".to_owned()),
+            digest: "b".repeat(64),
+            status: StageStatus::Passed,
+        }),
+        steps: Vec::new(),
+        validators: Vec::new(),
+        evidence_bundle: None,
+        replay_manifest: None,
+        certificate: None,
+        profession_capsules: Vec::new(),
+        adapters: Vec::new(),
+        trusted_keys: Vec::new(),
+        metadata: json!({
+            "approval_digest": approval_digest,
+            "control_status": status,
+        }),
+    })?;
+    assert_eq!(control_status_from_snapshot(&snapshot)?, control_status);
+    Ok(snapshot)
+}
+RUST
+
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('apps/desktop/src-tauri/src/pipeline.rs')
+          text = path.read_text(encoding='utf-8')
+          text = text.replace(
+              '    ApprovalSummary, DesktopShellMaterial, DesktopShellSnapshot, DigestItem, PlanStepSummary,\n    StageStatus, TrustComponentStatus, ValidatorSummary, build_desktop_shell_snapshot,\n',
+              '    ApprovalSummary, DesktopApprovalRecord, DesktopControlStatus, DesktopShellMaterial,\n    DesktopShellSnapshot, DigestItem, PlanStepSummary, StageStatus, TrustComponentStatus,\n    ValidatorSummary, build_desktop_shell_snapshot,\n',
+              1,
+          )
+          marker = 'const JOB_ID: &str = "job.desktop-shell.0001";\n\n'
+          insertion = '''const JOB_ID: &str = "job.desktop-shell.0001";\n\n#[derive(Clone, Copy)]\npub enum PipelineSnapshotMode<'a> {\n    AwaitingApproval,\n    Approved(&'a DesktopApprovalRecord),\n    Executed(&'a DesktopApprovalRecord),\n    Cancelled(Option<&'a DesktopApprovalRecord>),\n    RolledBack(&'a DesktopApprovalRecord),\n}\n\nimpl PipelineSnapshotMode<'_> {\n    fn control_status(self) -> DesktopControlStatus {\n        match self {\n            Self::AwaitingApproval => DesktopControlStatus::AwaitingApproval,\n            Self::Approved(_) => DesktopControlStatus::Approved,\n            Self::Executed(_) => DesktopControlStatus::Executed,\n            Self::Cancelled(_) => DesktopControlStatus::Cancelled,\n            Self::RolledBack(_) => DesktopControlStatus::RolledBack,\n        }\n    }\n\n    fn approval(self) -> Option<&DesktopApprovalRecord> {\n        match self {\n            Self::AwaitingApproval => None,\n            Self::Approved(record) | Self::Executed(record) | Self::RolledBack(record) => {\n                Some(record)\n            }\n            Self::Cancelled(record) => record,\n        }\n    }\n\n    fn approval_status(self) -> StageStatus {\n        match self {\n            Self::AwaitingApproval => StageStatus::Pending,\n            Self::Approved(_) | Self::Executed(_) | Self::RolledBack(_) => StageStatus::Passed,\n            Self::Cancelled(_) => StageStatus::Blocked,\n        }\n    }\n\n    fn exposes_execution(self) -> bool {\n        matches!(self, Self::Executed(_))\n    }\n\n    fn placeholder_step_status(self) -> StageStatus {\n        match self {\n            Self::Cancelled(_) | Self::RolledBack(_) => StageStatus::Blocked,\n            _ => StageStatus::Pending,\n        }\n    }\n}\n\n'''
+          if marker not in text:
+              raise SystemExit('pipeline constants marker missing')
+          text = text.replace(marker, insertion, 1)
+          text = text.replace(
+              'pub fn build_pipeline_snapshot() -> Result<DesktopShellSnapshot, String> {',
+              'pub fn build_pipeline_snapshot(\n    mode: PipelineSnapshotMode<\'_>,\n) -> Result<DesktopShellSnapshot, String> {',
+              1,
+          )
+          old = '''    let steps = run\n        .simulation\n        .steps\n        .iter()\n        .map(|step| PlanStepSummary {\n            step_id: step.step_id.clone(),\n            operator_id: compiled_plan\n                .steps\n                .iter()\n                .find(|planned| planned.step_id == step.step_id)\n                .map(|planned| planned.operator_id.clone())\n                .unwrap_or_else(|| "unknown.operator".to_owned()),\n            status: simulation_status(step.status),\n            before_digest: Some(step.before_snapshot_digest.clone()),\n            after_digest: Some(step.after_snapshot_digest.clone()),\n        })\n        .collect();\n    let validators = run\n        .validation\n        .observations\n        .iter()\n        .map(|observation| ValidatorSummary {\n            validator_id: observation.validator_id.clone(),\n            claim_id: observation.claim_id.clone(),\n            report_digest: observation.evidence_digest.clone(),\n            status: if observation.passed {\n                StageStatus::Passed\n            } else {\n                StageStatus::Failed\n            },\n            actionable_message: (!observation.passed).then(|| {\n                format!(\n                    "Observed value did not satisfy the sealed expectation: {}",\n                    observation.expected\n                )\n            }),\n        })\n        .collect();\n'''
+          new = '''    let steps = run\n        .simulation\n        .steps\n        .iter()\n        .map(|step| PlanStepSummary {\n            step_id: step.step_id.clone(),\n            operator_id: compiled_plan\n                .steps\n                .iter()\n                .find(|planned| planned.step_id == step.step_id)\n                .map(|planned| planned.operator_id.clone())\n                .unwrap_or_else(|| "unknown.operator".to_owned()),\n            status: if mode.exposes_execution() {\n                simulation_status(step.status)\n            } else {\n                mode.placeholder_step_status()\n            },\n            before_digest: mode\n                .exposes_execution()\n                .then(|| step.before_snapshot_digest.clone()),\n            after_digest: mode\n                .exposes_execution()\n                .then(|| step.after_snapshot_digest.clone()),\n        })\n        .collect();\n    let validators = if mode.exposes_execution() {\n        run.validation\n            .observations\n            .iter()\n            .map(|observation| ValidatorSummary {\n                validator_id: observation.validator_id.clone(),\n                claim_id: observation.claim_id.clone(),\n                report_digest: observation.evidence_digest.clone(),\n                status: if observation.passed {\n                    StageStatus::Passed\n                } else {\n                    StageStatus::Failed\n                },\n                actionable_message: (!observation.passed).then(|| {\n                    format!(\n                        "Observed value did not satisfy the sealed expectation: {}",\n                        observation.expected\n                    )\n                }),\n            })\n            .collect()\n    } else {\n        Vec::new()\n    };\n'''
+          if old not in text:
+              raise SystemExit('pipeline step block missing')
+          text = text.replace(old, new, 1)
+          old = '''        approval: Some(ApprovalSummary {\n            approval_id: "approval.desktop-shell.0001".to_owned(),\n            contract_digest: compiled_contract.seal.contract_digest.clone(),\n            plan_digest: plan_digest.clone(),\n            permission_digest: capability_requirement_digest,\n            expires_at_epoch_s: 1_800_000_000,\n            status: StageStatus::Pending,\n        }),\n'''
+          new = '''        approval: Some(ApprovalSummary {\n            approval_id: mode\n                .approval()\n                .map(|record| record.approval_id.clone())\n                .unwrap_or_else(|| "approval.desktop-shell.pending".to_owned()),\n            contract_digest: compiled_contract.seal.contract_digest.clone(),\n            plan_digest: plan_digest.clone(),\n            permission_digest: capability_requirement_digest,\n            expires_at_epoch_s: mode\n                .approval()\n                .map(|record| record.expires_at_epoch_s)\n                .unwrap_or(0),\n            status: mode.approval_status(),\n        }),\n'''
+          if old not in text:
+              raise SystemExit('pipeline approval block missing')
+          text = text.replace(old, new, 1)
+          old = '''        replay_manifest: Some(DigestItem {\n            id: run.simulation.simulation_id.clone(),\n            media_type: Some("application/json".to_owned()),\n            digest: run.simulation.simulation_digest.clone(),\n            status: StageStatus::Passed,\n        }),\n'''
+          new = '''        replay_manifest: mode.exposes_execution().then(|| DigestItem {\n            id: run.simulation.simulation_id.clone(),\n            media_type: Some("application/json".to_owned()),\n            digest: run.simulation.simulation_digest.clone(),\n            status: StageStatus::Passed,\n        }),\n'''
+          if old not in text:
+              raise SystemExit('pipeline replay block missing')
+          text = text.replace(old, new, 1)
+          old = '''        metadata: json!({\n            "pipeline": "intent_compiler -> typed_planner -> occupational_twin",\n            "twin_validation_passed": run.validation.all_mandatory_passed,\n            "simulation_conforms_to_plan": run.simulation.conforms_to_plan,\n            "proof_obligation_count": proof_obligation_count,\n            "proof_evidence_count": run.proof_evidence.len(),\n            "mandatory_step_count": mandatory_step_count,\n            "unresolved_mandatory_unknowns": unresolved_mandatory_unknowns,\n            "validation_report_digest": run.validation.report_digest,\n            "raster_digest": run.validation.raster_digest,\n            "acceptance_blocker": "A final signed Evidence Bundle and Acceptance Certificate are not loaded in this read-only shell snapshot."\n        }),\n'''
+          new = '''        metadata: json!({\n            "pipeline": "intent_compiler -> typed_planner -> occupational_twin",\n            "control_status": mode.control_status(),\n            "approval_digest": mode.approval().map(|record| record.approval_digest.clone()),\n            "execution_material_exposed": mode.exposes_execution(),\n            "twin_validation_passed": run.validation.all_mandatory_passed,\n            "simulation_conforms_to_plan": run.simulation.conforms_to_plan,\n            "proof_obligation_count": proof_obligation_count,\n            "proof_evidence_count": run.proof_evidence.len(),\n            "mandatory_step_count": mandatory_step_count,\n            "unresolved_mandatory_unknowns": unresolved_mandatory_unknowns,\n            "validation_report_digest": mode\n                .exposes_execution()\n                .then(|| run.validation.report_digest.clone()),\n            "raster_digest": mode\n                .exposes_execution()\n                .then(|| run.validation.raster_digest.clone()),\n            "acceptance_blocker": "Execution lifecycle is locally sealed, but a production Evidence Bundle and Acceptance Certificate are not loaded."\n        }),\n'''
+          if old not in text:
+              raise SystemExit('pipeline metadata block missing')
+          text = text.replace(old, new, 1)
+          test_marker = '#[cfg(test)]\nmod tests {'
+          if test_marker not in text:
+              raise SystemExit('pipeline tests marker missing')
+          text = text[:text.index(test_marker)] + '''#[cfg(test)]\nmod tests {\n    use ergaxiom_desktop_shell_runtime::{\n        AuthorityStatus, DesktopApprovalRequest, DesktopControlStatus, StageStatus,\n        issue_desktop_approval, verify_desktop_shell_snapshot,\n    };\n\n    use super::{PipelineSnapshotMode, build_pipeline_snapshot};\n\n    #[test]\n    fn pipeline_hides_execution_material_until_exact_approval() {\n        let awaiting = build_pipeline_snapshot(PipelineSnapshotMode::AwaitingApproval)\n            .expect("pipeline fixture must build");\n        assert!(verify_desktop_shell_snapshot(&awaiting).expect("snapshot must verify"));\n        assert_eq!(awaiting.authority_status, AuthorityStatus::Ready);\n        assert!(awaiting.validators.is_empty());\n        assert!(awaiting.replay_manifest.is_none());\n        assert!(\n            awaiting\n                .steps\n                .iter()\n                .all(|step| step.status == StageStatus::Pending)\n        );\n\n        let pending = awaiting.approval.as_ref().expect("pending approval binding");\n        let approval = issue_desktop_approval(\n            &awaiting,\n            &DesktopApprovalRequest {\n                expected_snapshot_digest: awaiting.snapshot_digest.clone(),\n                contract_digest: pending.contract_digest.clone(),\n                plan_digest: pending.plan_digest.clone(),\n                permission_digest: pending.permission_digest.clone(),\n            },\n            "ergaxiom.local.operator",\n            1_000,\n            900,\n        )\n        .expect("exact approval must issue");\n        let executed = build_pipeline_snapshot(PipelineSnapshotMode::Executed(&approval))\n            .expect("executed snapshot must build");\n        assert_eq!(\n            executed\n                .metadata\n                .get("control_status")\n                .and_then(serde_json::Value::as_str),\n            Some("executed")\n        );\n        assert!(executed.replay_manifest.is_some());\n        assert!(\n            executed\n                .steps\n                .iter()\n                .all(|step| step.status == StageStatus::Passed)\n        );\n        assert!(\n            executed\n                .validators\n                .iter()\n                .all(|validator| validator.status == StageStatus::Passed)\n        );\n        assert_eq!(DesktopControlStatus::Executed, super::PipelineSnapshotMode::Executed(&approval).control_status());\n    }\n}\n'''
+          path.write_text(text, encoding='utf-8')
+          PY
+
+          cat > apps/desktop/src-tauri/src/commands.rs <<'RUST'
+use std::sync::{Mutex, MutexGuard};
+use std::time::{SystemTime, UNIX_EPOCH};
+
+use ergaxiom_desktop_shell_runtime::{
+    DesktopApprovalRecord, DesktopApprovalRequest, DesktopCommandAction, DesktopCommandReceipt,
+    DesktopControlStatus, DesktopShellSnapshot, control_status_from_snapshot,
+    issue_desktop_approval, issue_desktop_command_receipt, verify_desktop_approval,
+    verify_desktop_approval_binding, verify_desktop_approval_for_execution,
+    verify_desktop_command_receipt, verify_desktop_shell_snapshot,
+};
+use serde::{Deserialize, Serialize};
+
+use crate::pipeline::{PipelineSnapshotMode, build_pipeline_snapshot};
+
+const LOCAL_ACTOR_ID: &str = "ergaxiom.local.operator";
+const APPROVAL_TTL_S: u64 = 900;
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct DesktopSnapshotRequest {
+    pub expected_snapshot_digest: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct DesktopApprovedActionRequest {
+    pub expected_snapshot_digest: String,
+    pub approval_digest: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct DesktopControlResponse {
+    pub status: DesktopControlStatus,
+    pub approval: Option<DesktopApprovalRecord>,
+    pub receipts: Vec<DesktopCommandReceipt>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct DesktopSnapshotResponse {
+    pub verified: bool,
+    pub source: &'static str,
+    pub snapshot: DesktopShellSnapshot,
+    pub control: DesktopControlResponse,
+}
+
+struct DesktopControlSession {
+    snapshot: DesktopShellSnapshot,
+    approval: Option<DesktopApprovalRecord>,
+    receipts: Vec<DesktopCommandReceipt>,
+}
+
+pub struct DesktopControlState {
+    inner: Mutex<DesktopControlSession>,
+}
+
+impl DesktopControlState {
+    pub fn new() -> Result<Self, String> {
+        let snapshot = build_pipeline_snapshot(PipelineSnapshotMode::AwaitingApproval)?;
+        Ok(Self {
+            inner: Mutex::new(DesktopControlSession {
+                snapshot,
+                approval: None,
+                receipts: Vec::new(),
+            }),
+        })
+    }
+
+    fn lock(&self) -> Result<MutexGuard<'_, DesktopControlSession>, String> {
+        self.inner
+            .lock()
+            .map_err(|_| "desktop control authority lock is poisoned".to_owned())
+    }
+
+    pub fn snapshot(&self) -> Result<DesktopSnapshotResponse, String> {
+        let session = self.lock()?;
+        response_from_session(&session)
+    }
+
+    pub fn approve(
+        &self,
+        request: DesktopApprovalRequest,
+    ) -> Result<DesktopSnapshotResponse, String> {
+        let now = current_epoch_s()?;
+        let mut session = self.lock()?;
+        let pre_snapshot = session.snapshot.clone();
+        let approval = issue_desktop_approval(
+            &pre_snapshot,
+            &request,
+            LOCAL_ACTOR_ID,
+            now,
+            APPROVAL_TTL_S,
+        )
+        .map_err(|error| format!("desktop approval rejected: {error}"))?;
+        let post_snapshot = build_pipeline_snapshot(PipelineSnapshotMode::Approved(&approval))?;
+        let receipt = issue_desktop_command_receipt(
+            DesktopCommandAction::Approve,
+            LOCAL_ACTOR_ID,
+            &pre_snapshot,
+            &post_snapshot,
+            Some(&approval.approval_digest),
+            now,
+        )
+        .map_err(|error| format!("approval receipt construction failed: {error}"))?;
+        session.snapshot = post_snapshot;
+        session.approval = Some(approval);
+        session.receipts.push(receipt);
+        response_from_session(&session)
+    }
+
+    pub fn execute(
+        &self,
+        request: DesktopApprovedActionRequest,
+    ) -> Result<DesktopSnapshotResponse, String> {
+        let now = current_epoch_s()?;
+        let mut session = self.lock()?;
+        ensure_expected_snapshot(&session.snapshot, &request.expected_snapshot_digest)?;
+        let approval = session
+            .approval
+            .clone()
+            .ok_or_else(|| "desktop execution has no backend approval record".to_owned())?;
+        verify_desktop_approval_for_execution(
+            &session.snapshot,
+            &approval,
+            &request.approval_digest,
+            now,
+        )
+        .map_err(|error| format!("desktop execution rejected: {error}"))?;
+        let pre_snapshot = session.snapshot.clone();
+        let post_snapshot = build_pipeline_snapshot(PipelineSnapshotMode::Executed(&approval))?;
+        let receipt = issue_desktop_command_receipt(
+            DesktopCommandAction::Execute,
+            LOCAL_ACTOR_ID,
+            &pre_snapshot,
+            &post_snapshot,
+            Some(&approval.approval_digest),
+            now,
+        )
+        .map_err(|error| format!("execution receipt construction failed: {error}"))?;
+        session.snapshot = post_snapshot;
+        session.receipts.push(receipt);
+        response_from_session(&session)
+    }
+
+    pub fn cancel(
+        &self,
+        request: DesktopSnapshotRequest,
+    ) -> Result<DesktopSnapshotResponse, String> {
+        let now = current_epoch_s()?;
+        let mut session = self.lock()?;
+        ensure_expected_snapshot(&session.snapshot, &request.expected_snapshot_digest)?;
+        let status = control_status_from_snapshot(&session.snapshot)
+            .map_err(|error| format!("desktop control state invalid: {error}"))?;
+        if !matches!(
+            status,
+            DesktopControlStatus::AwaitingApproval | DesktopControlStatus::Approved
+        ) {
+            return Err("desktop cancellation is allowed only before execution".to_owned());
+        }
+        let pre_snapshot = session.snapshot.clone();
+        let approval = session.approval.clone();
+        let post_snapshot = build_pipeline_snapshot(PipelineSnapshotMode::Cancelled(
+            approval.as_ref(),
+        ))?;
+        let receipt = issue_desktop_command_receipt(
+            DesktopCommandAction::Cancel,
+            LOCAL_ACTOR_ID,
+            &pre_snapshot,
+            &post_snapshot,
+            approval.as_ref().map(|record| record.approval_digest.as_str()),
+            now,
+        )
+        .map_err(|error| format!("cancellation receipt construction failed: {error}"))?;
+        session.snapshot = post_snapshot;
+        session.receipts.push(receipt);
+        response_from_session(&session)
+    }
+
+    pub fn rollback(
+        &self,
+        request: DesktopApprovedActionRequest,
+    ) -> Result<DesktopSnapshotResponse, String> {
+        let now = current_epoch_s()?;
+        let mut session = self.lock()?;
+        ensure_expected_snapshot(&session.snapshot, &request.expected_snapshot_digest)?;
+        if control_status_from_snapshot(&session.snapshot)
+            .map_err(|error| format!("desktop control state invalid: {error}"))?
+            != DesktopControlStatus::Executed
+        {
+            return Err("desktop rollback requires one completed execution".to_owned());
+        }
+        let approval = session
+            .approval
+            .clone()
+            .ok_or_else(|| "desktop rollback has no backend approval record".to_owned())?;
+        verify_desktop_approval_binding(
+            &session.snapshot,
+            &approval,
+            &request.approval_digest,
+        )
+        .map_err(|error| format!("desktop rollback rejected: {error}"))?;
+        let pre_snapshot = session.snapshot.clone();
+        let post_snapshot = build_pipeline_snapshot(PipelineSnapshotMode::RolledBack(&approval))?;
+        let receipt = issue_desktop_command_receipt(
+            DesktopCommandAction::Rollback,
+            LOCAL_ACTOR_ID,
+            &pre_snapshot,
+            &post_snapshot,
+            Some(&approval.approval_digest),
+            now,
+        )
+        .map_err(|error| format!("rollback receipt construction failed: {error}"))?;
+        session.snapshot = post_snapshot;
+        session.receipts.push(receipt);
+        response_from_session(&session)
+    }
+}
+
+#[tauri::command]
+pub fn get_desktop_shell_snapshot(
+    state: tauri::State<'_, DesktopControlState>,
+) -> Result<DesktopSnapshotResponse, String> {
+    state.snapshot()
+}
+
+#[tauri::command]
+pub fn approve_desktop_job(
+    state: tauri::State<'_, DesktopControlState>,
+    request: DesktopApprovalRequest,
+) -> Result<DesktopSnapshotResponse, String> {
+    state.approve(request)
+}
+
+#[tauri::command]
+pub fn start_desktop_job_execution(
+    state: tauri::State<'_, DesktopControlState>,
+    request: DesktopApprovedActionRequest,
+) -> Result<DesktopSnapshotResponse, String> {
+    state.execute(request)
+}
+
+#[tauri::command]
+pub fn cancel_desktop_job(
+    state: tauri::State<'_, DesktopControlState>,
+    request: DesktopSnapshotRequest,
+) -> Result<DesktopSnapshotResponse, String> {
+    state.cancel(request)
+}
+
+#[tauri::command]
+pub fn rollback_desktop_job(
+    state: tauri::State<'_, DesktopControlState>,
+    request: DesktopApprovedActionRequest,
+) -> Result<DesktopSnapshotResponse, String> {
+    state.rollback(request)
+}
+
+fn response_from_session(
+    session: &DesktopControlSession,
+) -> Result<DesktopSnapshotResponse, String> {
+    let verified = verify_desktop_shell_snapshot(&session.snapshot)
+        .map_err(|error| format!("desktop snapshot verification failed: {error}"))?;
+    if !verified {
+        return Err("desktop snapshot digest mismatch".to_owned());
+    }
+    if let Some(approval) = &session.approval {
+        if !verify_desktop_approval(approval)
+            .map_err(|error| format!("desktop approval verification failed: {error}"))?
+        {
+            return Err("desktop approval digest mismatch".to_owned());
+        }
+    }
+    for receipt in &session.receipts {
+        if !verify_desktop_command_receipt(receipt)
+            .map_err(|error| format!("desktop receipt verification failed: {error}"))?
+        {
+            return Err("desktop command receipt digest mismatch".to_owned());
+        }
+    }
+    let status = control_status_from_snapshot(&session.snapshot)
+        .map_err(|error| format!("desktop control metadata invalid: {error}"))?;
+    Ok(DesktopSnapshotResponse {
+        verified: true,
+        source: "desktop_control_authority",
+        snapshot: session.snapshot.clone(),
+        control: DesktopControlResponse {
+            status,
+            approval: session.approval.clone(),
+            receipts: session.receipts.clone(),
+        },
+    })
+}
+
+fn ensure_expected_snapshot(
+    snapshot: &DesktopShellSnapshot,
+    expected_snapshot_digest: &str,
+) -> Result<(), String> {
+    if snapshot.snapshot_digest == expected_snapshot_digest {
+        Ok(())
+    } else {
+        Err("renderer submitted a stale desktop snapshot digest".to_owned())
+    }
+}
+
+fn current_epoch_s() -> Result<u64, String> {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_secs())
+        .map_err(|error| format!("trusted desktop clock failed: {error}"))
+}
+
+#[cfg(test)]
+mod tests {
+    use ergaxiom_desktop_shell_runtime::{DesktopApprovalRequest, DesktopControlStatus};
+
+    use super::{
+        DesktopApprovedActionRequest, DesktopControlState, DesktopSnapshotRequest,
+    };
+
+    #[test]
+    fn backend_authority_enforces_approval_execution_and_rollback() {
+        let authority = DesktopControlState::new().expect("control authority must initialize");
+        let initial = authority.snapshot().expect("initial snapshot must verify");
+        assert_eq!(initial.control.status, DesktopControlStatus::AwaitingApproval);
+        let pending = initial
+            .snapshot
+            .approval
+            .as_ref()
+            .expect("pending approval tuple");
+        let approved = authority
+            .approve(DesktopApprovalRequest {
+                expected_snapshot_digest: initial.snapshot.snapshot_digest.clone(),
+                contract_digest: pending.contract_digest.clone(),
+                plan_digest: pending.plan_digest.clone(),
+                permission_digest: pending.permission_digest.clone(),
+            })
+            .expect("exact digest tuple must approve");
+        assert_eq!(approved.control.status, DesktopControlStatus::Approved);
+        let approval_digest = approved
+            .control
+            .approval
+            .as_ref()
+            .expect("backend approval record")
+            .approval_digest
+            .clone();
+        let executed = authority
+            .execute(DesktopApprovedActionRequest {
+                expected_snapshot_digest: approved.snapshot.snapshot_digest.clone(),
+                approval_digest: approval_digest.clone(),
+            })
+            .expect("approved execution must succeed");
+        assert_eq!(executed.control.status, DesktopControlStatus::Executed);
+        assert!(executed.snapshot.replay_manifest.is_some());
+        assert!(executed.snapshot.certificate.is_none());
+        let rolled_back = authority
+            .rollback(DesktopApprovedActionRequest {
+                expected_snapshot_digest: executed.snapshot.snapshot_digest.clone(),
+                approval_digest,
+            })
+            .expect("executed job must roll back");
+        assert_eq!(rolled_back.control.status, DesktopControlStatus::RolledBack);
+        assert!(rolled_back.snapshot.replay_manifest.is_none());
+        assert_eq!(rolled_back.control.receipts.len(), 3);
+    }
+
+    #[test]
+    fn stale_renderer_state_and_post_execution_cancel_fail_closed() {
+        let authority = DesktopControlState::new().expect("control authority must initialize");
+        assert!(
+            authority
+                .cancel(DesktopSnapshotRequest {
+                    expected_snapshot_digest: "0".repeat(64),
+                })
+                .is_err()
+        );
+        let initial = authority.snapshot().expect("initial snapshot must verify");
+        let pending = initial
+            .snapshot
+            .approval
+            .as_ref()
+            .expect("pending approval tuple");
+        let approved = authority
+            .approve(DesktopApprovalRequest {
+                expected_snapshot_digest: initial.snapshot.snapshot_digest.clone(),
+                contract_digest: pending.contract_digest.clone(),
+                plan_digest: pending.plan_digest.clone(),
+                permission_digest: pending.permission_digest.clone(),
+            })
+            .expect("approval must succeed");
+        let approval_digest = approved
+            .control
+            .approval
+            .as_ref()
+            .expect("approval")
+            .approval_digest
+            .clone();
+        let executed = authority
+            .execute(DesktopApprovedActionRequest {
+                expected_snapshot_digest: approved.snapshot.snapshot_digest,
+                approval_digest,
+            })
+            .expect("execution must succeed");
+        assert!(
+            authority
+                .cancel(DesktopSnapshotRequest {
+                    expected_snapshot_digest: executed.snapshot.snapshot_digest,
+                })
+                .is_err()
+        );
+    }
+}
+RUST
+
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('apps/desktop/src-tauri/src/lib.rs')
+          text = path.read_text(encoding='utf-8')
+          old = '''pub fn run() {\n    let result = tauri::Builder::default()\n        .invoke_handler(tauri::generate_handler![\n            commands::get_desktop_shell_snapshot\n        ])\n        .run(tauri::generate_context!());\n'''
+          new = '''pub fn run() {\n    let control_state = match commands::DesktopControlState::new() {\n        Ok(state) => state,\n        Err(error) => {\n            eprintln!("ergaxiom desktop control authority failed to initialize: {error}");\n            std::process::exit(1);\n        }\n    };\n    let result = tauri::Builder::default()\n        .manage(control_state)\n        .invoke_handler(tauri::generate_handler![\n            commands::get_desktop_shell_snapshot,\n            commands::approve_desktop_job,\n            commands::start_desktop_job_execution,\n            commands::cancel_desktop_job,\n            commands::rollback_desktop_job\n        ])\n        .run(tauri::generate_context!());\n'''
+          if old not in text:
+              raise SystemExit('tauri builder block missing')
+          path.write_text(text.replace(old, new, 1), encoding='utf-8')
+          PY
+
+          cat > apps/desktop/src-tauri/permissions/desktop-shell.toml <<'TOML'
+[[permission]]
+identifier = "allow-get-desktop-shell-snapshot"
+description = "Allows the main window to read one digest-verified desktop control snapshot."
+commands.allow = ["get_desktop_shell_snapshot"]
+
+[[permission]]
+identifier = "allow-approve-desktop-job"
+description = "Allows the main window to request a backend-generated approval over the exact displayed digest tuple."
+commands.allow = ["approve_desktop_job"]
+
+[[permission]]
+identifier = "allow-start-desktop-job-execution"
+description = "Allows the main window to request execution using one exact backend approval digest."
+commands.allow = ["start_desktop_job_execution"]
+
+[[permission]]
+identifier = "allow-cancel-desktop-job"
+description = "Allows the main window to request cancellation before execution."
+commands.allow = ["cancel_desktop_job"]
+
+[[permission]]
+identifier = "allow-rollback-desktop-job"
+description = "Allows the main window to request rollback of one completed deterministic execution."
+commands.allow = ["rollback_desktop_job"]
+TOML
+
+          cat > apps/desktop/src-tauri/capabilities/desktop-readonly.json <<'JSON'
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "desktop-control",
+  "description": "Digest-bound control capability for the Ergaxiom main window without filesystem, shell, network or signing-key access.",
+  "windows": ["main"],
+  "permissions": [
+    "core:default",
+    "allow-get-desktop-shell-snapshot",
+    "allow-approve-desktop-job",
+    "allow-start-desktop-job-execution",
+    "allow-cancel-desktop-job",
+    "allow-rollback-desktop-job"
+  ]
+}
+JSON
+
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('.github/workflows/desktop-shell.yml')
+          text = path.read_text(encoding='utf-8')
+          text = text.replace(
+              'cargo clippy -p ergaxiom-desktop-shell-runtime --all-targets --all-features -- -D warnings',
+              'cargo clippy -p ergaxiom-desktop-shell-runtime --all-targets --all-features -- -D warnings',
+          )
+          path.write_text(text, encoding='utf-8')
+          PY
+
+          cargo fmt --all
+          cargo fmt --manifest-path apps/desktop/src-tauri/Cargo.toml --all
+          git diff --check
+          git config user.name "ergaxiom-maintenance"
+          git config user.email "actions@users.noreply.github.com"
+          git add crates/desktop-shell-runtime apps/desktop/src-tauri .github/workflows/desktop-shell.yml
+          git commit -m "Add digest-bound desktop control authority"
+          git push origin HEAD:agent/desktop-digest-bound-control-v1
