@@ -20,7 +20,7 @@ jobs:
           ref: agent/desktop-digest-bound-control-v1
           fetch-depth: 0
 
-      - name: Extract and execute embedded implementation
+      - name: Extract and execute complete embedded implementation
         shell: bash
         run: |
           set -euo pipefail
@@ -30,11 +30,7 @@ jobs:
           source = Path('.github/workflows/one-shot-desktop-control-backend.yml')
           lines = source.read_text(encoding='utf-8').splitlines()
           start = next(i for i, line in enumerate(lines) if line == '        run: |') + 1
-          body = []
-          for line in lines[start:]:
-              if line and not line.startswith('          '):
-                  break
-              body.append(line[10:] if line.startswith('          ') else '')
+          body = [line[10:] if line.startswith('          ') else line for line in lines[start:]]
           if not body:
               raise SystemExit('embedded implementation body not found')
           Path('/tmp/desktop-control-implementation.sh').write_text('\n'.join(body) + '\n', encoding='utf-8')
