@@ -1,4 +1,3 @@
-use std::ffi::OsString;
 use std::io::{Read, Write};
 use std::path::PathBuf;
 
@@ -55,7 +54,7 @@ fn parse_store_path() -> Result<PathBuf, PublicFailure> {
             code: error.code(),
         });
     };
-    if argument != OsString::from("--store")
+    if argument != "--store"
         || std::env::var("ERGAXIOM_SIGNER_TEST_MODE").as_deref() != Ok("1")
     {
         return Err(PublicFailure {
