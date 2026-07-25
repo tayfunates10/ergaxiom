@@ -168,10 +168,10 @@ pub fn client_exchange(
         ));
     }
     let handle = OwnedHandle { raw: handle };
-    let mut mode = PIPE_READMODE_MESSAGE;
+    let mode = PIPE_READMODE_MESSAGE;
     // SAFETY: handle is a live connected named-pipe client handle and mode points to
-    // writable state storage; max-collection and timeout values are unchanged.
-    if unsafe { SetNamedPipeHandleState(handle.raw, &mut mode, null_mut(), null_mut()) } == 0 {
+    // readable state storage; max-collection and timeout values are unchanged.
+    if unsafe { SetNamedPipeHandleState(handle.raw, &mode, null_mut(), null_mut()) } == 0 {
         return Err(ProductionSignerTransportError::PipeModeFailed(
             std::io::Error::last_os_error(),
         ));
