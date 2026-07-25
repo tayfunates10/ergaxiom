@@ -1,0 +1,105 @@
+name: Windows DPAPI isolated signer
+
+on:
+  pull_request:
+    paths:
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "apps/windows-signer/**"
+      - "crates/windows-signer-client-runtime/**"
+      - "crates/windows-signer-protocol-runtime/**"
+      - "crates/key-governance-runtime/**"
+      - "crates/proof-kernel/**"
+      - "docs/architecture/37-windows-dpapi-isolated-signer.md"
+      - "docs/status.md"
+      - ".github/workflows/windows-dpapi-signer.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "apps/windows-signer/**"
+      - "crates/windows-signer-client-runtime/**"
+      - "crates/windows-signer-protocol-runtime/**"
+      - "crates/key-governance-runtime/**"
+      - "crates/proof-kernel/**"
+      - "docs/architecture/37-windows-dpapi-isolated-signer.md"
+      - "docs/status.md"
+      - ".github/workflows/windows-dpapi-signer.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  protocol:
+    name: Verify signer protocol and client boundary
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Check workspace formatting
+        run: cargo fmt --all -- --check
+
+      - name: Lint platform-neutral signer boundaries
+        run: >-
+          cargo clippy
+          -p ergaxiom-windows-signer-protocol-runtime
+          -p ergaxiom-windows-signer-client-runtime
+          -p ergaxiom-windows-signer
+          --all-targets --all-features -- -D warnings
+
+      - name: Run platform-neutral signer attack tests
+        run: >-
+          cargo test
+          -p ergaxiom-windows-signer-protocol-runtime
+          -p ergaxiom-windows-signer-client-runtime
+          -p ergaxiom-windows-signer
+
+  windows-dpapi:
+    name: Exercise real DPAPI and isolated signer process
+    runs-on: windows-2025
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Check workspace formatting
+        run: cargo fmt --all -- --check
+
+      - name: Lint Windows signer and protocol
+        run: >-
+          cargo clippy
+          -p ergaxiom-windows-signer-protocol-runtime
+          -p ergaxiom-windows-signer-client-runtime
+          -p ergaxiom-windows-signer
+          --all-targets --all-features -- -D warnings
+
+      - name: Run real DPAPI and process isolation tests
+        run: >-
+          cargo test
+          -p ergaxiom-windows-signer-protocol-runtime
+          -p ergaxiom-windows-signer-client-runtime
+          -p ergaxiom-windows-signer
+          --all-features
+
+      - name: Compile isolated signer executable
+        run: cargo build -p ergaxiom-windows-signer --release
+
+      - name: Upload unsigned isolated signer diagnostic
+        uses: actions/upload-artifact@v4
+        with:
+          name: ergaxiom-windows-signer-unsigned-diagnostic
+          path: target/release/ergaxiom-windows-signer.exe
+          if-no-files-found: error
+          retention-days: 14
