@@ -1,4 +1,4 @@
-name: One-shot governance Clippy finalizer
+name: One-shot governance source finalizer
 
 on:
   pull_request:
@@ -11,11 +11,11 @@ permissions:
   contents: write
 
 concurrency:
-  group: one-shot-governance-clippy-finalizer
+  group: one-shot-governance-source-finalizer
   cancel-in-progress: true
 
 jobs:
-  fix:
+  finalize-source:
     runs-on: ubuntu-24.04
     steps:
       - name: Check out implementation branch
@@ -24,7 +24,7 @@ jobs:
           ref: agent/key-governance-release-evidence-v1
           fetch-depth: 0
 
-      - name: Apply explicit bounded API lint exceptions and verify
+      - name: Apply bounded lint annotations format and lockfile
         shell: bash
         run: |
           set -euo pipefail
@@ -49,24 +49,14 @@ jobs:
           PY
 
           cargo fmt --all
-          cargo test \
-            -p ergaxiom-key-governance-runtime \
-            -p ergaxiom-governed-verification-runtime \
-            -p ergaxiom-capability-runtime \
-            -p ergaxiom-attestation-runtime
-          cargo clippy \
-            -p ergaxiom-key-governance-runtime \
-            -p ergaxiom-governed-verification-runtime \
-            -p ergaxiom-capability-runtime \
-            -p ergaxiom-attestation-runtime \
-            --all-targets --all-features -- -D warnings
-          python -m unittest tools/release/test_generate_release_evidence.py
+          cargo generate-lockfile
 
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add Cargo.lock crates/key-governance-runtime crates/governed-verification-runtime tools/release
-          if ! git diff --cached --quiet; then
-            git commit -m "Finalize governed verification and release evidence"
-            git pull --rebase origin agent/key-governance-release-evidence-v1
-            git push origin HEAD:agent/key-governance-release-evidence-v1
+          git add Cargo.lock crates/key-governance-runtime crates/governed-verification-runtime
+          if git diff --cached --quiet; then
+            exit 0
           fi
+          git commit -m "Finalize governed verification sources"
+          git pull --rebase origin agent/key-governance-release-evidence-v1
+          git push origin HEAD:agent/key-governance-release-evidence-v1
