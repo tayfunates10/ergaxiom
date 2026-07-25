@@ -3,13 +3,18 @@ use std::collections::BTreeMap;
 use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
 use ed25519_dalek::{Signature, VerifyingKey};
 use ergaxiom_contract_runtime::{CompiledContract, ContractPermission};
+use ergaxiom_key_governance_runtime::IssuerRole;
 use ergaxiom_operator_plan_runtime::{CompiledPlan, PlanStep};
 use ergaxiom_proof_kernel::{HashingError, canonical_json_bytes, canonical_json_sha256};
+use ergaxiom_windows_signer_protocol_runtime::{
+    SignerProtocolError, SignerResponse, SignerSuccess, decode_hex_32,
+};
 use serde_json::Value;
 use thiserror::Error;
 
 use crate::model::{
     AuthorizationReceipt, CapabilityGrant, CapabilityTokenPayload, SignedCapabilityToken,
+    SignerBoundCapabilityToken,
 };
 
 const SUPPORTED_TOKEN_SCHEMA: &str = "0.1.0";
@@ -20,6 +25,8 @@ pub enum CapabilityError {
     TokenDecode(#[source] serde_json::Error),
     #[error(transparent)]
     Hashing(#[from] HashingError),
+    #[error(transparent)]
+    SignerProtocol(#[from] SignerProtocolError),
     #[error("unsupported capability-token schema {actual}; expected {expected}")]
     UnsupportedSchemaVersion {
         actual: String,
@@ -35,6 +42,16 @@ pub enum CapabilityError {
     InvalidSignatureLength,
     #[error("Ed25519 signature verification failed")]
     SignatureVerificationFailed,
+    #[error("signer-bound token was not signed with the Capability issuer role")]
+    SignerRoleMismatch,
+    #[error("signer-bound token issuer does not match the payload issuer")]
+    SignerIssuerMismatch,
+    #[error("signer-bound token key ID does not match the payload key ID")]
+    SignerKeyMismatch,
+    #[error("signer-bound token digest does not match the canonical payload digest")]
+    SignerDigestMismatch,
+    #[error("signer response public key does not match the trusted registry key")]
+    SignerPublicKeyMismatch,
     #[error("token temporal bounds are invalid")]
     InvalidTemporalBounds,
     #[error("token was issued in the future")]
@@ -131,52 +148,87 @@ impl CapabilityAuthorizer {
             serde_json::from_value(token_value.clone()).map_err(CapabilityError::TokenDecode)?;
         validate_payload_shape(&token.payload)?;
         verify_signature(&self.trusted_keys, &token)?;
-        validate_time(&token.payload, trusted_now_epoch_s)?;
-        let step = validate_bindings(&token, compiled_contract, compiled_plan)?;
-        validate_subject(&token.payload, expected_executor_id, expected_device_id)?;
-        validate_grant(&token.payload.grant, &compiled_contract.permissions)?;
+        self.authorize_verified_payload(
+            token_value,
+            token.payload,
+            compiled_contract,
+            compiled_plan,
+            trusted_now_epoch_s,
+            expected_executor_id,
+            expected_device_id,
+        )
+    }
 
-        let token_digest = canonical_json_sha256(token_value)?;
+    #[allow(clippy::too_many_arguments)]
+    pub fn authorize_signer_bound(
+        &mut self,
+        token_value: &Value,
+        compiled_contract: &CompiledContract,
+        compiled_plan: &CompiledPlan,
+        trusted_now_epoch_s: u64,
+        expected_executor_id: &str,
+        expected_device_id: Option<&str>,
+    ) -> Result<AuthorizationReceipt, CapabilityError> {
+        let token: SignerBoundCapabilityToken =
+            serde_json::from_value(token_value.clone()).map_err(CapabilityError::TokenDecode)?;
+        validate_payload_shape(&token.payload)?;
+        self.verify_signer_bound_signature(&token)?;
+        self.authorize_verified_payload(
+            token_value,
+            token.payload,
+            compiled_contract,
+            compiled_plan,
+            trusted_now_epoch_s,
+            expected_executor_id,
+            expected_device_id,
+        )
+    }
+
+    pub fn verify_signer_bound_signature(
+        &self,
+        token: &SignerBoundCapabilityToken,
+    ) -> Result<(), CapabilityError> {
+        let key = self
+            .trusted_keys
+            .get(&token.payload.issuer_id, &token.payload.key_id)
+            .ok_or_else(|| CapabilityError::UnknownTrustedKey {
+                issuer_id: token.payload.issuer_id.clone(),
+                key_id: token.payload.key_id.clone(),
+            })?;
+        let envelope = token.signer_response.verify_digest_signature()?;
+        if envelope.role != IssuerRole::Capability {
+            return Err(CapabilityError::SignerRoleMismatch);
+        }
+        if envelope.issuer_id != token.payload.issuer_id {
+            return Err(CapabilityError::SignerIssuerMismatch);
+        }
+        if envelope.key_id != token.payload.key_id {
+            return Err(CapabilityError::SignerKeyMismatch);
+        }
         let payload_value =
             serde_json::to_value(&token.payload).map_err(CapabilityError::TokenDecode)?;
-        let payload_digest = canonical_json_sha256(&payload_value)?;
-        let usage_key = (
-            token.payload.issuer_id.clone(),
-            token.payload.token_id.clone(),
-        );
-        let usage_record = self.usage.entry(usage_key).or_insert_with(|| UsageRecord {
-            token_digest: token_digest.clone(),
-            uses: 0,
-        });
-        if usage_record.token_digest != token_digest {
-            return Err(CapabilityError::TokenIdCollision {
-                token_id: token.payload.token_id,
-            });
+        if envelope.digest != canonical_json_sha256(&payload_value)? {
+            return Err(CapabilityError::SignerDigestMismatch);
         }
-        if usage_record.uses >= token.payload.max_uses {
-            return Err(CapabilityError::UsageLimitExceeded);
+        let response_public_key = match &token.signer_response {
+            SignerResponse::Success {
+                result: SignerSuccess::DigestSigned { public_key_hex, .. },
+                ..
+            } => decode_hex_32(public_key_hex)?,
+            SignerResponse::Error { .. }
+            | SignerResponse::Success {
+                result: SignerSuccess::KeyInitialized { .. } | SignerSuccess::PublicKey { .. },
+                ..
+            } => {
+                return Err(CapabilityError::SignerProtocol(
+                    SignerProtocolError::ResponseDoesNotContainSignature,
+                ));
+            }
+        };
+        if response_public_key != key.to_bytes() {
+            return Err(CapabilityError::SignerPublicKeyMismatch);
         }
-        usage_record.uses += 1;
-
-        Ok(AuthorizationReceipt {
-            token_id: token.payload.token_id,
-            token_digest,
-            payload_digest,
-            issuer_id: token.payload.issuer_id,
-            key_id: token.payload.key_id,
-            executor_id: token.payload.subject.executor_id,
-            device_id: token.payload.subject.device_id,
-            contract_digest: compiled_plan.contract_digest.clone(),
-            capsule_digest: compiled_plan.capsule_digest.clone(),
-            plan_id: compiled_plan.plan_id.clone(),
-            plan_digest: compiled_plan.plan_digest.clone(),
-            step_id: step.step_id.clone(),
-            operator_id: step.operator_id.clone(),
-            grant: token.payload.grant,
-            authorized_at_epoch_s: trusted_now_epoch_s,
-            use_number: usage_record.uses,
-            max_uses: token.payload.max_uses,
-        })
+        Ok(())
     }
 
     #[must_use]
@@ -184,6 +236,62 @@ impl CapabilityAuthorizer {
         self.usage
             .get(&(issuer_id.to_owned(), token_id.to_owned()))
             .map_or(0, |record| record.uses)
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn authorize_verified_payload(
+        &mut self,
+        token_value: &Value,
+        payload: CapabilityTokenPayload,
+        compiled_contract: &CompiledContract,
+        compiled_plan: &CompiledPlan,
+        trusted_now_epoch_s: u64,
+        expected_executor_id: &str,
+        expected_device_id: Option<&str>,
+    ) -> Result<AuthorizationReceipt, CapabilityError> {
+        validate_time(&payload, trusted_now_epoch_s)?;
+        let step = validate_bindings(&payload, compiled_contract, compiled_plan)?;
+        validate_subject(&payload, expected_executor_id, expected_device_id)?;
+        validate_grant(&payload.grant, &compiled_contract.permissions)?;
+
+        let token_digest = canonical_json_sha256(token_value)?;
+        let payload_value =
+            serde_json::to_value(&payload).map_err(CapabilityError::TokenDecode)?;
+        let payload_digest = canonical_json_sha256(&payload_value)?;
+        let usage_key = (payload.issuer_id.clone(), payload.token_id.clone());
+        let usage_record = self.usage.entry(usage_key).or_insert_with(|| UsageRecord {
+            token_digest: token_digest.clone(),
+            uses: 0,
+        });
+        if usage_record.token_digest != token_digest {
+            return Err(CapabilityError::TokenIdCollision {
+                token_id: payload.token_id,
+            });
+        }
+        if usage_record.uses >= payload.max_uses {
+            return Err(CapabilityError::UsageLimitExceeded);
+        }
+        usage_record.uses += 1;
+
+        Ok(AuthorizationReceipt {
+            token_id: payload.token_id,
+            token_digest,
+            payload_digest,
+            issuer_id: payload.issuer_id,
+            key_id: payload.key_id,
+            executor_id: payload.subject.executor_id,
+            device_id: payload.subject.device_id,
+            contract_digest: compiled_plan.contract_digest.clone(),
+            capsule_digest: compiled_plan.capsule_digest.clone(),
+            plan_id: compiled_plan.plan_id.clone(),
+            plan_digest: compiled_plan.plan_digest.clone(),
+            step_id: step.step_id.clone(),
+            operator_id: step.operator_id.clone(),
+            grant: payload.grant,
+            authorized_at_epoch_s: trusted_now_epoch_s,
+            use_number: usage_record.uses,
+            max_uses: payload.max_uses,
+        })
     }
 }
 
@@ -248,11 +356,11 @@ fn validate_time(
 }
 
 fn validate_bindings<'a>(
-    token: &SignedCapabilityToken,
+    payload: &CapabilityTokenPayload,
     compiled_contract: &CompiledContract,
     compiled_plan: &'a CompiledPlan,
 ) -> Result<&'a PlanStep, CapabilityError> {
-    let bindings = &token.payload.bindings;
+    let bindings = &payload.bindings;
     if bindings.contract_digest != compiled_contract.seal.contract_digest {
         return Err(CapabilityError::ContractDigestMismatch);
     }
@@ -273,7 +381,7 @@ fn validate_bindings<'a>(
     if step.operator_id != bindings.operator_id {
         return Err(CapabilityError::OperatorMismatch);
     }
-    if !step.capability_token_ids.contains(&token.payload.token_id) {
+    if !step.capability_token_ids.contains(&payload.token_id) {
         return Err(CapabilityError::TokenNotDeclaredByStep);
     }
     Ok(step)
