@@ -1,0 +1,114 @@
+name: One-shot box signer response
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/one-shot-box-signer-response.yml"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: one-shot-box-signer-response
+  cancel-in-progress: true
+
+jobs:
+  fix:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out signer branch
+        uses: actions/checkout@v4
+        with:
+          ref: agent/dpapi-isolated-windows-signer-v1
+          fetch-depth: 0
+
+      - name: Box signer success payload and update tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+
+          lib = Path("crates/windows-signer-protocol-runtime/src/lib.rs")
+          text = lib.read_text(encoding="utf-8")
+          text = text.replace("        result: SignerSuccess,", "        result: Box<SignerSuccess>,", 1)
+          text = text.replace(
+              "            result,\n        }",
+              "            result: Box::new(result),\n        }",
+              1,
+          )
+          old = '''        let SignerResponse::Success {
+              request_id,
+              result:
+                  SignerSuccess::DigestSigned {
+                      public_key_hex,
+                      envelope,
+                      envelope_digest,
+                      signature_algorithm,
+                      signature_encoding,
+                      signature,
+                  },
+          } = self
+          else {
+              return Err(SignerProtocolError::ResponseDoesNotContainSignature);
+          };'''
+          new = '''        let SignerResponse::Success { request_id, result } = self else {
+              return Err(SignerProtocolError::ResponseDoesNotContainSignature);
+          };
+          let SignerSuccess::DigestSigned {
+              public_key_hex,
+              envelope,
+              envelope_digest,
+              signature_algorithm,
+              signature_encoding,
+              signature,
+          } = result.as_ref()
+          else {
+              return Err(SignerProtocolError::ResponseDoesNotContainSignature);
+          };'''
+          if old not in text:
+              raise SystemExit("signer response verification pattern not found")
+          lib.write_text(text.replace(old, new, 1), encoding="utf-8", newline="\n")
+
+          tests = Path("crates/windows-signer-protocol-runtime/tests/protocol.rs")
+          text = tests.read_text(encoding="utf-8")
+          old = '''        let SignerResponse::Success {
+              result: SignerSuccess::DigestSigned { envelope, .. },
+              ..
+          } = &mut response
+          else {
+              return Err("expected signed response".into());
+          };'''
+          new = '''        let SignerResponse::Success { result, .. } = &mut response else {
+              return Err("expected signed response".into());
+          };
+          let SignerSuccess::DigestSigned { envelope, .. } = result.as_mut() else {
+              return Err("expected signed response".into());
+          };'''
+          if old not in text:
+              raise SystemExit("signer response mutation pattern not found")
+          text = text.replace(old, new, 1)
+          text = text.replace(
+              "fn error_response_uses_generic_message_and_has_no_secret_fields() {",
+              "fn error_response_uses_generic_message_and_has_no_secret_fields() -> Result<(), Box<dyn std::error::Error>> {",
+              1,
+          )
+          text = text.replace(
+              '    let serialized = serde_json::to_string(&response).expect("response serialization");',
+              "    let serialized = serde_json::to_string(&response)?;",
+              1,
+          )
+          text = text.replace(
+              "    assert!(!response.contains_private_material_field());\n}",
+              "    assert!(!response.contains_private_material_field());\n    Ok(())\n}",
+              1,
+          )
+          tests.write_text(text, encoding="utf-8", newline="\n")
+          PY
+          cargo fmt --all
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm .github/workflows/one-shot-box-signer-response.yml
+          git add crates/windows-signer-protocol-runtime
+          git commit -m "Box signer response payload"
+          git push origin HEAD:agent/dpapi-isolated-windows-signer-v1
