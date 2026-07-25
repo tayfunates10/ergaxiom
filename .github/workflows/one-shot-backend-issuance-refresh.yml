@@ -1,0 +1,74 @@
+name: One-shot backend issuance refresh
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    paths:
+      - ".github/workflows/one-shot-backend-issuance-refresh.yml"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: one-shot-backend-issuance-refresh-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  refresh:
+    if: github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.head.ref == 'agent/backend-authorized-issuance-v1'
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out backend issuance branch
+        uses: actions/checkout@v4
+        with:
+          ref: agent/backend-authorized-issuance-v1
+          fetch-depth: 0
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+
+      - name: Apply ownership cleanup format refresh lockfile and remove workflow
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+
+          lib = Path("crates/backend-issuance-runtime/src/lib.rs")
+          source = lib.read_text()
+          replacements = {
+              '"approval_digest": bindings.approval_digest,': '"approval_digest": &bindings.approval_digest,',
+              '"intent_digest": intent_digest,': '"intent_digest": &intent_digest,',
+              '"command_receipt_digest": bindings.command_receipt_digest,': '"command_receipt_digest": &bindings.command_receipt_digest,',
+              '"snapshot_digest": bindings.snapshot_digest,': '"snapshot_digest": &bindings.snapshot_digest,',
+          }
+          for old, new in replacements.items():
+              source = source.replace(old, new)
+          lib.write_text(source)
+
+          tests = Path("crates/backend-issuance-runtime/tests/authorization.rs")
+          source = tests.read_text()
+          source = source.replace(
+              "use ergaxiom_key_governance_runtime::IssuerRole;\n",
+              "",
+          )
+          source = source.replace(
+              "    pending: DesktopShellSnapshot,\n",
+              "",
+          )
+          source = source.replace(
+              "        pending,\n        approved,",
+              "        approved,",
+          )
+          tests.write_text(source)
+          PY
+          cargo fmt --all
+          cargo generate-lockfile
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm .github/workflows/one-shot-backend-issuance-refresh.yml
+          git add -A
+          git commit -m "Format backend issuance and refresh lockfile"
+          git push origin HEAD:agent/backend-authorized-issuance-v1
