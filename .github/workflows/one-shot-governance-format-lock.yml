@@ -1,4 +1,4 @@
-name: One-shot governance format and lockfile
+name: One-shot governance formatted source export
 
 on:
   pull_request:
@@ -8,21 +8,20 @@ on:
       - ".github/workflows/one-shot-governance-format-lock.yml"
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
-  group: one-shot-governance-format-lock
+  group: one-shot-governance-formatted-source-export
   cancel-in-progress: true
 
 jobs:
-  write:
+  export:
     runs-on: ubuntu-24.04
     steps:
       - name: Check out fixed implementation head
         uses: actions/checkout@v4
         with:
           ref: agent/key-governance-release-evidence-v1
-          fetch-depth: 0
 
       - name: Format sources and update workspace lockfile
         shell: bash
@@ -30,11 +29,20 @@ jobs:
           set -euo pipefail
           cargo fmt --all
           cargo generate-lockfile
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add Cargo.lock crates/key-governance-runtime crates/governed-verification-runtime
-          if git diff --cached --quiet; then
-            exit 0
-          fi
-          git commit -m "Format governed verification and update lockfile"
-          git push origin HEAD:agent/key-governance-release-evidence-v1
+          mkdir -p "$RUNNER_TEMP/formatted/crates/key-governance-runtime/src"
+          mkdir -p "$RUNNER_TEMP/formatted/crates/key-governance-runtime/tests"
+          mkdir -p "$RUNNER_TEMP/formatted/crates/governed-verification-runtime/src"
+          mkdir -p "$RUNNER_TEMP/formatted/crates/governed-verification-runtime/tests"
+          cp Cargo.lock "$RUNNER_TEMP/formatted/Cargo.lock"
+          cp crates/key-governance-runtime/src/lib.rs "$RUNNER_TEMP/formatted/crates/key-governance-runtime/src/lib.rs"
+          cp crates/key-governance-runtime/tests/governance.rs "$RUNNER_TEMP/formatted/crates/key-governance-runtime/tests/governance.rs"
+          cp crates/governed-verification-runtime/src/lib.rs "$RUNNER_TEMP/formatted/crates/governed-verification-runtime/src/lib.rs"
+          cp crates/governed-verification-runtime/tests/governed.rs "$RUNNER_TEMP/formatted/crates/governed-verification-runtime/tests/governed.rs"
+
+      - name: Upload formatted sources
+        uses: actions/upload-artifact@v4
+        with:
+          name: governed-formatted-sources
+          path: ${{ runner.temp }}/formatted/**
+          if-no-files-found: error
+          retention-days: 3
