@@ -1,10 +1,14 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
-  "identifier": "desktop-readonly",
-  "description": "Read-only capability for the Ergaxiom main control window.",
+  "identifier": "desktop-control",
+  "description": "Digest-bound control capability for the Ergaxiom main window without filesystem, shell, network or signing-key access.",
   "windows": ["main"],
   "permissions": [
     "core:default",
-    "allow-get-desktop-shell-snapshot"
+    "allow-get-desktop-shell-snapshot",
+    "allow-approve-desktop-job",
+    "allow-start-desktop-job-execution",
+    "allow-cancel-desktop-job",
+    "allow-rollback-desktop-job"
   ]
 }

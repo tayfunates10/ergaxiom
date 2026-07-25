@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  canCancelExecution,
   canReviewApproval,
+  canRollbackExecution,
   canStartExecution,
   isVerifiedAccepted,
   shortDigest,
@@ -11,11 +13,16 @@ import type { DesktopSnapshotResponse } from './types';
 function response(): DesktopSnapshotResponse {
   return {
     verified: true,
-    source: 'deterministic_twin',
+    source: 'desktop_control_authority',
+    control: {
+      status: 'awaiting_approval',
+      approval: null,
+      receipts: [],
+    },
     snapshot: {
       schema_version: '0.1.0',
       authority_status: 'ready',
-      generated_at: '2026-07-23T14:00:00Z',
+      generated_at: '2026-07-25T00:00:00Z',
       job_id: 'job.desktop.0001',
       unresolved: [],
       staged_inputs: [],
@@ -26,11 +33,11 @@ function response(): DesktopSnapshotResponse {
         status: 'passed',
       },
       approval: {
-        approval_id: 'approval.desktop.0001',
+        approval_id: 'approval.desktop.pending',
         contract_digest: 'a'.repeat(64),
         plan_digest: 'b'.repeat(64),
         permission_digest: 'c'.repeat(64),
-        expires_at_epoch_s: 1_800_000_000,
+        expires_at_epoch_s: 0,
         status: 'pending',
       },
       plan: {
@@ -47,10 +54,31 @@ function response(): DesktopSnapshotResponse {
       profession_capsules: [],
       adapters: [],
       trusted_keys: [],
-      metadata: null,
+      metadata: { control_status: 'awaiting_approval' },
       snapshot_digest: 'd'.repeat(64),
     },
   };
+}
+
+function addBackendApproval(value: DesktopSnapshotResponse): void {
+  value.control.approval = {
+    schema_version: '0.1.0',
+    approval_id: 'approval.desktop.0001',
+    job_id: 'job.desktop.0001',
+    actor_id: 'ergaxiom.local.operator',
+    pre_snapshot_digest: 'd'.repeat(64),
+    contract_digest: 'a'.repeat(64),
+    plan_digest: 'b'.repeat(64),
+    permission_digest: 'c'.repeat(64),
+    issued_at_epoch_s: 1_000,
+    expires_at_epoch_s: 1_900,
+    approval_digest: 'e'.repeat(64),
+  };
+  if (value.snapshot.approval) {
+    value.snapshot.approval.status = 'passed';
+    value.snapshot.approval.approval_id = 'approval.desktop.0001';
+    value.snapshot.approval.expires_at_epoch_s = 1_900;
+  }
 }
 
 describe('desktop fail-closed model', () => {
@@ -78,23 +106,33 @@ describe('desktop fail-closed model', () => {
     expect(isVerifiedAccepted(value)).toBe(false);
   });
 
-  it('allows approval review only after contract and plan verification', () => {
+  it('allows approval review only for the exact backend digest tuple', () => {
     const value = response();
     expect(canReviewApproval(value)).toBe(true);
-    value.snapshot.unresolved.push({
-      field: 'approved_logo.sha256',
-      question: 'Which digest is approved?',
-      mandatory: true,
-      status: 'blocked',
-    });
+    if (value.snapshot.approval) value.snapshot.approval.permission_digest = '9'.repeat(64);
+    expect(canReviewApproval(value)).toBe(true);
+    if (value.snapshot.contract) value.snapshot.contract.digest = '8'.repeat(64);
     expect(canReviewApproval(value)).toBe(false);
   });
 
-  it('requires a passed approval before execution', () => {
+  it('requires backend approval and exact tuple before execution', () => {
     const value = response();
     expect(canStartExecution(value)).toBe(false);
-    if (value.snapshot.approval) value.snapshot.approval.status = 'passed';
+    addBackendApproval(value);
+    value.control.status = 'approved';
     expect(canStartExecution(value)).toBe(true);
+    if (value.control.approval) value.control.approval.plan_digest = '9'.repeat(64);
+    expect(canStartExecution(value)).toBe(false);
+  });
+
+  it('allows cancellation only before execution and rollback only after execution', () => {
+    const value = response();
+    expect(canCancelExecution(value)).toBe(true);
+    expect(canRollbackExecution(value)).toBe(false);
+    addBackendApproval(value);
+    value.control.status = 'executed';
+    expect(canCancelExecution(value)).toBe(false);
+    expect(canRollbackExecution(value)).toBe(true);
   });
 
   it('formats long digests without hiding the beginning or ending', () => {

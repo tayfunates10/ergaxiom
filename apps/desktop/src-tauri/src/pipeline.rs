@@ -1,7 +1,8 @@
 use ergaxiom_contract_runtime::compile_contract;
 use ergaxiom_desktop_shell_runtime::{
-    ApprovalSummary, DesktopShellMaterial, DesktopShellSnapshot, DigestItem, PlanStepSummary,
-    StageStatus, TrustComponentStatus, ValidatorSummary, build_desktop_shell_snapshot,
+    ApprovalSummary, DesktopApprovalRecord, DesktopControlStatus, DesktopShellMaterial,
+    DesktopShellSnapshot, DigestItem, PlanStepSummary, StageStatus, TrustComponentStatus,
+    ValidatorSummary, build_desktop_shell_snapshot,
 };
 use ergaxiom_graphic_designer_twin_runtime::{
     ApprovedCopy, ApprovedLogo, BrandProfile, CanvasSpecification, GraphicDesignJob, PixelRect,
@@ -23,7 +24,59 @@ use sha2::{Digest, Sha256};
 const GENERATED_AT: &str = "2026-07-23T14:00:00Z";
 const JOB_ID: &str = "job.desktop-shell.0001";
 
-pub fn build_pipeline_snapshot() -> Result<DesktopShellSnapshot, String> {
+#[derive(Clone, Copy)]
+pub enum PipelineSnapshotMode<'a> {
+    AwaitingApproval,
+    Approved(&'a DesktopApprovalRecord),
+    Executed(&'a DesktopApprovalRecord),
+    Cancelled(Option<&'a DesktopApprovalRecord>),
+    RolledBack(&'a DesktopApprovalRecord),
+}
+
+impl<'a> PipelineSnapshotMode<'a> {
+    fn control_status(self) -> DesktopControlStatus {
+        match self {
+            Self::AwaitingApproval => DesktopControlStatus::AwaitingApproval,
+            Self::Approved(_) => DesktopControlStatus::Approved,
+            Self::Executed(_) => DesktopControlStatus::Executed,
+            Self::Cancelled(_) => DesktopControlStatus::Cancelled,
+            Self::RolledBack(_) => DesktopControlStatus::RolledBack,
+        }
+    }
+
+    fn approval(self) -> Option<&'a DesktopApprovalRecord> {
+        match self {
+            Self::AwaitingApproval => None,
+            Self::Approved(record) | Self::Executed(record) | Self::RolledBack(record) => {
+                Some(record)
+            }
+            Self::Cancelled(record) => record,
+        }
+    }
+
+    fn approval_status(self) -> StageStatus {
+        match self {
+            Self::AwaitingApproval => StageStatus::Pending,
+            Self::Approved(_) | Self::Executed(_) | Self::RolledBack(_) => StageStatus::Passed,
+            Self::Cancelled(_) => StageStatus::Blocked,
+        }
+    }
+
+    fn exposes_execution(self) -> bool {
+        matches!(self, Self::Executed(_))
+    }
+
+    fn placeholder_step_status(self) -> StageStatus {
+        match self {
+            Self::Cancelled(_) | Self::RolledBack(_) => StageStatus::Blocked,
+            _ => StageStatus::Pending,
+        }
+    }
+}
+
+pub fn build_pipeline_snapshot(
+    mode: PipelineSnapshotMode<'_>,
+) -> Result<DesktopShellSnapshot, String> {
     let capsule: Value = serde_json::from_str(include_str!(
         "../../../../professions/graphic-designer/profession.json"
     ))
@@ -140,32 +193,43 @@ pub fn build_pipeline_snapshot() -> Result<DesktopShellSnapshot, String> {
                 .find(|planned| planned.step_id == step.step_id)
                 .map(|planned| planned.operator_id.clone())
                 .unwrap_or_else(|| "unknown.operator".to_owned()),
-            status: simulation_status(step.status),
-            before_digest: Some(step.before_snapshot_digest.clone()),
-            after_digest: Some(step.after_snapshot_digest.clone()),
-        })
-        .collect();
-    let validators = run
-        .validation
-        .observations
-        .iter()
-        .map(|observation| ValidatorSummary {
-            validator_id: observation.validator_id.clone(),
-            claim_id: observation.claim_id.clone(),
-            report_digest: observation.evidence_digest.clone(),
-            status: if observation.passed {
-                StageStatus::Passed
+            status: if mode.exposes_execution() {
+                simulation_status(step.status)
             } else {
-                StageStatus::Failed
+                mode.placeholder_step_status()
             },
-            actionable_message: (!observation.passed).then(|| {
-                format!(
-                    "Observed value did not satisfy the sealed expectation: {}",
-                    observation.expected
-                )
-            }),
+            before_digest: mode
+                .exposes_execution()
+                .then(|| step.before_snapshot_digest.clone()),
+            after_digest: mode
+                .exposes_execution()
+                .then(|| step.after_snapshot_digest.clone()),
         })
         .collect();
+    let validators = if mode.exposes_execution() {
+        run.validation
+            .observations
+            .iter()
+            .map(|observation| ValidatorSummary {
+                validator_id: observation.validator_id.clone(),
+                claim_id: observation.claim_id.clone(),
+                report_digest: observation.evidence_digest.clone(),
+                status: if observation.passed {
+                    StageStatus::Passed
+                } else {
+                    StageStatus::Failed
+                },
+                actionable_message: (!observation.passed).then(|| {
+                    format!(
+                        "Observed value did not satisfy the sealed expectation: {}",
+                        observation.expected
+                    )
+                }),
+            })
+            .collect()
+    } else {
+        Vec::new()
+    };
 
     build_desktop_shell_snapshot(DesktopShellMaterial {
         generated_at: GENERATED_AT.to_owned(),
@@ -179,12 +243,18 @@ pub fn build_pipeline_snapshot() -> Result<DesktopShellSnapshot, String> {
             status: StageStatus::Passed,
         }),
         approval: Some(ApprovalSummary {
-            approval_id: "approval.desktop-shell.0001".to_owned(),
+            approval_id: mode
+                .approval()
+                .map(|record| record.approval_id.clone())
+                .unwrap_or_else(|| "approval.desktop-shell.pending".to_owned()),
             contract_digest: compiled_contract.seal.contract_digest.clone(),
             plan_digest: plan_digest.clone(),
             permission_digest: capability_requirement_digest,
-            expires_at_epoch_s: 1_800_000_000,
-            status: StageStatus::Pending,
+            expires_at_epoch_s: mode
+                .approval()
+                .map(|record| record.expires_at_epoch_s)
+                .unwrap_or(0),
+            status: mode.approval_status(),
         }),
         plan: Some(DigestItem {
             id: compiled_plan.plan_id.clone(),
@@ -195,7 +265,7 @@ pub fn build_pipeline_snapshot() -> Result<DesktopShellSnapshot, String> {
         steps,
         validators,
         evidence_bundle: None,
-        replay_manifest: Some(DigestItem {
+        replay_manifest: mode.exposes_execution().then(|| DigestItem {
             id: run.simulation.simulation_id.clone(),
             media_type: Some("application/json".to_owned()),
             digest: run.simulation.simulation_digest.clone(),
@@ -226,15 +296,22 @@ pub fn build_pipeline_snapshot() -> Result<DesktopShellSnapshot, String> {
         }],
         metadata: json!({
             "pipeline": "intent_compiler -> typed_planner -> occupational_twin",
+            "control_status": mode.control_status(),
+            "approval_digest": mode.approval().map(|record| record.approval_digest.clone()),
+            "execution_material_exposed": mode.exposes_execution(),
             "twin_validation_passed": run.validation.all_mandatory_passed,
             "simulation_conforms_to_plan": run.simulation.conforms_to_plan,
             "proof_obligation_count": proof_obligation_count,
             "proof_evidence_count": run.proof_evidence.len(),
             "mandatory_step_count": mandatory_step_count,
             "unresolved_mandatory_unknowns": unresolved_mandatory_unknowns,
-            "validation_report_digest": run.validation.report_digest,
-            "raster_digest": run.validation.raster_digest,
-            "acceptance_blocker": "A final signed Evidence Bundle and Acceptance Certificate are not loaded in this read-only shell snapshot."
+            "validation_report_digest": mode
+                .exposes_execution()
+                .then(|| run.validation.report_digest.clone()),
+            "raster_digest": mode
+                .exposes_execution()
+                .then(|| run.validation.raster_digest.clone()),
+            "acceptance_blocker": "Execution lifecycle is locally sealed, but a production Evidence Bundle and Acceptance Certificate are not loaded."
         }),
     })
     .map_err(|error| format!("desktop snapshot construction failed: {error}"))
@@ -345,36 +422,69 @@ fn sha256_hex(bytes: &[u8]) -> String {
 #[cfg(test)]
 mod tests {
     use ergaxiom_desktop_shell_runtime::{
-        AuthorityStatus, StageStatus, verify_desktop_shell_snapshot,
+        AuthorityStatus, DesktopApprovalRequest, DesktopControlStatus, StageStatus,
+        issue_desktop_approval, verify_desktop_shell_snapshot,
     };
 
-    use super::build_pipeline_snapshot;
+    use super::{PipelineSnapshotMode, build_pipeline_snapshot};
 
     #[test]
-    fn deterministic_pipeline_produces_verified_non_accepted_snapshot() {
-        let snapshot = build_pipeline_snapshot().expect("pipeline fixture must build");
-        assert!(verify_desktop_shell_snapshot(&snapshot).expect("snapshot must verify"));
-        assert_eq!(snapshot.authority_status, AuthorityStatus::Ready);
-        assert!(snapshot.certificate.is_none());
-        assert!(snapshot.evidence_bundle.is_none());
+    fn pipeline_hides_execution_material_until_exact_approval() {
+        let awaiting = build_pipeline_snapshot(PipelineSnapshotMode::AwaitingApproval)
+            .expect("pipeline fixture must build");
+        assert!(verify_desktop_shell_snapshot(&awaiting).expect("snapshot must verify"));
+        assert_eq!(awaiting.authority_status, AuthorityStatus::Ready);
+        assert!(awaiting.validators.is_empty());
+        assert!(awaiting.replay_manifest.is_none());
         assert!(
-            snapshot
+            awaiting
+                .steps
+                .iter()
+                .all(|step| step.status == StageStatus::Pending)
+        );
+
+        let pending = awaiting
+            .approval
+            .as_ref()
+            .expect("pending approval binding");
+        let approval = issue_desktop_approval(
+            &awaiting,
+            &DesktopApprovalRequest {
+                expected_snapshot_digest: awaiting.snapshot_digest.clone(),
+                contract_digest: pending.contract_digest.clone(),
+                plan_digest: pending.plan_digest.clone(),
+                permission_digest: pending.permission_digest.clone(),
+            },
+            "ergaxiom.local.operator",
+            1_000,
+            900,
+        )
+        .expect("exact approval must issue");
+        let executed = build_pipeline_snapshot(PipelineSnapshotMode::Executed(&approval))
+            .expect("executed snapshot must build");
+        assert_eq!(
+            executed
+                .metadata
+                .get("control_status")
+                .and_then(serde_json::Value::as_str),
+            Some("executed")
+        );
+        assert!(executed.replay_manifest.is_some());
+        assert!(
+            executed
                 .steps
                 .iter()
                 .all(|step| step.status == StageStatus::Passed)
         );
         assert!(
-            snapshot
+            executed
                 .validators
                 .iter()
                 .all(|validator| validator.status == StageStatus::Passed)
         );
         assert_eq!(
-            snapshot
-                .metadata
-                .get("twin_validation_passed")
-                .and_then(serde_json::Value::as_bool),
-            Some(true)
+            DesktopControlStatus::Executed,
+            super::PipelineSnapshotMode::Executed(&approval).control_status()
         );
     }
 }

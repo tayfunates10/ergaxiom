@@ -13,6 +13,15 @@ export type StageStatus =
   | 'failed'
   | 'unknown';
 
+export type DesktopControlStatus =
+  | 'awaiting_approval'
+  | 'approved'
+  | 'executed'
+  | 'cancelled'
+  | 'rolled_back';
+
+export type DesktopCommandAction = 'approve' | 'execute' | 'cancel' | 'rollback';
+
 export interface DigestItem {
   id: string;
   media_type: string | null;
@@ -34,6 +43,56 @@ export interface ApprovalSummary {
   permission_digest: string;
   expires_at_epoch_s: number;
   status: StageStatus;
+}
+
+export interface DesktopApprovalRequest {
+  expected_snapshot_digest: string;
+  contract_digest: string;
+  plan_digest: string;
+  permission_digest: string;
+}
+
+export interface DesktopApprovedActionRequest {
+  expected_snapshot_digest: string;
+  approval_digest: string;
+}
+
+export interface DesktopSnapshotRequest {
+  expected_snapshot_digest: string;
+}
+
+export interface DesktopApprovalRecord {
+  schema_version: string;
+  approval_id: string;
+  job_id: string;
+  actor_id: string;
+  pre_snapshot_digest: string;
+  contract_digest: string;
+  plan_digest: string;
+  permission_digest: string;
+  issued_at_epoch_s: number;
+  expires_at_epoch_s: number;
+  approval_digest: string;
+}
+
+export interface DesktopCommandReceipt {
+  schema_version: string;
+  command_id: string;
+  action: DesktopCommandAction;
+  job_id: string;
+  actor_id: string;
+  pre_snapshot_digest: string;
+  post_snapshot_digest: string;
+  approval_digest: string | null;
+  issued_at_epoch_s: number;
+  applied: boolean;
+  receipt_digest: string;
+}
+
+export interface DesktopControlResponse {
+  status: DesktopControlStatus;
+  approval: DesktopApprovalRecord | null;
+  receipts: DesktopCommandReceipt[];
 }
 
 export interface PlanStepSummary {
@@ -94,7 +153,8 @@ export interface DesktopShellSnapshot {
 
 export interface DesktopSnapshotResponse {
   verified: boolean;
-  source: 'deterministic_twin' | 'unavailable';
+  source: 'desktop_control_authority' | 'deterministic_twin' | 'unavailable';
   snapshot: DesktopShellSnapshot;
+  control: DesktopControlResponse;
   error?: string;
 }
