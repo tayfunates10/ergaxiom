@@ -19,7 +19,10 @@ fn dedicated_tpm_gate_provisions_and_signs_without_exporting_private_material()
     let provider = CngPlatformKeyProvider::production();
     let policy = ProductionKeyPolicy::capability();
     let provisioning = provider.describe_or_provision_unverified(&policy, None)?;
-    assert_eq!(provisioning.descriptor.assurance, HardwareAssurance::Unproven);
+    assert_eq!(
+        provisioning.descriptor.assurance,
+        HardwareAssurance::Unproven
+    );
     assert_eq!(provisioning.descriptor.export_policy, "non-exportable");
     assert_eq!(provisioning.descriptor.algorithm, "ecdsa-p256-sha256");
     assert!(!provisioning.descriptor.public_key_base64url.is_empty());
@@ -43,14 +46,13 @@ fn dedicated_tpm_gate_provisions_and_signs_without_exporting_private_material()
         started_at_epoch_s: 1,
     };
     let binding = SignerRequestBinding::build(DIGEST, &caller, &service, &policy)?;
-    let signature = provider.sign_sha256_digest_unverified(
-        &policy,
-        &provisioning,
-        &binding,
-        DIGEST,
-    )?;
+    let signature =
+        provider.sign_sha256_digest_unverified(&policy, &provisioning, &binding, DIGEST)?;
     assert!(!signature.signature_base64url.is_empty());
-    assert_eq!(signature.public_key_digest, provisioning.descriptor.public_key_digest);
+    assert_eq!(
+        signature.public_key_digest,
+        provisioning.descriptor.public_key_digest
+    );
     assert_eq!(signature.request_binding_digest, binding.digest()?);
     Ok(())
 }

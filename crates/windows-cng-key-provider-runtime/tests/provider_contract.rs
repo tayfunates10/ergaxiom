@@ -5,7 +5,8 @@ use ergaxiom_windows_production_signer_runtime::ProductionKeyPolicy;
 fn persisted_key_names_are_deterministic_and_role_separated()
 -> Result<(), Box<dyn std::error::Error>> {
     let capability = CngPlatformKeyProvider::key_name_for(&ProductionKeyPolicy::capability())?;
-    let capability_again = CngPlatformKeyProvider::key_name_for(&ProductionKeyPolicy::capability())?;
+    let capability_again =
+        CngPlatformKeyProvider::key_name_for(&ProductionKeyPolicy::capability())?;
     let attestation = CngPlatformKeyProvider::key_name_for(&ProductionKeyPolicy::attestation())?;
     assert_eq!(capability, capability_again);
     assert_ne!(capability, attestation);

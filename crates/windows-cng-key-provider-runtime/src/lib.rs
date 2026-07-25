@@ -6,9 +6,8 @@ mod windows;
 use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
 use ergaxiom_windows_production_signer_runtime::{
     ECDSA_P256_SHA256, HardwareAssurance, HardwareKeyDescriptor, HardwareSignature,
-    MICROSOFT_PLATFORM_CRYPTO_PROVIDER, NON_EXPORTABLE_POLICY, P1363_FIXED_64,
-    ProductionKeyPolicy, ProductionSignerError, SEC1_UNCOMPRESSED_P256, SignerRequestBinding,
-    validate_sha256,
+    MICROSOFT_PLATFORM_CRYPTO_PROVIDER, NON_EXPORTABLE_POLICY, P1363_FIXED_64, ProductionKeyPolicy,
+    ProductionSignerError, SEC1_UNCOMPRESSED_P256, SignerRequestBinding, validate_sha256,
 };
 use sha2::{Digest, Sha256};
 use thiserror::Error;
@@ -204,9 +203,7 @@ mod platform {
         Err(CngProviderError::UnsupportedPlatform)
     }
 
-    pub fn describe_or_provision(
-        _key_name: &str,
-    ) -> Result<NativeProvisioning, CngProviderError> {
+    pub fn describe_or_provision(_key_name: &str) -> Result<NativeProvisioning, CngProviderError> {
         Err(CngProviderError::UnsupportedPlatform)
     }
 
@@ -238,17 +235,11 @@ pub enum CngProviderError {
     #[error("persisted CNG key could not be created: 0x{0:08x}")]
     KeyCreateFailed(i32),
     #[error("CNG key property {property} could not be set: 0x{status:08x}")]
-    KeyPropertySetFailed {
-        property: &'static str,
-        status: i32,
-    },
+    KeyPropertySetFailed { property: &'static str, status: i32 },
     #[error("CNG key could not be finalized: 0x{0:08x}")]
     KeyFinalizeFailed(i32),
     #[error("CNG key property {property} could not be read: 0x{status:08x}")]
-    KeyPropertyReadFailed {
-        property: &'static str,
-        status: i32,
-    },
+    KeyPropertyReadFailed { property: &'static str, status: i32 },
     #[error("CNG key export policy is not non-exportable")]
     KeyIsExportable,
     #[error("CNG key usage is not signing-only")]

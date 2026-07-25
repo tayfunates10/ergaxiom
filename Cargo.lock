@@ -939,6 +939,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "ergaxiom-windows-cng-key-provider-runtime"
+version = "0.1.0"
+dependencies = [
+ "base64",
+ "ergaxiom-windows-production-signer-runtime",
+ "sha2",
+ "thiserror",
+ "windows-sys",
+]
+
+[[package]]
 name = "ergaxiom-windows-production-signer-runtime"
 version = "0.1.0"
 dependencies = [

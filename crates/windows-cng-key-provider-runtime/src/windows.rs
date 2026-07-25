@@ -128,15 +128,8 @@ fn open_or_create_key(
     let key_name = wide(key_name)?;
     let mut key = 0;
     // SAFETY: provider is live, key_name is NUL-terminated, and phkey is writable.
-    let open_status = unsafe {
-        NCryptOpenKey(
-            provider,
-            &mut key,
-            key_name.as_ptr(),
-            0,
-            NCRYPT_SILENT_FLAG,
-        )
-    };
+    let open_status =
+        unsafe { NCryptOpenKey(provider, &mut key, key_name.as_ptr(), 0, NCRYPT_SILENT_FLAG) };
     if open_status == ERROR_SUCCESS {
         return Ok((KeyHandle::opened(key), false));
     }
@@ -317,7 +310,11 @@ impl ProviderHandle {
         // SAFETY: phprovider points to writable handle storage and the provider name
         // is a static NUL-terminated string supplied by windows-sys.
         let status = unsafe {
-            NCryptOpenStorageProvider(&mut raw, MS_PLATFORM_CRYPTO_PROVIDER, NCRYPT_FLAGS::default())
+            NCryptOpenStorageProvider(
+                &mut raw,
+                MS_PLATFORM_CRYPTO_PROVIDER,
+                NCRYPT_FLAGS::default(),
+            )
         };
         if status != ERROR_SUCCESS {
             return Err(CngProviderError::ProviderOpenFailed(status));
