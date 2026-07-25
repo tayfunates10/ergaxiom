@@ -19,14 +19,20 @@ jobs:
         with:
           ref: agent/key-governance-release-evidence-v1
 
-      - name: Capture Rust diagnostics
+      - name: Capture governed runtime diagnostics
         shell: bash
         run: |
           set +e
+          cargo fmt --all
+          printf '%s\n' "$?" > "$RUNNER_TEMP/governance-format.status"
           cargo check -p ergaxiom-key-governance-runtime -p ergaxiom-governed-verification-runtime --all-targets > "$RUNNER_TEMP/governance-check.log" 2>&1
           printf '%s\n' "$?" > "$RUNNER_TEMP/governance-check.status"
-          cargo fmt --all -- --check > "$RUNNER_TEMP/governance-format.log" 2>&1
-          printf '%s\n' "$?" > "$RUNNER_TEMP/governance-format.status"
+          cargo test -p ergaxiom-key-governance-runtime -p ergaxiom-governed-verification-runtime -p ergaxiom-capability-runtime -p ergaxiom-attestation-runtime > "$RUNNER_TEMP/governance-test.log" 2>&1
+          printf '%s\n' "$?" > "$RUNNER_TEMP/governance-test.status"
+          cargo clippy -p ergaxiom-key-governance-runtime -p ergaxiom-governed-verification-runtime -p ergaxiom-capability-runtime -p ergaxiom-attestation-runtime --all-targets --all-features -- -D warnings > "$RUNNER_TEMP/governance-clippy.log" 2>&1
+          printf '%s\n' "$?" > "$RUNNER_TEMP/governance-clippy.status"
+          python -m unittest tools/release/test_generate_release_evidence.py > "$RUNNER_TEMP/governance-python.log" 2>&1
+          printf '%s\n' "$?" > "$RUNNER_TEMP/governance-python.status"
           exit 0
 
       - name: Upload diagnostics
