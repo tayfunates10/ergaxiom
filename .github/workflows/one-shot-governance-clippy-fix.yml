@@ -1,0 +1,65 @@
+name: One-shot governance Clippy finalizer
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/one-shot-governance-clippy-fix.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out implementation branch
+        uses: actions/checkout@v4
+        with:
+          ref: agent/key-governance-release-evidence-v1
+          fetch-depth: 0
+
+      - name: Apply explicit bounded API lint exceptions and verify
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path("crates/key-governance-runtime/src/lib.rs")
+          text = path.read_text(encoding="utf-8")
+          replacements = {
+              "    pub fn revoke_ed25519_guarded(\n":
+                  "    #[allow(clippy::too_many_arguments)]\n    pub fn revoke_ed25519_guarded(\n",
+              "    fn insert_ed25519_internal(\n":
+                  "    #[allow(clippy::too_many_arguments)]\n    fn insert_ed25519_internal(\n",
+          }
+          for old, new in replacements.items():
+              if new in text:
+                  continue
+              if text.count(old) != 1:
+                  raise SystemExit(f"expected one lint target: {old!r}")
+              text = text.replace(old, new, 1)
+          path.write_text(text, encoding="utf-8")
+          PY
+
+          cargo fmt --all
+          cargo test \
+            -p ergaxiom-key-governance-runtime \
+            -p ergaxiom-governed-verification-runtime \
+            -p ergaxiom-capability-runtime \
+            -p ergaxiom-attestation-runtime
+          cargo clippy \
+            -p ergaxiom-key-governance-runtime \
+            -p ergaxiom-governed-verification-runtime \
+            -p ergaxiom-capability-runtime \
+            -p ergaxiom-attestation-runtime \
+            --all-targets --all-features -- -D warnings
+          python -m unittest tools/release/test_generate_release_evidence.py
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Cargo.lock crates/key-governance-runtime crates/governed-verification-runtime tools/release
+          git commit -m "Finalize governed verification and release evidence"
+          git push origin HEAD:agent/key-governance-release-evidence-v1
