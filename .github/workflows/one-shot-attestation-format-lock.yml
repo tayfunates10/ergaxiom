@@ -1,0 +1,43 @@
+name: One-shot attestation format and lock refresh
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    paths:
+      - ".github/workflows/one-shot-attestation-format-lock.yml"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: one-shot-attestation-format-lock-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  refresh:
+    if: github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.head.ref == 'agent/purpose-locked-attestation-issuance-v1'
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out attestation issuance branch
+        uses: actions/checkout@v4
+        with:
+          ref: agent/purpose-locked-attestation-issuance-v1
+          fetch-depth: 0
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+
+      - name: Format workspace refresh lockfile and remove workflow
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo fmt --all
+          cargo generate-lockfile
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm .github/workflows/one-shot-attestation-format-lock.yml
+          git add -A
+          git commit -m "Format attestation issuance and refresh lockfile"
+          git push origin HEAD:agent/purpose-locked-attestation-issuance-v1
