@@ -31,16 +31,10 @@ jobs:
 
           path = Path("apps/windows-signer/src/lib.rs")
           text = path.read_text(encoding="utf-8")
-          old = '''    use windows_sys::Win32::Security::Cryptography::{
-              CRYPT_INTEGER_BLOB, CRYPTPROTECT_UI_FORBIDDEN, CryptProtectData, CryptUnprotectData,
-          };
-          use windows_sys::Win32::System::Memory::LocalFree;'''
-          new = '''    use windows_sys::Win32::Foundation::LocalFree;
-          use windows_sys::Win32::Security::Cryptography::{
-              CRYPT_INTEGER_BLOB, CRYPTPROTECT_UI_FORBIDDEN, CryptProtectData, CryptUnprotectData,
-          };'''
+          old = "    use windows_sys::Win32::System::Memory::LocalFree;"
+          new = "    use windows_sys::Win32::Foundation::LocalFree;"
           if old not in text:
-              raise SystemExit("LocalFree import pattern not found")
+              raise SystemExit("LocalFree import line not found")
           path.write_text(text.replace(old, new, 1), encoding="utf-8", newline="\n")
           PY
           cargo fmt --all
