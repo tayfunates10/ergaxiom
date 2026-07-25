@@ -1,0 +1,189 @@
+name: Key governance and release evidence
+
+on:
+  pull_request:
+    paths:
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "crates/key-governance-runtime/**"
+      - "crates/governed-verification-runtime/**"
+      - "crates/capability-runtime/**"
+      - "crates/attestation-runtime/**"
+      - "apps/desktop/package-lock.json"
+      - "apps/desktop/src-tauri/**"
+      - "tools/release/**"
+      - "docs/architecture/36-key-governance-and-release-evidence.md"
+      - "docs/status.md"
+      - ".github/workflows/key-governance-release-evidence.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "crates/key-governance-runtime/**"
+      - "crates/governed-verification-runtime/**"
+      - "crates/capability-runtime/**"
+      - "crates/attestation-runtime/**"
+      - "apps/desktop/package-lock.json"
+      - "apps/desktop/src-tauri/**"
+      - "tools/release/**"
+      - "docs/architecture/36-key-governance-and-release-evidence.md"
+      - "docs/status.md"
+      - ".github/workflows/key-governance-release-evidence.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  governance:
+    name: Verify governed issuer roles rotation and revocation
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Check workspace formatting
+        run: cargo fmt --all -- --check
+
+      - name: Lint governed verification runtimes
+        run: >-
+          cargo clippy
+          -p ergaxiom-key-governance-runtime
+          -p ergaxiom-governed-verification-runtime
+          -p ergaxiom-capability-runtime
+          -p ergaxiom-attestation-runtime
+          --all-targets --all-features -- -D warnings
+
+      - name: Run governance and verifier attack tests
+        run: >-
+          cargo test
+          -p ergaxiom-key-governance-runtime
+          -p ergaxiom-governed-verification-runtime
+          -p ergaxiom-capability-runtime
+          -p ergaxiom-attestation-runtime
+
+  deterministic-evidence:
+    name: Reproduce SPDX manifest and checksums
+    runs-on: ubuntu-24.04
+    env:
+      SOURCE_COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Install Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Run release evidence unit tests
+        run: python -m unittest tools/release/test_generate_release_evidence.py
+
+      - name: Generate identical evidence twice
+        shell: bash
+        run: |
+          set -euo pipefail
+          printf 'ergaxiom deterministic unsigned candidate\n' > "$RUNNER_TEMP/ergaxiom-desktop.exe"
+          python tools/release/generate_release_evidence.py \
+            --repo-root . \
+            --artifact "$RUNNER_TEMP/ergaxiom-desktop.exe" \
+            --source-commit "$SOURCE_COMMIT" \
+            --output-dir "$RUNNER_TEMP/evidence-a"
+          python tools/release/generate_release_evidence.py \
+            --repo-root . \
+            --artifact "$RUNNER_TEMP/ergaxiom-desktop.exe" \
+            --source-commit "$SOURCE_COMMIT" \
+            --output-dir "$RUNNER_TEMP/evidence-b"
+          diff -ru "$RUNNER_TEMP/evidence-a" "$RUNNER_TEMP/evidence-b"
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          manifest = json.loads(
+              (Path(os.environ["RUNNER_TEMP"]) / "evidence-a" / "ergaxiom-release-manifest.json")
+              .read_text(encoding="utf-8")
+          )
+          if manifest["release_eligible"] is not False:
+              raise SystemExit("unsigned candidate was incorrectly marked release eligible")
+          PY
+
+      - name: Upload deterministic release evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: ergaxiom-deterministic-release-evidence
+          path: ${{ runner.temp }}/evidence-a/**
+          if-no-files-found: error
+          retention-days: 14
+
+  windows-candidate:
+    name: Build unsigned Windows candidate and bind release evidence
+    runs-on: windows-2025
+    env:
+      SOURCE_COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Install Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: apps/desktop/package-lock.json
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install pinned desktop dependencies
+        working-directory: apps/desktop
+        run: npm ci
+
+      - name: Compile Windows candidate without signing or bundling
+        working-directory: apps/desktop
+        run: npm run tauri -- build --no-bundle
+
+      - name: Generate fail-closed candidate evidence
+        shell: pwsh
+        run: |
+          $rustcVersion = (rustc --version).Trim()
+          $nodeVersion = (node --version).Trim()
+          $npmVersion = (npm --version).Trim()
+          python tools/release/generate_release_evidence.py `
+            --repo-root . `
+            --artifact apps/desktop/src-tauri/target/release/ergaxiom-desktop.exe `
+            --source-commit "$env:SOURCE_COMMIT" `
+            --rustc-version "$rustcVersion" `
+            --node-version "$nodeVersion" `
+            --npm-version "$npmVersion" `
+            --output-dir "$env:RUNNER_TEMP\release-evidence"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $manifest = Get-Content "$env:RUNNER_TEMP\release-evidence\ergaxiom-release-manifest.json" | ConvertFrom-Json
+          if ($manifest.release_eligible -ne $false) {
+            throw "Unsigned Windows candidate was incorrectly marked release eligible"
+          }
+
+      - name: Upload unsigned Windows candidate
+        uses: actions/upload-artifact@v4
+        with:
+          name: ergaxiom-windows-unsigned-governed-candidate
+          path: apps/desktop/src-tauri/target/release/ergaxiom-desktop.exe
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload Windows release evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: ergaxiom-windows-release-evidence
+          path: ${{ runner.temp }}/release-evidence/**
+          if-no-files-found: error
+          retention-days: 14

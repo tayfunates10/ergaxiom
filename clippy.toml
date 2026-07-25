@@ -1,0 +1,3 @@
+# Ergaxiom uses explicit digest, role, issuer and validity parameters at trust boundaries.
+# Nine arguments keeps those security bindings visible without suppressing other Clippy warnings.
+too-many-arguments-threshold = 9

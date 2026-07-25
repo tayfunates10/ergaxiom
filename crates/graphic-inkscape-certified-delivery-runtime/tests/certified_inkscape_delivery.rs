@@ -1,6 +1,7 @@
 use std::error::Error;
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
@@ -46,6 +47,7 @@ const DEVICE_ID: &str = "device.graphic-inkscape-certified-test";
 const EXECUTION_ISSUER: &str = "ergaxiom.inkscape-execution-authority";
 const EXECUTION_KEY_ID: &str = "inkscape-execution-key-01";
 const NOW: u64 = 20_000;
+static NEXT_TEST_DIRECTORY_ID: AtomicU64 = AtomicU64::new(1);
 
 struct Context {
     contract_value: Value,
@@ -63,8 +65,9 @@ struct TestDirectory {
 impl TestDirectory {
     fn create(name: &str) -> Result<Self, Box<dyn Error>> {
         let nonce = SystemTime::now().duration_since(UNIX_EPOCH)?.as_nanos();
+        let unique_id = NEXT_TEST_DIRECTORY_ID.fetch_add(1, Ordering::Relaxed);
         let path = std::env::temp_dir().join(format!(
-            "ergaxiom-certified-inkscape-{name}-{}-{nonce}",
+            "ergaxiom-certified-inkscape-{name}-{}-{unique_id}-{nonce}",
             std::process::id()
         ));
         fs::create_dir_all(&path)?;
