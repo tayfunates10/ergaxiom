@@ -5,6 +5,7 @@ on:
     paths:
       - "Cargo.toml"
       - "Cargo.lock"
+      - "crates/windows-cng-key-provider-runtime/**"
       - "crates/windows-production-signer-runtime/**"
       - "docs/architecture/41-tpm-cng-production-signer.md"
       - ".github/workflows/windows-production-signer.yml"
@@ -14,6 +15,7 @@ on:
     paths:
       - "Cargo.toml"
       - "Cargo.lock"
+      - "crates/windows-cng-key-provider-runtime/**"
       - "crates/windows-production-signer-runtime/**"
       - "docs/architecture/41-tpm-cng-production-signer.md"
       - ".github/workflows/windows-production-signer.yml"
@@ -23,7 +25,7 @@ permissions:
 
 jobs:
   policy:
-    name: Verify production signer policy and identity bindings
+    name: Verify production signer policy and CNG contracts
     runs-on: ubuntu-24.04
     steps:
       - name: Check out repository
@@ -37,14 +39,47 @@ jobs:
       - name: Check workspace formatting
         run: cargo fmt --all -- --check
 
-      - name: Lint production signer foundation
+      - name: Lint platform-neutral production signer boundaries
         run: |
           cargo clippy \
             -p ergaxiom-windows-production-signer-runtime \
+            -p ergaxiom-windows-cng-key-provider-runtime \
             --all-targets --all-features -- -D warnings
 
-      - name: Run production signer policy attacks
+      - name: Run platform-neutral production signer attacks
         run: |
           cargo test \
             -p ergaxiom-windows-production-signer-runtime \
+            -p ergaxiom-windows-cng-key-provider-runtime \
+            --all-features
+
+  windows-cng:
+    name: Compile CNG provider and enforce hardware-only probe
+    runs-on: windows-2025
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Check workspace formatting
+        run: cargo fmt --all -- --check
+
+      - name: Lint Windows CNG provider
+        shell: pwsh
+        run: |
+          cargo clippy `
+            -p ergaxiom-windows-production-signer-runtime `
+            -p ergaxiom-windows-cng-key-provider-runtime `
+            --all-targets --all-features -- -D warnings
+
+      - name: Run Windows CNG provider contract tests
+        shell: pwsh
+        run: |
+          cargo test `
+            -p ergaxiom-windows-production-signer-runtime `
+            -p ergaxiom-windows-cng-key-provider-runtime `
             --all-features
