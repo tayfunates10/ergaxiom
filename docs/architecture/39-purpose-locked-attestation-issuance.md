@@ -6,6 +6,8 @@ This gate binds Acceptance Certificate issuance to the isolated Windows signer w
 
 It adds a signer-bound Acceptance Certificate package alongside the existing direct-Ed25519 package. Existing certified paths and direct verification remain supported; no silent signature-semantics migration occurs.
 
+The legacy direct-Ed25519 verifier retains its signature-first validation and error ordering, so existing payload-tamper behavior remains backward compatible while the new signer-bound verifier applies its independent envelope and manifest checks.
+
 The package covers Acceptance Certificate issuance only. It does not expose signer controls to the renderer, provide TPM/CNG hardware-backed non-exportability, add Authenticode or prove installer provenance.
 
 ## Fixed attestation authority
