@@ -73,6 +73,8 @@ The runtime stores authorizations in a backend-owned pending journal. Consumptio
 
 A consumed authorization cannot be used again. The same exact intent under the same approval cannot be re-authorized. If the signer transport rejects or fails after consumption, the permission remains consumed and must not become reusable.
 
+The current pending, consumed and authorized-intent journals are in-memory and scoped to one runtime process. Process restart durability, multi-user coordination and crash-recovery semantics are not claimed by this gate.
+
 ## Renderer boundary
 
 No Tauri command is added for:
