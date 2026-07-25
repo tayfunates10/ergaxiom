@@ -15,7 +15,7 @@ fn exact_digest_tuple_issues_a_verifiable_approval() -> Result<(), Box<dyn Error
         StageStatus::Pending,
         None,
     )?;
-    let request = request(&awaiting);
+    let request = request(&awaiting)?;
     let approval =
         issue_desktop_approval(&awaiting, &request, "ergaxiom.local.operator", 1_000, 900)?;
     assert!(verify_desktop_approval(&approval)?);
@@ -37,13 +37,13 @@ fn stale_or_altered_renderer_material_fails_closed() -> Result<(), Box<dyn Error
         StageStatus::Pending,
         None,
     )?;
-    let mut stale = request(&awaiting);
+    let mut stale = request(&awaiting)?;
     stale.expected_snapshot_digest = "9".repeat(64);
     assert!(
         issue_desktop_approval(&awaiting, &stale, "ergaxiom.local.operator", 1_000, 900).is_err()
     );
 
-    let mut altered = request(&awaiting);
+    let mut altered = request(&awaiting)?;
     altered.permission_digest = "8".repeat(64);
     assert!(
         issue_desktop_approval(&awaiting, &altered, "ergaxiom.local.operator", 1_000, 900).is_err()
@@ -60,7 +60,7 @@ fn expired_approval_and_receipt_tampering_fail_closed() -> Result<(), Box<dyn Er
     )?;
     let approval = issue_desktop_approval(
         &awaiting,
-        &request(&awaiting),
+        &request(&awaiting)?,
         "ergaxiom.local.operator",
         1_000,
         30,
@@ -102,14 +102,17 @@ fn expired_approval_and_receipt_tampering_fail_closed() -> Result<(), Box<dyn Er
 
 fn request(
     snapshot: &ergaxiom_desktop_shell_runtime::DesktopShellSnapshot,
-) -> DesktopApprovalRequest {
-    let approval = snapshot.approval.as_ref().expect("fixture approval");
-    DesktopApprovalRequest {
+) -> Result<DesktopApprovalRequest, Box<dyn Error>> {
+    let approval = snapshot
+        .approval
+        .as_ref()
+        .ok_or("fixture approval is missing")?;
+    Ok(DesktopApprovalRequest {
         expected_snapshot_digest: snapshot.snapshot_digest.clone(),
         contract_digest: approval.contract_digest.clone(),
         plan_digest: approval.plan_digest.clone(),
         permission_digest: approval.permission_digest.clone(),
-    }
+    })
 }
 
 fn snapshot(
@@ -158,9 +161,9 @@ fn snapshot(
         adapters: Vec::new(),
         trusted_keys: Vec::new(),
         metadata: json!({
-        "approval_digest": approval_digest,
-        "control_status": status,
-              }),
+            "approval_digest": approval_digest,
+            "control_status": status,
+        }),
     })?;
     assert_eq!(control_status_from_snapshot(&snapshot)?, control_status);
     Ok(snapshot)
