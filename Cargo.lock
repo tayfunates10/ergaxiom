@@ -939,6 +939,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "ergaxiom-windows-production-signer-runtime"
+version = "0.1.0"
+dependencies = [
+ "ergaxiom-key-governance-runtime",
+ "ergaxiom-proof-kernel",
+ "serde",
+ "serde_json",
+ "sha2",
+ "thiserror",
+]
+
+[[package]]
 name = "ergaxiom-windows-signer"
 version = "0.1.0"
 dependencies = [

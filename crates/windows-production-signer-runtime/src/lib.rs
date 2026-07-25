@@ -404,10 +404,7 @@ impl ProvisioningReceipt {
         let object = value
             .as_object_mut()
             .ok_or(ProductionSignerError::InvalidCanonicalObject)?;
-        object.insert(
-            "receipt_digest".to_owned(),
-            Value::String(String::new()),
-        );
+        object.insert("receipt_digest".to_owned(), Value::String(String::new()));
         Ok(canonical_json_sha256(&value)?)
     }
 }
@@ -474,10 +471,7 @@ pub trait ProductionKeyProvider {
     ) -> Result<HardwareSignature, ProductionSignerError>;
 }
 
-pub fn validate_identifier(
-    field: &'static str,
-    value: &str,
-) -> Result<(), ProductionSignerError> {
+pub fn validate_identifier(field: &'static str, value: &str) -> Result<(), ProductionSignerError> {
     let valid_length = (3..=128).contains(&value.len());
     let mut chars = value.chars();
     let starts_valid = chars

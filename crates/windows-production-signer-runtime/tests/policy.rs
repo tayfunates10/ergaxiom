@@ -115,14 +115,12 @@ fn caller_process_creation_time_and_image_digest_are_request_bound()
 
     let mut stale_pid_reuse = caller.clone();
     stale_pid_reuse.process_creation_time_100ns += 1;
-    let stale_binding =
-        SignerRequestBinding::build(HASH_A, &stale_pid_reuse, &service, &policy)?;
+    let stale_binding = SignerRequestBinding::build(HASH_A, &stale_pid_reuse, &service, &policy)?;
     assert_ne!(binding.digest()?, stale_binding.digest()?);
 
     let mut altered_image = caller;
     altered_image.executable_sha256 = HASH_B.to_owned();
-    let altered_binding =
-        SignerRequestBinding::build(HASH_A, &altered_image, &service, &policy)?;
+    let altered_binding = SignerRequestBinding::build(HASH_A, &altered_image, &service, &policy)?;
     assert_ne!(binding.digest()?, altered_binding.digest()?);
     Ok(())
 }
@@ -137,15 +135,14 @@ fn signer_service_instance_substitution_changes_request_binding()
 
     let mut restarted_service = service;
     restarted_service.instance_nonce = "fedcba9876543210fedcba9876543210".to_owned();
-    let restarted =
-        SignerRequestBinding::build(HASH_A, &caller, &restarted_service, &policy)?;
+    let restarted = SignerRequestBinding::build(HASH_A, &caller, &restarted_service, &policy)?;
     assert_ne!(binding.digest()?, restarted.digest()?);
     Ok(())
 }
 
 #[test]
-fn provisioning_receipt_is_public_only_and_digest_sealed()
--> Result<(), Box<dyn std::error::Error>> {
+fn provisioning_receipt_is_public_only_and_digest_sealed() -> Result<(), Box<dyn std::error::Error>>
+{
     let policy = ProductionKeyPolicy::attestation();
     let receipt = ProvisioningReceipt::from_descriptor(descriptor(&policy)?, 1_800_000_100)?;
     receipt.validate_for(&policy)?;
