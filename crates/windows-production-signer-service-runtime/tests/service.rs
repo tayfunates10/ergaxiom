@@ -3,10 +3,10 @@ use std::cell::Cell;
 use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
 use ergaxiom_windows_production_signer_protocol_runtime::ProductionSignerRequest;
 use ergaxiom_windows_production_signer_runtime::{
-    AUTHENTICATED_CALLER_SCHEMA, AuthenticatedCallerIdentity, ECDSA_P256_SHA256,
-    HardwareAssurance, HardwareKeyDescriptor, HardwareSignature, P1363_FIXED_64,
-    ProductionKeyPolicy, SIGNER_SERVICE_IDENTITY_SCHEMA, SEC1_UNCOMPRESSED_P256,
-    SignerRequestBinding, SignerServiceIdentity,
+    AUTHENTICATED_CALLER_SCHEMA, AuthenticatedCallerIdentity, ECDSA_P256_SHA256, HardwareAssurance,
+    HardwareKeyDescriptor, HardwareSignature, P1363_FIXED_64, ProductionKeyPolicy,
+    SEC1_UNCOMPRESSED_P256, SIGNER_SERVICE_IDENTITY_SCHEMA, SignerRequestBinding,
+    SignerServiceIdentity,
 };
 use ergaxiom_windows_production_signer_service_runtime::{
     HardwareSignerBackend, HardwareSignerBackendError, ProductionSignerService,
@@ -15,18 +15,12 @@ use ergaxiom_windows_production_signer_service_runtime::{
 use ergaxiom_windows_signer_service_identity_runtime::{
     AllowedSignerCaller, SignerCallerAllowlist, SignerIdentityError,
 };
-use p256::ecdsa::{
-    Signature, SigningKey,
-    signature::hazmat::PrehashSigner,
-};
+use p256::ecdsa::{Signature, SigningKey, signature::hazmat::PrehashSigner};
 use sha2::{Digest, Sha256};
 
-const PAYLOAD_DIGEST: &str =
-    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
-const CALLER_IMAGE: &str =
-    "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
-const SERVICE_IMAGE: &str =
-    "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc";
+const PAYLOAD_DIGEST: &str = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+const CALLER_IMAGE: &str = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+const SERVICE_IMAGE: &str = "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc";
 
 #[derive(Debug)]
 struct FakeHardwareBackend {
@@ -180,8 +174,7 @@ fn exact_authenticated_request_reaches_verified_production_signature()
 }
 
 #[test]
-fn unproven_descriptor_never_reaches_backend_signing()
--> Result<(), Box<dyn std::error::Error>> {
+fn unproven_descriptor_never_reaches_backend_signing() -> Result<(), Box<dyn std::error::Error>> {
     let backend = FakeHardwareBackend::unproven()?;
     let mut service = ProductionSignerService::new(backend, service_identity(), allowlist()?)?;
     assert!(matches!(
@@ -196,8 +189,8 @@ fn unproven_descriptor_never_reaches_backend_signing()
 }
 
 #[test]
-fn backend_failure_consumes_request_replay_authorization()
--> Result<(), Box<dyn std::error::Error>> {
+fn backend_failure_consumes_request_replay_authorization() -> Result<(), Box<dyn std::error::Error>>
+{
     let backend = FakeHardwareBackend::failing()?;
     let mut service = ProductionSignerService::new(backend, service_identity(), allowlist()?)?;
     let request = request("production.capability.sign.1003")?;

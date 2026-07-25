@@ -32,9 +32,7 @@ impl AuthorizedProductionSignerPackage {
         let policy = policy_for_identity(response_identity(&self.signer_response)?)?;
         self.caller_authorization
             .validate(caller, service_identity, allowlist)?;
-        let envelope = self
-            .signer_response
-            .verify_production_eligible(&policy)?;
+        let envelope = self.signer_response.verify_production_eligible(&policy)?;
         if envelope.request.digest_for(&policy)? != self.caller_authorization.request_digest
             || envelope.binding.caller_identity_digest
                 != self.caller_authorization.caller_identity_digest
@@ -122,23 +120,16 @@ where
             trusted_now_epoch_s,
         )?;
 
-        let binding = SignerRequestBinding::build(
-            request_digest,
-            caller,
-            &self.service_identity,
-            &policy,
-        )?;
+        let binding =
+            SignerRequestBinding::build(request_digest, caller, &self.service_identity, &policy)?;
         let envelope = request.envelope(&policy, binding.clone())?;
         let envelope_digest = envelope.digest_for(&policy)?;
 
         let descriptor = self.backend.descriptor(&policy)?;
         descriptor.validate_for(&policy)?;
-        let signature = self.backend.sign_sha256_digest(
-            &policy,
-            &descriptor,
-            &binding,
-            &envelope_digest,
-        )?;
+        let signature =
+            self.backend
+                .sign_sha256_digest(&policy, &descriptor, &binding, &envelope_digest)?;
         signature.validate_for(&descriptor, &binding)?;
 
         let signer_response = ProductionSignerResponse::success(
