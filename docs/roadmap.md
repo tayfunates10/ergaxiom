@@ -13,6 +13,7 @@ For the exact implemented claim boundary, see [Current capability status](status
 | Phase 2 — Occupational digital twin | Satisfied for v1 |
 | Phase 3 — Windows execution bridge | Demonstrated; production gate open |
 | Phase 4 — Graphic Designer Alpha | Satisfied for v1; four certified job paths |
+| Windows Product Alpha | Digest-bound control implemented for one bounded fixture; release and multi-job gates open |
 | Phase 5 — Profession learning laboratory | Not started |
 | Phase 6 — Cross-platform and additional professions | Not started |
 
@@ -109,8 +110,6 @@ Exit criteria:
 
 **Goal:** deliver the first narrow profession that can execute and verify real work.
 
-**Exit gate: satisfied for v1.**
-
 Initial certified job types:
 
 - Static social-media post
@@ -132,14 +131,39 @@ Exit criteria:
 - A failed proof returns an actionable error map instead of a success message.
 - Every initial job type has a permanent certified-path regression suite.
 
-Certified bounded achievements:
+Current bounded achievement:
 
-- Static Social Media Post certifies authorized execution, signed Inkscape material, sRGB normalization, independent PNG decoding, approved-copy identity, logo geometry, text safe area and rendered contrast.
-- Image Background Cleanup certifies an explicitly approved digest-bound binary alpha mask, exact foreground preservation, transparent background samples and real Inkscape integration without guessing segmentation.
-- Brand-Compliant Image Export certifies restricted-SVG brand rules, palette, logo identity and geometry, typography, approved copy, pinned Inkscape export and verified sRGB delivery.
-- Print-Ready Poster Preflight certifies restricted outlined-vector SVG structure, trim, bleed, safe area, palette, deterministic PDF page boxes, direct and indirect resources, vector-only output, outlined fonts, allowed color spaces, transparency and security boundaries, and real pinned Inkscape export.
+- Static Social Media Post reaches a final certificate over authorized execution, signed Inkscape material, signed sRGB normalization, independent PNG decoding, approved-copy identity, logo geometry, text safe area and rendered contrast.
+- Image Background Cleanup reaches a certificate over an explicitly approved binary alpha mask, exact foreground preservation, independent PNG proofs and pinned Inkscape integration.
+- Brand-Compliant Image Export reaches a certificate over restricted SVG brand rules, approved identity, pinned Inkscape export and IDAT-preserving sRGB normalization.
+- Print-Ready Poster Preflight reaches a certificate over restricted outlined-vector input, exact print geometry, independent PDF resources and security inspection, and pinned Inkscape PDF export.
 
-The v1 gate does not claim unrestricted graphic design, subjective aesthetic quality, unrestricted raster preflight, CMYK conversion, spot colors, overprint simulation or general PDF/X certification.
+## Windows Product Alpha
+
+**Goal:** let a user safely review, authorize, execute and inspect certified profession work without moving authority into the renderer.
+
+Completed control gate:
+
+- Tauri and React inspection shell with backend-verified snapshots;
+- exact snapshot, Work Contract, Operator Plan and permission digest review;
+- Rust-generated expiring approval record;
+- stale snapshot, altered tuple, expired approval and replay rejection;
+- backend-owned execution, cancellation and rollback lifecycle;
+- canonical command receipts binding pre-state and post-state snapshots;
+- validator and replay evidence hidden until authorized execution;
+- renderer remains without filesystem, shell, unrestricted network, arbitrary process or signing-key access.
+
+Remaining product gates:
+
+- DPAPI, TPM-backed or equivalent local private-key protection;
+- issuer-role separation, key rotation and revocation;
+- signed desktop, bridge, adapter and installer releases;
+- SBOM, dependency provenance, reproducible release manifests and checksums;
+- user-selected immutable inputs instead of the bounded fixture;
+- all four certified Graphic Designer jobs routed through the same user-driven desktop lifecycle;
+- persistent job and receipt storage with upgrade and rollback attack tests.
+
+The current approval and command receipts are canonical hashes owned by the Rust process, not production digital signatures. A completed desktop execution still cannot display certified acceptance without a separately verified Evidence Bundle and Acceptance Certificate.
 
 ## Phase 5 — Profession learning laboratory
 
