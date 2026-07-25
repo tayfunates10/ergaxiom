@@ -94,16 +94,35 @@ jobs:
         run: test "$(cat "$RUNNER_TEMP/signer-clippy-linux.status")" = "0"
 
       - name: Run platform-neutral signer attack tests
-        run: >-
-          cargo test
-          -p ergaxiom-windows-signer-protocol-runtime
-          -p ergaxiom-windows-signer-client-runtime
-          -p ergaxiom-attestation-issuance-runtime
-          -p ergaxiom-attestation-runtime
-          -p ergaxiom-capability-issuance-runtime
-          -p ergaxiom-capability-runtime
-          -p ergaxiom-governed-verification-runtime
-          -p ergaxiom-windows-signer
+        shell: bash
+        run: |
+          set +e
+          cargo test \
+            -p ergaxiom-windows-signer-protocol-runtime \
+            -p ergaxiom-windows-signer-client-runtime \
+            -p ergaxiom-attestation-issuance-runtime \
+            -p ergaxiom-attestation-runtime \
+            -p ergaxiom-capability-issuance-runtime \
+            -p ergaxiom-capability-runtime \
+            -p ergaxiom-governed-verification-runtime \
+            -p ergaxiom-windows-signer \
+            2>&1 | tee "$RUNNER_TEMP/signer-tests-linux.log"
+          status=${PIPESTATUS[0]}
+          printf '%s\n' "$status" > "$RUNNER_TEMP/signer-tests-linux.status"
+          exit 0
+
+      - name: Upload Linux signer test diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: signer-tests-linux-diagnostics
+          path: ${{ runner.temp }}/signer-tests-linux.*
+          if-no-files-found: error
+          retention-days: 3
+
+      - name: Fail on Linux signer test mismatch
+        shell: bash
+        run: test "$(cat "$RUNNER_TEMP/signer-tests-linux.status")" = "0"
 
   windows-dpapi:
     name: Exercise real DPAPI and isolated signer process
@@ -153,17 +172,36 @@ jobs:
           if ($status -ne "0") { exit [int]$status }
 
       - name: Run real DPAPI and process isolation tests
-        run: >-
-          cargo test
-          -p ergaxiom-windows-signer-protocol-runtime
-          -p ergaxiom-windows-signer-client-runtime
-          -p ergaxiom-attestation-issuance-runtime
-          -p ergaxiom-attestation-runtime
-          -p ergaxiom-capability-issuance-runtime
-          -p ergaxiom-capability-runtime
-          -p ergaxiom-governed-verification-runtime
-          -p ergaxiom-windows-signer
-          --all-features
+        shell: pwsh
+        run: |
+          cargo test `
+            -p ergaxiom-windows-signer-protocol-runtime `
+            -p ergaxiom-windows-signer-client-runtime `
+            -p ergaxiom-attestation-issuance-runtime `
+            -p ergaxiom-attestation-runtime `
+            -p ergaxiom-capability-issuance-runtime `
+            -p ergaxiom-capability-runtime `
+            -p ergaxiom-governed-verification-runtime `
+            -p ergaxiom-windows-signer `
+            --all-features `
+            2>&1 | Tee-Object -FilePath "$env:RUNNER_TEMP\signer-tests-windows.log"
+          "$LASTEXITCODE" | Set-Content "$env:RUNNER_TEMP\signer-tests-windows.status"
+          exit 0
+
+      - name: Upload Windows signer test diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: signer-tests-windows-diagnostics
+          path: ${{ runner.temp }}/signer-tests-windows.*
+          if-no-files-found: error
+          retention-days: 3
+
+      - name: Fail on Windows signer test mismatch
+        shell: pwsh
+        run: |
+          $status = (Get-Content "$env:RUNNER_TEMP\signer-tests-windows.status").Trim()
+          if ($status -ne "0") { exit [int]$status }
 
       - name: Compile isolated signer executable
         run: cargo build -p ergaxiom-windows-signer --release
