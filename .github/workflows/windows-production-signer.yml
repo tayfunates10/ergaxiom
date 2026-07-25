@@ -19,40 +19,20 @@ on:
       - ".github/workflows/windows-production-signer.yml"
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   policy:
-    name: Canonicalize and verify production signer foundation
+    name: Verify production signer policy and identity bindings
     runs-on: ubuntu-24.04
     steps:
-      - name: Check out pull request branch
+      - name: Check out repository
         uses: actions/checkout@v4
-        with:
-          ref: ${{ github.head_ref }}
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
-
-      - name: Materialize canonical formatting and lockfile
-        run: |
-          cargo fmt --all
-          cargo generate-lockfile
-
-      - name: Commit canonical source when needed
-        if: github.event_name == 'pull_request'
-        shell: bash
-        run: |
-          if git diff --quiet -- Cargo.lock crates/windows-production-signer-runtime; then
-            exit 0
-          fi
-          git config user.name "ergaxiom-ci"
-          git config user.email "ergaxiom-ci@users.noreply.github.com"
-          git add Cargo.lock crates/windows-production-signer-runtime
-          git commit -m "Canonicalize production signer foundation"
-          git push origin "HEAD:${{ github.head_ref }}"
 
       - name: Check workspace formatting
         run: cargo fmt --all -- --check
