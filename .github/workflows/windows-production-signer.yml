@@ -155,7 +155,7 @@ jobs:
           $status = (Get-Content "$env:RUNNER_TEMP\production-signer-clippy-windows.status").Trim()
           if ($status -ne "0") { exit [int]$status }
 
-      - name: Run Windows production signer contract tests
+      - name: Capture Windows production signer contract tests
         shell: pwsh
         run: |
           cargo test `
@@ -165,4 +165,22 @@ jobs:
             -p ergaxiom-windows-production-signer-transport-runtime `
             -p ergaxiom-windows-cng-key-provider-runtime `
             -p ergaxiom-windows-signer-service-identity-runtime `
-            --all-features
+            --all-features -- --nocapture `
+            2>&1 | Tee-Object -FilePath "$env:RUNNER_TEMP\production-signer-tests-windows.log"
+          "$LASTEXITCODE" | Set-Content "$env:RUNNER_TEMP\production-signer-tests-windows.status"
+          exit 0
+
+      - name: Upload Windows production signer test diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: production-signer-tests-windows-diagnostics
+          path: ${{ runner.temp }}/production-signer-tests-windows.*
+          if-no-files-found: error
+          retention-days: 3
+
+      - name: Fail on Windows production signer test mismatch
+        shell: pwsh
+        run: |
+          $status = (Get-Content "$env:RUNNER_TEMP\production-signer-tests-windows.status").Trim()
+          if ($status -ne "0") { exit [int]$status }
