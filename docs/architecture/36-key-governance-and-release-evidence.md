@@ -92,6 +92,10 @@ Permanent CI must:
 - bind the executable to release evidence while retaining `release_eligible: false`;
 - upload the unsigned candidate and evidence under names that cannot be confused with a signed release.
 
+## CI fixture isolation
+
+Parallel Rust tests must not share temporary artifact directories. Inkscape certification fixtures bind every directory name to the process, a monotonic in-process identifier and the observed timestamp before creating files. This prevents one test teardown from deleting another test's evidence material and keeps full-workspace CI deterministic.
+
 ## Remaining Issue #39 work
 
 This gate does not satisfy the complete Windows release-security issue. The remaining production gates include:
