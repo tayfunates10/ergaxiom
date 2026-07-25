@@ -1,0 +1,48 @@
+name: One-shot governance finalizer
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/one-shot-governance-finalize.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  finalize:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out implementation branch
+        uses: actions/checkout@v4
+        with:
+          ref: agent/key-governance-release-evidence-v1
+          fetch-depth: 0
+
+      - name: Format test and seal the workspace lockfile
+        shell: bash
+        run: |
+          set -euo pipefail
+          rustup component add rustfmt clippy
+          cargo fmt --all
+          cargo test \
+            -p ergaxiom-key-governance-runtime \
+            -p ergaxiom-governed-verification-runtime \
+            -p ergaxiom-capability-runtime \
+            -p ergaxiom-attestation-runtime
+          cargo clippy \
+            -p ergaxiom-key-governance-runtime \
+            -p ergaxiom-governed-verification-runtime \
+            -p ergaxiom-capability-runtime \
+            -p ergaxiom-attestation-runtime \
+            --all-targets --all-features -- -D warnings
+          python -m unittest tools/release/test_generate_release_evidence.py
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Cargo.lock crates/key-governance-runtime crates/governed-verification-runtime tools/release
+          if ! git diff --cached --quiet; then
+            git commit -m "Finalize governed verification workspace"
+            git push origin HEAD:agent/key-governance-release-evidence-v1
+          fi
