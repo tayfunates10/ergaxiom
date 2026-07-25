@@ -9,7 +9,7 @@ A capability is marked **certified path** only when the repository has an automa
 | Area | Status | Current boundary |
 |---|---|---|
 | Normative Work Contract, Profession Capsule and Evidence Bundle schemas | Implemented | Draft schemas remain versioned and subject to pre-alpha change. |
-| Canonical JSON and SHA-256 sealing | Implemented | Used by contracts, plans, receipts, evidence and certificates. |
+| Canonical JSON and SHA-256 sealing | Implemented | Used by contracts, plans, approvals, command receipts, evidence and certificates. |
 | Three-valued proof kernel | Implemented | Mandatory `FALSE`, `UNKNOWN`, missing and contradictory proof states fail closed. |
 | Property-based impossible-acceptance tests | Implemented | Generated states cannot accept missing mandatory proof. |
 | Work Contract and capsule runtime compilation | Implemented | Compiles typed contracts and version-pinned profession capsules. |
@@ -39,7 +39,8 @@ A capability is marked **certified path** only when the repository has an automa
 | Image Background Cleanup final certificate | Certified path | Applies an explicitly approved digest-bound binary alpha mask without guessing segmentation, independently proves exact foreground preservation and transparent background samples, runs a pinned Inkscape integration probe and verifies an Ed25519 Acceptance Certificate. |
 | Brand-Compliant Image Export final certificate | Certified path | Independently proves exact restricted-SVG brand rules, exports through pinned Inkscape, preserves IDAT during sRGB normalization and verifies a signed Acceptance Certificate. |
 | Print-Ready Poster Preflight final certificate | Certified path | Independently proves bounded flat-vector source geometry, bleed, safe area, palette, PDF page boxes, vector-only resources, outlined fonts, approved color spaces, transparency absence, security boundaries and pinned Inkscape export before issuing a certificate. |
-| Desktop product shell | Implemented | Tauri/React review shell displays immutable inputs, resolution state, contract, permissions, sealed plan, execution, validators, evidence and certificate state. Renderer mutation cannot forge acceptance. Writable approval and execution commands are not yet enabled. |
+| Desktop product shell | Implemented | Tauri/React shell displays immutable inputs, resolution state, contract, permissions, sealed plan, execution, validators, evidence, certificate state and backend command receipts. Renderer mutation cannot forge acceptance. |
+| Digest-bound desktop control authority | Implemented | Rust owns an in-memory approval, execution, cancellation and rollback lifecycle for the bounded static-post fixture. Stale snapshots, altered tuples, expired approvals, replayed transitions and modified receipts fail closed. Approval hashes are not production signatures. |
 | General application learning | Planned | No live-learning or self-modifying production capability is allowed. |
 | Cross-platform bridges | Planned | The proof kernel is platform-neutral; bounded Windows UI Automation and platform-bound Inkscape paths exist. |
 
@@ -67,6 +68,10 @@ A capability is marked **certified path** only when the repository has an automa
 
 This does not claim unrestricted design automation, general commercial-print certification, CMYK conversion, spot-color validation, overprint simulation, PDF/X compliance or unrestricted raster-image DPI analysis.
 
+### Windows Product Alpha control gate
+
+**Status: implemented for one bounded fixture, product gate remains open.** The desktop application can review and submit the exact snapshot, contract, plan and permission tuple; Rust issues an expiring approval and owns execution, cancellation, rollback and audit receipts. Production key storage, persistence, release signing and all four profession paths in one user-driven desktop flow remain open.
+
 ### Phase 5 — Profession learning laboratory
 
 **Status: not started.** Candidate operator learning, demonstration capture, synthetic-task generation, certification and capsule signing remain future work.
@@ -93,11 +98,12 @@ This does not claim unrestricted design automation, general commercial-print cer
 7. Binary-mask Image Background Cleanup with authorized trace reassessment, independent PNG proofs, real Inkscape integration and a verified Acceptance Certificate.
 8. Brand-Compliant Image Export with restricted SVG rules, signed execution, IDAT-preserving sRGB normalization, real Inkscape export and a verified Acceptance Certificate.
 9. Print-Ready Poster Preflight with restricted outlined-vector SVG validation, deterministic PDF boxes, independent PDF resource/security proofs, real Inkscape export and a verified Acceptance Certificate.
+10. Digest-bound desktop approval and execution lifecycle with stale-state rejection, expiry, cancellation, rollback and canonical command receipts.
 
 ## Next gates
 
-1. Add digest-bound writable approval and execution commands to the desktop application without moving authority into the renderer.
-2. Harden local key storage, revocation, release signing, SBOM and Windows installer provenance.
+1. Harden local key storage, revocation, release signing, SBOM and Windows installer provenance.
+2. Replace the bounded desktop fixture with user-selected immutable inputs and route all four certified Graphic Designer job types through the same control lifecycle.
 3. Expand the Windows Bridge across real application patterns and recovery cases.
 4. Build the Profession Learning Laboratory in a cryptographically separate environment.
 5. Add cross-platform bridges and additional profession capsules only after the Windows Product Alpha gates hold.
