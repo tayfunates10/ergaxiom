@@ -11,8 +11,10 @@ base64.workspace = true
 ed25519-dalek.workspace = true
 ergaxiom-contract-runtime = { path = "../contract-runtime" }
 ergaxiom-evidence-runtime = { path = "../evidence-runtime" }
+ergaxiom-key-governance-runtime = { path = "../key-governance-runtime" }
 ergaxiom-operator-plan-runtime = { path = "../operator-plan-runtime" }
 ergaxiom-proof-kernel = { path = "../proof-kernel" }
+ergaxiom-windows-signer-protocol-runtime = { path = "../windows-signer-protocol-runtime" }
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
