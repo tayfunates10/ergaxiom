@@ -455,7 +455,7 @@ fn validate_common_bindings(
     expected_action: DesktopCommandAction,
     trusted_now_epoch_s: u64,
 ) -> Result<CommonBindings, BackendIssuanceError> {
-    if !verify_desktop_shell_snapshot(snapshot)? {
+    if !verify_desktop_shell_snapshot(snapshot).map_err(DesktopControlError::Shell)? {
         return Err(BackendIssuanceError::SnapshotVerificationFailed);
     }
     if !verify_desktop_approval(approval)? {
