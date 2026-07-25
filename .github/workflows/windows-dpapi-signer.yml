@@ -6,6 +6,8 @@ on:
       - "Cargo.toml"
       - "Cargo.lock"
       - "apps/windows-signer/**"
+      - "crates/attestation-issuance-runtime/**"
+      - "crates/attestation-runtime/**"
       - "crates/capability-issuance-runtime/**"
       - "crates/capability-runtime/**"
       - "crates/governed-verification-runtime/**"
@@ -15,6 +17,7 @@ on:
       - "crates/proof-kernel/**"
       - "docs/architecture/37-windows-dpapi-isolated-signer.md"
       - "docs/architecture/38-purpose-locked-capability-issuance.md"
+      - "docs/architecture/39-purpose-locked-attestation-issuance.md"
       - "docs/status.md"
       - ".github/workflows/windows-dpapi-signer.yml"
   push:
@@ -24,6 +27,8 @@ on:
       - "Cargo.toml"
       - "Cargo.lock"
       - "apps/windows-signer/**"
+      - "crates/attestation-issuance-runtime/**"
+      - "crates/attestation-runtime/**"
       - "crates/capability-issuance-runtime/**"
       - "crates/capability-runtime/**"
       - "crates/governed-verification-runtime/**"
@@ -33,6 +38,7 @@ on:
       - "crates/proof-kernel/**"
       - "docs/architecture/37-windows-dpapi-isolated-signer.md"
       - "docs/architecture/38-purpose-locked-capability-issuance.md"
+      - "docs/architecture/39-purpose-locked-attestation-issuance.md"
       - "docs/status.md"
       - ".github/workflows/windows-dpapi-signer.yml"
 
@@ -62,6 +68,8 @@ jobs:
           cargo clippy \
             -p ergaxiom-windows-signer-protocol-runtime \
             -p ergaxiom-windows-signer-client-runtime \
+            -p ergaxiom-attestation-issuance-runtime \
+            -p ergaxiom-attestation-runtime \
             -p ergaxiom-capability-issuance-runtime \
             -p ergaxiom-capability-runtime \
             -p ergaxiom-governed-verification-runtime \
@@ -90,6 +98,8 @@ jobs:
           cargo test
           -p ergaxiom-windows-signer-protocol-runtime
           -p ergaxiom-windows-signer-client-runtime
+          -p ergaxiom-attestation-issuance-runtime
+          -p ergaxiom-attestation-runtime
           -p ergaxiom-capability-issuance-runtime
           -p ergaxiom-capability-runtime
           -p ergaxiom-governed-verification-runtime
@@ -116,6 +126,8 @@ jobs:
           cargo clippy `
             -p ergaxiom-windows-signer-protocol-runtime `
             -p ergaxiom-windows-signer-client-runtime `
+            -p ergaxiom-attestation-issuance-runtime `
+            -p ergaxiom-attestation-runtime `
             -p ergaxiom-capability-issuance-runtime `
             -p ergaxiom-capability-runtime `
             -p ergaxiom-governed-verification-runtime `
@@ -145,6 +157,8 @@ jobs:
           cargo test
           -p ergaxiom-windows-signer-protocol-runtime
           -p ergaxiom-windows-signer-client-runtime
+          -p ergaxiom-attestation-issuance-runtime
+          -p ergaxiom-attestation-runtime
           -p ergaxiom-capability-issuance-runtime
           -p ergaxiom-capability-runtime
           -p ergaxiom-governed-verification-runtime
