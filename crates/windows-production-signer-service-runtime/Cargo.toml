@@ -1,0 +1,23 @@
+[package]
+name = "ergaxiom-windows-production-signer-service-runtime"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+publish = false
+
+[dependencies]
+ergaxiom-key-governance-runtime = { path = "../key-governance-runtime" }
+ergaxiom-windows-production-signer-protocol-runtime = { path = "../windows-production-signer-protocol-runtime" }
+ergaxiom-windows-production-signer-runtime = { path = "../windows-production-signer-runtime" }
+ergaxiom-windows-signer-service-identity-runtime = { path = "../windows-signer-service-identity-runtime" }
+serde.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+base64.workspace = true
+p256.workspace = true
+sha2.workspace = true
+
+[lints]
+workspace = true

@@ -40,6 +40,7 @@ members = [
   "crates/windows-cng-key-provider-runtime",
   "crates/windows-production-signer-protocol-runtime",
   "crates/windows-production-signer-runtime",
+  "crates/windows-production-signer-service-runtime",
   "crates/windows-signer-client-runtime",
   "crates/windows-signer-protocol-runtime",
   "crates/windows-signer-service-identity-runtime",
