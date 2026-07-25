@@ -1,0 +1,20 @@
+[package]
+name = "ergaxiom-key-governance-runtime"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+publish = false
+
+[dependencies]
+ed25519-dalek.workspace = true
+ergaxiom-proof-kernel = { path = "../proof-kernel" }
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+ed25519-dalek = { workspace = true, features = ["rand_core"] }
+
+[lints]
+workspace = true
