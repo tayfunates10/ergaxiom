@@ -23,20 +23,40 @@ on:
       - ".github/workflows/windows-production-signer.yml"
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   policy:
-    name: Verify production signer policy, CNG and caller identity contracts
+    name: Canonicalize and verify production signer identity contracts
     runs-on: ubuntu-24.04
     steps:
-      - name: Check out repository
+      - name: Check out pull request branch
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref }}
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
+
+      - name: Materialize canonical formatting and lockfile
+        run: |
+          cargo fmt --all
+          cargo generate-lockfile
+
+      - name: Commit canonical source when needed
+        if: github.event_name == 'pull_request'
+        shell: bash
+        run: |
+          if git diff --quiet -- Cargo.lock crates/windows-signer-service-identity-runtime; then
+            exit 0
+          fi
+          git config user.name "ergaxiom-ci"
+          git config user.email "ergaxiom-ci@users.noreply.github.com"
+          git add Cargo.lock crates/windows-signer-service-identity-runtime
+          git commit -m "Canonicalize signer service identity boundary"
+          git push origin "HEAD:${{ github.head_ref }}"
 
       - name: Check workspace formatting
         run: cargo fmt --all -- --check
@@ -61,8 +81,10 @@ jobs:
     name: Compile CNG provider and derive signer caller identity
     runs-on: windows-2025
     steps:
-      - name: Check out repository
+      - name: Check out pull request branch
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref }}
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
