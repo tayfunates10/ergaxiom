@@ -1,7 +1,7 @@
 use std::fs::File;
 use std::io::Read;
 use std::mem::size_of;
-use std::ptr::{null, null_mut};
+use std::ptr::null_mut;
 use std::slice;
 
 use ergaxiom_windows_production_signer_runtime::{
@@ -11,13 +11,13 @@ use sha2::{Digest, Sha256};
 use windows_sys::Win32::Foundation::{CloseHandle, FILETIME, HANDLE, LocalFree};
 use windows_sys::Win32::Security::Authorization::ConvertSidToStringSidW;
 use windows_sys::Win32::Security::{
-    GetTokenInformation, OpenThreadToken, RevertToSelf, TOKEN_QUERY, TOKEN_USER, TokenUser,
+    GetTokenInformation, RevertToSelf, TOKEN_QUERY, TOKEN_USER, TokenUser,
 };
 use windows_sys::Win32::System::Pipes::{
     GetNamedPipeClientProcessId, GetNamedPipeClientSessionId, ImpersonateNamedPipeClient,
 };
 use windows_sys::Win32::System::Threading::{
-    GetCurrentThread, GetProcessTimes, OpenProcess, PROCESS_NAME_WIN32,
+    GetCurrentThread, GetProcessTimes, OpenProcess, OpenThreadToken, PROCESS_NAME_WIN32,
     PROCESS_QUERY_LIMITED_INFORMATION, QueryFullProcessImageNameW,
 };
 
@@ -85,11 +85,11 @@ fn client_principal_sid(pipe_handle: HANDLE) -> Result<String, SignerIdentityErr
         ));
     }
     let impersonation = ImpersonationGuard { active: true };
-    let mut token = 0;
+    let mut token: HANDLE = null_mut();
     // SAFETY: GetCurrentThread returns a pseudo-handle valid in this process and the
     // token output pointer is writable. open-as-self is disabled intentionally.
     let opened = unsafe { OpenThreadToken(GetCurrentThread(), TOKEN_QUERY, 0, &mut token) };
-    if opened == 0 {
+    if opened == 0 || token.is_null() {
         return Err(SignerIdentityError::ClientTokenOpenFailed(
             std::io::Error::last_os_error(),
         ));
@@ -111,9 +111,11 @@ fn token_user_sid(token: HANDLE) -> Result<String, SignerIdentityError> {
             std::io::Error::last_os_error(),
         ));
     }
-    let mut buffer = vec![0_u8; required as usize];
-    // SAFETY: buffer is writable for required bytes and token is a live queryable
-    // impersonation token.
+    let word_bytes = size_of::<usize>();
+    let word_count = (required as usize).div_ceil(word_bytes);
+    let mut buffer = vec![0_usize; word_count];
+    // SAFETY: buffer is aligned and writable for at least required bytes and token is
+    // a live queryable impersonation token.
     let result = unsafe {
         GetTokenInformation(
             token,
@@ -128,8 +130,8 @@ fn token_user_sid(token: HANDLE) -> Result<String, SignerIdentityError> {
             std::io::Error::last_os_error(),
         ));
     }
-    // SAFETY: GetTokenInformation returned a TOKEN_USER structure in the aligned-enough
-    // byte buffer and its SID pointer remains valid while buffer is alive.
+    // SAFETY: GetTokenInformation returned a TOKEN_USER structure in an aligned buffer
+    // and its SID pointer remains valid while buffer is alive.
     let token_user = unsafe { &*buffer.as_ptr().cast::<TOKEN_USER>() };
     if token_user.User.Sid.is_null() {
         return Err(SignerIdentityError::ClientTokenUserReadFailed(
@@ -204,7 +206,7 @@ impl ProcessHandle {
         // SAFETY: process_id was derived by the operating system from the connected
         // named-pipe client; no inheritable handle is requested.
         let raw = unsafe { OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, process_id) };
-        if raw == 0 {
+        if raw.is_null() {
             return Err(SignerIdentityError::ClientProcessOpenFailed(
                 std::io::Error::last_os_error(),
             ));
@@ -263,7 +265,7 @@ impl ProcessHandle {
 
 impl Drop for ProcessHandle {
     fn drop(&mut self) {
-        if self.raw != 0 {
+        if !self.raw.is_null() {
             // SAFETY: raw is an owned live process handle and is closed exactly once.
             let _ = unsafe { CloseHandle(self.raw) };
         }
@@ -282,7 +284,7 @@ impl KernelHandle {
 
 impl Drop for KernelHandle {
     fn drop(&mut self) {
-        if self.raw != 0 {
+        if !self.raw.is_null() {
             // SAFETY: raw is an owned token handle and is closed exactly once.
             let _ = unsafe { CloseHandle(self.raw) };
         }
