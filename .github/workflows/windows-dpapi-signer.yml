@@ -48,12 +48,31 @@ jobs:
         run: cargo fmt --all -- --check
 
       - name: Lint platform-neutral signer boundaries
-        run: >-
-          cargo clippy
-          -p ergaxiom-windows-signer-protocol-runtime
-          -p ergaxiom-windows-signer-client-runtime
-          -p ergaxiom-windows-signer
-          --all-targets --all-features -- -D warnings
+        shell: bash
+        run: |
+          set +e
+          cargo clippy \
+            -p ergaxiom-windows-signer-protocol-runtime \
+            -p ergaxiom-windows-signer-client-runtime \
+            -p ergaxiom-windows-signer \
+            --all-targets --all-features -- -D warnings \
+            2>&1 | tee "$RUNNER_TEMP/signer-clippy-linux.log"
+          status=${PIPESTATUS[0]}
+          printf '%s\n' "$status" > "$RUNNER_TEMP/signer-clippy-linux.status"
+          exit 0
+
+      - name: Upload Linux signer Clippy diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: signer-clippy-linux-diagnostics
+          path: ${{ runner.temp }}/signer-clippy-linux.*
+          if-no-files-found: error
+          retention-days: 3
+
+      - name: Fail on Linux signer lint mismatch
+        shell: bash
+        run: test "$(cat "$RUNNER_TEMP/signer-clippy-linux.status")" = "0"
 
       - name: Run platform-neutral signer attack tests
         run: >-
@@ -78,12 +97,31 @@ jobs:
         run: cargo fmt --all -- --check
 
       - name: Lint Windows signer and protocol
-        run: >-
-          cargo clippy
-          -p ergaxiom-windows-signer-protocol-runtime
-          -p ergaxiom-windows-signer-client-runtime
-          -p ergaxiom-windows-signer
-          --all-targets --all-features -- -D warnings
+        shell: pwsh
+        run: |
+          cargo clippy `
+            -p ergaxiom-windows-signer-protocol-runtime `
+            -p ergaxiom-windows-signer-client-runtime `
+            -p ergaxiom-windows-signer `
+            --all-targets --all-features -- -D warnings `
+            2>&1 | Tee-Object -FilePath "$env:RUNNER_TEMP\signer-clippy-windows.log"
+          "$LASTEXITCODE" | Set-Content "$env:RUNNER_TEMP\signer-clippy-windows.status"
+          exit 0
+
+      - name: Upload Windows signer Clippy diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: signer-clippy-windows-diagnostics
+          path: ${{ runner.temp }}/signer-clippy-windows.*
+          if-no-files-found: error
+          retention-days: 3
+
+      - name: Fail on Windows signer lint mismatch
+        shell: pwsh
+        run: |
+          $status = (Get-Content "$env:RUNNER_TEMP\signer-clippy-windows.status").Trim()
+          if ($status -ne "0") { exit [int]$status }
 
       - name: Run real DPAPI and process isolation tests
         run: >-
