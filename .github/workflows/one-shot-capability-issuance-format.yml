@@ -1,0 +1,55 @@
+name: One-shot capability issuance formatter
+
+on:
+  push:
+    branches:
+      - agent/purpose-locked-capability-issuance-v1
+    paths:
+      - ".github/workflows/one-shot-capability-issuance-format.yml"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: one-shot-capability-issuance-formatter
+  cancel-in-progress: true
+
+jobs:
+  format:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out capability issuance branch
+        uses: actions/checkout@v4
+        with:
+          ref: agent/purpose-locked-capability-issuance-v1
+          fetch-depth: 0
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+
+      - name: Link module format workspace and refresh lockfile
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path("crates/governed-verification-runtime/src/lib.rs")
+          text = path.read_text(encoding="utf-8")
+          marker = "#![forbid(unsafe_code)]\n\n"
+          if "mod signer_bound;" not in text:
+              if marker not in text:
+                  raise SystemExit("governed runtime module marker not found")
+              text = text.replace(marker, marker + "mod signer_bound;\n\n", 1)
+              path.write_text(text, encoding="utf-8", newline="\n")
+          PY
+          cargo fmt --all
+          cargo generate-lockfile
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm .github/workflows/one-shot-capability-issuance-format.yml
+          git add Cargo.lock Cargo.toml apps/windows-signer crates/capability-issuance-runtime crates/capability-runtime crates/governed-verification-runtime .github/workflows/windows-dpapi-signer.yml docs
+          git commit -m "Format purpose-locked capability issuance"
+          git push origin HEAD:agent/purpose-locked-capability-issuance-v1
