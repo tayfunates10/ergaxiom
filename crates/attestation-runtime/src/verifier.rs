@@ -4,15 +4,23 @@ use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
 use ed25519_dalek::{Signature, VerifyingKey};
 use ergaxiom_contract_runtime::CompiledContract;
 use ergaxiom_evidence_runtime::{EvidenceBundle, EvidenceBundleError, assess_bundle};
+use ergaxiom_key_governance_runtime::IssuerRole;
 use ergaxiom_operator_plan_runtime::CompiledPlan;
 use ergaxiom_proof_kernel::{
     AssuranceLevel, DecisionStatus, HashingError, canonical_json_bytes, canonical_json_sha256,
 };
+use ergaxiom_windows_signer_protocol_runtime::{
+    SignerProtocolError, SignerResponse, SignerSuccess, decode_hex_32,
+};
+use serde::Serialize;
 use serde_json::Value;
 use thiserror::Error;
 
 use crate::issuer::{AttestationIssueError, build_replay_manifest};
-use crate::model::{AttestationPackage, VerifiedAttestation};
+use crate::model::{
+    AcceptanceCertificatePayload, AttestationPackage, ReplayManifest,
+    SignerBoundAttestationPackage, VerifiedAttestation,
+};
 
 const REPLAY_MANIFEST_SCHEMA: &str = "0.1.0";
 const ACCEPTANCE_CERTIFICATE_SCHEMA: &str = "0.1.0";
@@ -56,10 +64,22 @@ pub enum AttestationVerifyError {
     InvalidSignatureLength,
     #[error("acceptance-certificate signature verification failed")]
     SignatureVerificationFailed,
+    #[error("signer-bound certificate was not issued under the Attestation role")]
+    SignerRoleMismatch,
+    #[error("signer-bound certificate issuer does not match the payload")]
+    SignerIssuerMismatch,
+    #[error("signer-bound certificate key ID does not match the payload")]
+    SignerKeyMismatch,
+    #[error("signer-bound certificate digest does not match the canonical payload")]
+    SignerDigestMismatch,
+    #[error("signer-bound certificate public key does not match the trusted key")]
+    SignerPublicKeyMismatch,
     #[error("failed to serialize attestation document: {0}")]
     Serialization(#[source] serde_json::Error),
     #[error(transparent)]
     Hashing(#[from] HashingError),
+    #[error(transparent)]
+    SignerProtocol(#[from] SignerProtocolError),
     #[error("certificate decision is not ACCEPTED")]
     DecisionNotAccepted,
     #[error("accepted certificate contains failed or unknown mandatory obligations")]
@@ -84,37 +104,8 @@ pub fn verify_attestation(
     package: &AttestationPackage,
     trusted_keys: &AttestationKeyRegistry,
 ) -> Result<VerifiedAttestation, AttestationVerifyError> {
-    if package.replay_manifest.schema_version != REPLAY_MANIFEST_SCHEMA {
-        return Err(AttestationVerifyError::UnsupportedManifestSchema(
-            package.replay_manifest.schema_version.clone(),
-        ));
-    }
-    if package.certificate.payload.schema_version != ACCEPTANCE_CERTIFICATE_SCHEMA {
-        return Err(AttestationVerifyError::UnsupportedCertificateSchema(
-            package.certificate.payload.schema_version.clone(),
-        ));
-    }
-
     let payload = &package.certificate.payload;
-    if payload.decision != DecisionStatus::Accepted
-        || package.replay_manifest.expected_decision != DecisionStatus::Accepted
-    {
-        return Err(AttestationVerifyError::DecisionNotAccepted);
-    }
-    if payload.mandatory_failed > 0
-        || payload.mandatory_unknown > 0
-        || package.replay_manifest.mandatory_failed > 0
-        || package.replay_manifest.mandatory_unknown > 0
-    {
-        return Err(AttestationVerifyError::InvalidAcceptedCounts);
-    }
-
-    let key = trusted_keys
-        .get(&payload.issuer_id, &payload.key_id)
-        .ok_or_else(|| AttestationVerifyError::UnknownTrustedKey {
-            issuer_id: payload.issuer_id.clone(),
-            key_id: payload.key_id.clone(),
-        })?;
+    let key = trusted_key(trusted_keys, payload)?;
     let payload_value =
         serde_json::to_value(payload).map_err(AttestationVerifyError::Serialization)?;
     let signature_bytes = URL_SAFE_NO_PAD
@@ -124,25 +115,39 @@ pub fn verify_attestation(
         .map_err(|_| AttestationVerifyError::InvalidSignatureLength)?;
     key.verify_strict(&canonical_json_bytes(&payload_value)?, &signature)
         .map_err(|_| AttestationVerifyError::SignatureVerificationFailed)?;
+    let replay_manifest_digest = validate_document(&package.replay_manifest, payload)?;
+    verified_result(payload, &package.certificate, replay_manifest_digest)
+}
 
-    let manifest_value = serde_json::to_value(&package.replay_manifest)
-        .map_err(AttestationVerifyError::Serialization)?;
-    let replay_manifest_digest = canonical_json_sha256(&manifest_value)?;
-    if replay_manifest_digest != payload.replay_manifest_digest {
-        return Err(AttestationVerifyError::ManifestDigestMismatch);
+pub fn verify_signer_bound_attestation(
+    package: &SignerBoundAttestationPackage,
+    trusted_keys: &AttestationKeyRegistry,
+) -> Result<VerifiedAttestation, AttestationVerifyError> {
+    let payload = &package.certificate.payload;
+    let replay_manifest_digest = validate_document(&package.replay_manifest, payload)?;
+    let key = trusted_key(trusted_keys, payload)?;
+    let envelope = package
+        .certificate
+        .signer_response
+        .verify_digest_signature()?;
+    if envelope.role != IssuerRole::Attestation {
+        return Err(AttestationVerifyError::SignerRoleMismatch);
     }
-    validate_manifest_payload_match(package)?;
-
-    let certificate_value = serde_json::to_value(&package.certificate)
-        .map_err(AttestationVerifyError::Serialization)?;
-    Ok(VerifiedAttestation {
-        certificate_id: payload.certificate_id.clone(),
-        certificate_digest: canonical_json_sha256(&certificate_value)?,
-        replay_manifest_digest,
-        evidence_bundle_digest: payload.evidence_bundle_digest.clone(),
-        decision: payload.decision,
-        assurance_level: payload.assurance_level,
-    })
+    if envelope.issuer_id != payload.issuer_id {
+        return Err(AttestationVerifyError::SignerIssuerMismatch);
+    }
+    if envelope.key_id != payload.key_id {
+        return Err(AttestationVerifyError::SignerKeyMismatch);
+    }
+    let payload_value =
+        serde_json::to_value(payload).map_err(AttestationVerifyError::Serialization)?;
+    if envelope.digest != canonical_json_sha256(&payload_value)? {
+        return Err(AttestationVerifyError::SignerDigestMismatch);
+    }
+    if response_public_key(&package.certificate.signer_response)? != key.to_bytes() {
+        return Err(AttestationVerifyError::SignerPublicKeyMismatch);
+    }
+    verified_result(payload, &package.certificate, replay_manifest_digest)
 }
 
 pub fn verify_attestation_against_bundle(
@@ -154,6 +159,123 @@ pub fn verify_attestation_against_bundle(
     verified_assurance_level: AssuranceLevel,
 ) -> Result<VerifiedAttestation, AttestationVerifyError> {
     let verified = verify_attestation(package, trusted_keys)?;
+    verify_recomputed_manifest(
+        &package.replay_manifest,
+        compiled_contract,
+        compiled_plan,
+        bundle_value,
+        verified_assurance_level,
+    )?;
+    Ok(verified)
+}
+
+pub fn verify_signer_bound_attestation_against_bundle(
+    package: &SignerBoundAttestationPackage,
+    trusted_keys: &AttestationKeyRegistry,
+    compiled_contract: CompiledContract,
+    compiled_plan: &CompiledPlan,
+    bundle_value: &Value,
+    verified_assurance_level: AssuranceLevel,
+) -> Result<VerifiedAttestation, AttestationVerifyError> {
+    let verified = verify_signer_bound_attestation(package, trusted_keys)?;
+    verify_recomputed_manifest(
+        &package.replay_manifest,
+        compiled_contract,
+        compiled_plan,
+        bundle_value,
+        verified_assurance_level,
+    )?;
+    Ok(verified)
+}
+
+fn validate_document(
+    manifest: &ReplayManifest,
+    payload: &AcceptanceCertificatePayload,
+) -> Result<String, AttestationVerifyError> {
+    if manifest.schema_version != REPLAY_MANIFEST_SCHEMA {
+        return Err(AttestationVerifyError::UnsupportedManifestSchema(
+            manifest.schema_version.clone(),
+        ));
+    }
+    if payload.schema_version != ACCEPTANCE_CERTIFICATE_SCHEMA {
+        return Err(AttestationVerifyError::UnsupportedCertificateSchema(
+            payload.schema_version.clone(),
+        ));
+    }
+    if payload.decision != DecisionStatus::Accepted
+        || manifest.expected_decision != DecisionStatus::Accepted
+    {
+        return Err(AttestationVerifyError::DecisionNotAccepted);
+    }
+    if payload.mandatory_failed > 0
+        || payload.mandatory_unknown > 0
+        || manifest.mandatory_failed > 0
+        || manifest.mandatory_unknown > 0
+    {
+        return Err(AttestationVerifyError::InvalidAcceptedCounts);
+    }
+    let manifest_value =
+        serde_json::to_value(manifest).map_err(AttestationVerifyError::Serialization)?;
+    let replay_manifest_digest = canonical_json_sha256(&manifest_value)?;
+    if replay_manifest_digest != payload.replay_manifest_digest {
+        return Err(AttestationVerifyError::ManifestDigestMismatch);
+    }
+    validate_manifest_payload_match(manifest, payload)?;
+    Ok(replay_manifest_digest)
+}
+
+fn trusted_key<'a>(
+    trusted_keys: &'a AttestationKeyRegistry,
+    payload: &AcceptanceCertificatePayload,
+) -> Result<&'a VerifyingKey, AttestationVerifyError> {
+    trusted_keys
+        .get(&payload.issuer_id, &payload.key_id)
+        .ok_or_else(|| AttestationVerifyError::UnknownTrustedKey {
+            issuer_id: payload.issuer_id.clone(),
+            key_id: payload.key_id.clone(),
+        })
+}
+
+fn response_public_key(response: &SignerResponse) -> Result<[u8; 32], AttestationVerifyError> {
+    match response {
+        SignerResponse::Success {
+            result: SignerSuccess::DigestSigned { public_key_hex, .. },
+            ..
+        } => Ok(decode_hex_32(public_key_hex)?),
+        SignerResponse::Error { .. }
+        | SignerResponse::Success {
+            result: SignerSuccess::KeyInitialized { .. } | SignerSuccess::PublicKey { .. },
+            ..
+        } => Err(AttestationVerifyError::SignerProtocol(
+            SignerProtocolError::ResponseDoesNotContainSignature,
+        )),
+    }
+}
+
+fn verified_result<T: Serialize>(
+    payload: &AcceptanceCertificatePayload,
+    certificate: &T,
+    replay_manifest_digest: String,
+) -> Result<VerifiedAttestation, AttestationVerifyError> {
+    let certificate_value =
+        serde_json::to_value(certificate).map_err(AttestationVerifyError::Serialization)?;
+    Ok(VerifiedAttestation {
+        certificate_id: payload.certificate_id.clone(),
+        certificate_digest: canonical_json_sha256(&certificate_value)?,
+        replay_manifest_digest,
+        evidence_bundle_digest: payload.evidence_bundle_digest.clone(),
+        decision: payload.decision,
+        assurance_level: payload.assurance_level,
+    })
+}
+
+fn verify_recomputed_manifest(
+    manifest: &ReplayManifest,
+    compiled_contract: CompiledContract,
+    compiled_plan: &CompiledPlan,
+    bundle_value: &Value,
+    verified_assurance_level: AssuranceLevel,
+) -> Result<(), AttestationVerifyError> {
     let assessment = assess_bundle(
         compiled_contract,
         compiled_plan,
@@ -166,7 +288,7 @@ pub fn verify_attestation_against_bundle(
     let bundle: EvidenceBundle = serde_json::from_value(bundle_value.clone())
         .map_err(AttestationVerifyError::BundleDecode)?;
     let recomputed = build_replay_manifest(
-        &package.replay_manifest.manifest_id,
+        &manifest.manifest_id,
         compiled_plan,
         &bundle,
         &assessment.bundle_digest,
@@ -176,17 +298,16 @@ pub fn verify_attestation_against_bundle(
         assessment.mandatory_failed,
         assessment.mandatory_unknown,
     )?;
-    if recomputed != package.replay_manifest {
+    if recomputed != *manifest {
         return Err(AttestationVerifyError::RecomputedManifestMismatch);
     }
-    Ok(verified)
+    Ok(())
 }
 
 fn validate_manifest_payload_match(
-    package: &AttestationPackage,
+    manifest: &ReplayManifest,
+    payload: &AcceptanceCertificatePayload,
 ) -> Result<(), AttestationVerifyError> {
-    let manifest = &package.replay_manifest;
-    let payload = &package.certificate.payload;
     check_equal(
         manifest.contract_digest == payload.contract_digest,
         "contract_digest",

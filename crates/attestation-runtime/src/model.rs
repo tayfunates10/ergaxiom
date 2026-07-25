@@ -1,5 +1,6 @@
 use ergaxiom_evidence_runtime::{ArtifactRole, DigestAlgorithm};
 use ergaxiom_proof_kernel::{AssuranceLevel, DecisionStatus};
+use ergaxiom_windows_signer_protocol_runtime::SignerResponse;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -64,6 +65,12 @@ pub struct SignedAcceptanceCertificate {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SignerBoundAcceptanceCertificate {
+    pub payload: AcceptanceCertificatePayload,
+    pub signer_response: SignerResponse,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AttestationSignature {
     pub algorithm: AttestationSignatureAlgorithm,
     pub encoding: AttestationSignatureEncoding,
@@ -86,6 +93,12 @@ pub enum AttestationSignatureEncoding {
 pub struct AttestationPackage {
     pub replay_manifest: ReplayManifest,
     pub certificate: SignedAcceptanceCertificate,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SignerBoundAttestationPackage {
+    pub replay_manifest: ReplayManifest,
+    pub certificate: SignerBoundAcceptanceCertificate,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

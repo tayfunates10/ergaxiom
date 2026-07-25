@@ -126,7 +126,7 @@ pub fn issue_attestation(
 }
 
 #[allow(clippy::too_many_arguments)]
-pub(crate) fn build_replay_manifest(
+pub fn build_replay_manifest(
     manifest_id: &str,
     compiled_plan: &CompiledPlan,
     bundle: &EvidenceBundle,

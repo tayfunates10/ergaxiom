@@ -354,6 +354,26 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "877a4ace8713b0bcf2a4e7eec82529c029f1d0619886d18145fea96c3ffe5c0f"
 
 [[package]]
+name = "ergaxiom-attestation-issuance-runtime"
+version = "0.1.0"
+dependencies = [
+ "base64",
+ "ed25519-dalek",
+ "ergaxiom-attestation-runtime",
+ "ergaxiom-capability-runtime",
+ "ergaxiom-contract-runtime",
+ "ergaxiom-evidence-runtime",
+ "ergaxiom-key-governance-runtime",
+ "ergaxiom-operator-plan-runtime",
+ "ergaxiom-proof-kernel",
+ "ergaxiom-windows-signer-client-runtime",
+ "ergaxiom-windows-signer-protocol-runtime",
+ "serde",
+ "serde_json",
+ "thiserror",
+]
+
+[[package]]
 name = "ergaxiom-attestation-runtime"
 version = "0.1.0"
 dependencies = [
@@ -362,8 +382,10 @@ dependencies = [
  "ergaxiom-capability-runtime",
  "ergaxiom-contract-runtime",
  "ergaxiom-evidence-runtime",
+ "ergaxiom-key-governance-runtime",
  "ergaxiom-operator-plan-runtime",
  "ergaxiom-proof-kernel",
+ "ergaxiom-windows-signer-protocol-runtime",
  "serde",
  "serde_json",
  "thiserror",
@@ -900,6 +922,8 @@ version = "0.1.0"
 dependencies = [
  "base64",
  "ed25519-dalek",
+ "ergaxiom-attestation-issuance-runtime",
+ "ergaxiom-attestation-runtime",
  "ergaxiom-capability-issuance-runtime",
  "ergaxiom-capability-runtime",
  "ergaxiom-contract-runtime",
