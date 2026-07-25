@@ -21,6 +21,10 @@ A capability is marked **certified path** only when the repository has an automa
 | Occupational Twin | Implemented | Isolated deterministic workspace, immutable inputs, rollback, checkpoints and replay packages. |
 | Evidence Runtime | Implemented | Evidence Bundles cannot self-assert acceptance. |
 | Ed25519 Acceptance Certificates | Implemented | Issuance independently reassesses the exact Evidence Bundle before signing. |
+| Role-separated public-key governance | Implemented | Capability, execution, normalization, attestation and release verification keys are role, issuer, key ID, validity-window, revision and registry-digest bound. Public-key reuse, stale updates and role confusion fail closed. |
+| Governed capability and attestation verification | Implemented | Real Capability Token and Acceptance Certificate signatures pass through the current governed registry before the existing contract, plan, replay and evidence checks. Revoked keys invalidate current verification, including material signed before revocation. |
+| Deterministic release evidence | Implemented | SPDX 2.3 dependency inventory, source/toolchain/artifact manifest and sorted SHA-256 checksums reproduce from identical inputs. Unsigned candidates remain explicitly ineligible for release. |
+| Windows private-key protection and release signing | Planned | DPAPI/TPM-backed non-exportable keys, isolated signer IPC, Authenticode, trusted timestamps and signed installer provenance are not implemented. |
 | Windows Bridge protocol | Implemented | Signed pre-state, action-boundary state, post-state and TOCTOU checks. |
 | Windows UI Automation host and Rust client | Demonstrated | Real bounded action against a controlled WPF target; not arbitrary Windows application control. |
 | Inkscape adapter | Demonstrated | Exact binary binding, source immutability, action-boundary checks and a restricted proof-bound operator set with real Inkscape regression. |
@@ -70,7 +74,7 @@ This does not claim unrestricted design automation, general commercial-print cer
 
 ### Windows Product Alpha control gate
 
-**Status: implemented for one bounded fixture, product gate remains open.** The desktop application can review and submit the exact snapshot, contract, plan and permission tuple; Rust issues an expiring approval and owns execution, cancellation, rollback and audit receipts. Production key storage, persistence, release signing and all four profession paths in one user-driven desktop flow remain open.
+**Status: implemented for one bounded fixture, product gate remains open.** The desktop application can review and submit the exact snapshot, contract, plan and permission tuple; Rust issues an expiring approval and owns execution, cancellation, rollback and audit receipts. Public verification-key roles, rotation, revocation and deterministic unsigned release evidence are implemented. Hardware-backed private keys, Authenticode, signed installer provenance, persistence and all four profession paths in one user-driven desktop flow remain open.
 
 ### Phase 5 — Profession learning laboratory
 
@@ -99,10 +103,11 @@ This does not claim unrestricted design automation, general commercial-print cer
 8. Brand-Compliant Image Export with restricted SVG rules, signed execution, IDAT-preserving sRGB normalization, real Inkscape export and a verified Acceptance Certificate.
 9. Print-Ready Poster Preflight with restricted outlined-vector SVG validation, deterministic PDF boxes, independent PDF resource/security proofs, real Inkscape export and a verified Acceptance Certificate.
 10. Digest-bound desktop approval and execution lifecycle with stale-state rejection, expiry, cancellation, rollback and canonical command receipts.
+11. Role-separated public-key governance with rotation, revocation, stale-registry rejection, governed Capability Token and Acceptance Certificate verification, reproducible SPDX/manifest/checksum evidence and fail-closed unsigned Windows candidates.
 
 ## Next gates
 
-1. Harden local key storage, revocation, release signing, SBOM and Windows installer provenance.
+1. Add DPAPI or TPM-backed non-exportable private keys, isolated signer IPC, Authenticode signing, trusted timestamps and signed installer upgrade/rollback provenance.
 2. Replace the bounded desktop fixture with user-selected immutable inputs and route all four certified Graphic Designer job types through the same control lifecycle.
 3. Expand the Windows Bridge across real application patterns and recovery cases.
 4. Build the Profession Learning Laboratory in a cryptographically separate environment.
