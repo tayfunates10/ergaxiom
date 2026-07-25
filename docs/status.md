@@ -23,6 +23,7 @@ A capability is marked **certified path** only when the repository has an automa
 | Evidence Runtime | Implemented | Evidence Bundles cannot self-assert acceptance. |
 | Ed25519 Acceptance Certificates | Implemented | Direct and signer-bound issuance independently reassess the exact Evidence Bundle before signing. Existing direct-Ed25519 packages remain backward compatible. |
 | Purpose-locked Acceptance Certificate issuance | Implemented | A backend-only authority fixes the Attestation role, issuer, key ID, signer request ID and canonical certificate-payload digest. Evidence Runtime must independently return `ACCEPTED` with zero failed or unknown mandatory obligations before the isolated signer is invoked. |
+| Backend-authorized purpose-locked issuance | Implemented | Capability issuance requires an exact `Approved` snapshot, non-expired approval, applied approve receipt, compiled step/operator and contract permission. Attestation issuance requires an exact `Executed` snapshot, applied execute receipt, accepted Evidence Bundle and independently rebuilt Replay Manifest. Authorizations are one-shot and consumed before signer invocation. No renderer issuance command exists. |
 | Role-separated public-key governance | Implemented | Capability, execution, normalization, attestation and release verification keys are role, issuer, key ID, validity-window, revision and registry-digest bound. Public-key reuse, stale updates and role confusion fail closed. |
 | Governed capability and attestation verification | Implemented | Direct and signer-bound Capability Tokens plus direct and signer-bound Acceptance Certificates pass through the current governed registry before contract, plan, replay and evidence checks. Revoked keys invalidate current verification, including material signed before revocation. |
 | Deterministic release evidence | Implemented | SPDX 2.3 dependency inventory, source/toolchain/artifact manifest and sorted SHA-256 checksums reproduce from identical inputs. Permanent Windows CI compiles an unsigned candidate and proves it remains explicitly ineligible without signing and installer-provenance evidence. |
@@ -67,7 +68,7 @@ A capability is marked **certified path** only when the repository has an automa
 
 ### Phase 3 — Windows execution bridge
 
-**Status: demonstrated, not closed.** A genuine WPF UI Automation action is signed and independently verified. A bounded DPAPI-protected signer process plus purpose-locked Capability Token and Acceptance Certificate issuance now exist, but the phase remains open because production application coverage, broader UI patterns, recovery, backend issuance authorization policy, hardware-backed keys, code signing and real-user environment hardening are incomplete.
+**Status: demonstrated, not closed.** A genuine WPF UI Automation action is signed and independently verified. A bounded DPAPI-protected signer process, purpose-locked Capability Token and Acceptance Certificate issuance, and a platform-neutral backend issuance authorization policy now exist. The phase remains open because production application coverage, persistent user-job wiring, broader UI patterns, recovery, hardware-backed keys, code signing and real-user environment hardening are incomplete.
 
 ### Phase 4 — Graphic Designer Alpha
 
@@ -77,7 +78,7 @@ This does not claim unrestricted design automation, general commercial-print cer
 
 ### Windows Product Alpha control gate
 
-**Status: implemented for one bounded fixture, product gate remains open.** The desktop application can review and submit the exact snapshot, contract, plan and permission tuple; Rust issues an expiring approval and owns execution, cancellation, rollback and audit receipts. Public verification-key roles, rotation, revocation, deterministic unsigned release evidence, a separate DPAPI CurrentUser signer process and purpose-locked Capability Token and Acceptance Certificate issuance are implemented. Renderer-to-issuance authorization wiring, hardware-backed non-exportable keys, Authenticode, signed installer provenance, persistent user jobs and all four profession paths in one user-driven desktop flow remain open.
+**Status: implemented for one bounded fixture, product gate remains open.** The desktop application can review and submit the exact snapshot, contract, plan and permission tuple; Rust issues an expiring approval and owns execution, cancellation, rollback and audit receipts. Public verification-key roles, rotation, revocation, deterministic unsigned release evidence, a separate DPAPI CurrentUser signer process, purpose-locked issuance and one-shot backend issuance authorization are implemented. The current renderer exposes no issuance command. Persistent user-selected jobs, real Evidence Bundle loading, internal desktop-to-issuance orchestration, hardware-backed non-exportable keys, Authenticode, signed installer provenance and all four profession paths in one user-driven desktop flow remain open.
 
 ### Phase 5 — Profession learning laboratory
 
@@ -110,16 +111,16 @@ This does not claim unrestricted design automation, general commercial-print cer
 12. Separate Windows signer executable with DPAPI CurrentUser at-rest protection, role-bound digest-only signatures, persistent replay rejection, generic error responses and real Windows process-isolation tests.
 13. Purpose-locked signer-bound Capability Token issuance with fixed role, issuer and key identity, backend-computed payload digests, trusted-public-key matching, governed revocation and real Windows child-process verification.
 14. Purpose-locked signer-bound Acceptance Certificate issuance with Evidence Runtime reassessment before signing, deterministic Replay Manifest binding, fixed Attestation identity, governed revocation and real Windows DPAPI child-process verification.
+15. One-shot backend authorization for purpose-locked Capability Token and Acceptance Certificate issuance, bound to exact approval, command receipt, snapshot, contract, plan, permission, Evidence Bundle and Replay Manifest material.
 
 ## Next gates
 
-1. Add an explicit backend authorization policy for invoking purpose-locked Capability Token and Acceptance Certificate issuance from approved execution flows without exposing signer controls to the renderer.
-2. Add TPM/CNG hardware-provider non-exportable production keys, production issuer provisioning and authenticated signer-service identity hardening.
-3. Add Authenticode, trusted timestamps, certificate-chain verification and signed installer upgrade/rollback provenance.
-4. Replace the bounded desktop fixture with user-selected immutable inputs and route all four certified Graphic Designer job types through the same control lifecycle.
-5. Expand the Windows Bridge across real application patterns and recovery cases.
-6. Build the Profession Learning Laboratory in a cryptographically separate environment.
-7. Add cross-platform bridges and additional profession capsules only after the Windows Product Alpha gates hold.
+1. Add TPM/CNG hardware-provider non-exportable production keys, production issuer provisioning and authenticated signer-service identity hardening.
+2. Add Authenticode, trusted timestamps, certificate-chain verification and signed installer upgrade/rollback provenance.
+3. Replace the bounded desktop fixture with persistent user-selected immutable inputs, load real Evidence Bundles and internally route all four certified Graphic Designer job types through the backend issuance policy.
+4. Expand the Windows Bridge across real application patterns and recovery cases.
+5. Build the Profession Learning Laboratory in a cryptographically separate environment.
+6. Add cross-platform bridges and additional profession capsules only after the Windows Product Alpha gates hold.
 
 ## Non-negotiable rule
 
