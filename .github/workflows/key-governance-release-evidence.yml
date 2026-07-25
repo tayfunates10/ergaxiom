@@ -155,10 +155,16 @@ jobs:
       - name: Generate fail-closed candidate evidence
         shell: pwsh
         run: |
+          $rustcVersion = (rustc --version).Trim()
+          $nodeVersion = (node --version).Trim()
+          $npmVersion = (npm --version).Trim()
           python tools/release/generate_release_evidence.py `
             --repo-root . `
             --artifact apps/desktop/src-tauri/target/release/ergaxiom-desktop.exe `
             --source-commit "$env:SOURCE_COMMIT" `
+            --rustc-version "$rustcVersion" `
+            --node-version "$nodeVersion" `
+            --npm-version "$npmVersion" `
             --output-dir "$env:RUNNER_TEMP\release-evidence"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           $manifest = Get-Content "$env:RUNNER_TEMP\release-evidence\ergaxiom-release-manifest.json" | ConvertFrom-Json
