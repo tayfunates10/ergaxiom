@@ -6,6 +6,7 @@ on:
       - "Cargo.toml"
       - "Cargo.lock"
       - "crates/key-governance-runtime/**"
+      - "crates/governed-verification-runtime/**"
       - "crates/capability-runtime/**"
       - "crates/attestation-runtime/**"
       - "apps/desktop/package-lock.json"
@@ -21,6 +22,7 @@ on:
       - "Cargo.toml"
       - "Cargo.lock"
       - "crates/key-governance-runtime/**"
+      - "crates/governed-verification-runtime/**"
       - "crates/capability-runtime/**"
       - "crates/attestation-runtime/**"
       - "apps/desktop/package-lock.json"
@@ -53,6 +55,7 @@ jobs:
         run: >-
           cargo clippy
           -p ergaxiom-key-governance-runtime
+          -p ergaxiom-governed-verification-runtime
           -p ergaxiom-capability-runtime
           -p ergaxiom-attestation-runtime
           --all-targets --all-features -- -D warnings
@@ -61,6 +64,7 @@ jobs:
         run: >-
           cargo test
           -p ergaxiom-key-governance-runtime
+          -p ergaxiom-governed-verification-runtime
           -p ergaxiom-capability-runtime
           -p ergaxiom-attestation-runtime
 
