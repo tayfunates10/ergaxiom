@@ -9,6 +9,7 @@ on:
       - "crates/windows-production-signer-protocol-runtime/**"
       - "crates/windows-production-signer-runtime/**"
       - "crates/windows-production-signer-service-runtime/**"
+      - "crates/windows-production-signer-transport-runtime/**"
       - "crates/windows-signer-service-identity-runtime/**"
       - "docs/architecture/41-tpm-cng-production-signer.md"
       - ".github/workflows/windows-production-signer.yml"
@@ -22,45 +23,26 @@ on:
       - "crates/windows-production-signer-protocol-runtime/**"
       - "crates/windows-production-signer-runtime/**"
       - "crates/windows-production-signer-service-runtime/**"
+      - "crates/windows-production-signer-transport-runtime/**"
       - "crates/windows-signer-service-identity-runtime/**"
       - "docs/architecture/41-tpm-cng-production-signer.md"
       - ".github/workflows/windows-production-signer.yml"
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   policy:
-    name: Canonicalize and verify production signer service contracts
+    name: Verify production signer policy, protocol, service, transport and identity contracts
     runs-on: ubuntu-24.04
     steps:
-      - name: Check out pull request branch
+      - name: Check out repository
         uses: actions/checkout@v4
-        with:
-          ref: ${{ github.head_ref }}
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
-
-      - name: Materialize canonical formatting and lockfile
-        run: |
-          cargo fmt --all
-          cargo generate-lockfile
-
-      - name: Commit canonical source when needed
-        if: github.event_name == 'pull_request'
-        shell: bash
-        run: |
-          if git diff --quiet -- Cargo.lock crates/windows-production-signer-service-runtime; then
-            exit 0
-          fi
-          git config user.name "ergaxiom-ci"
-          git config user.email "ergaxiom-ci@users.noreply.github.com"
-          git add Cargo.lock crates/windows-production-signer-service-runtime
-          git commit -m "Canonicalize production signer service"
-          git push origin "HEAD:${{ github.head_ref }}"
 
       - name: Check workspace formatting
         run: cargo fmt --all -- --check
@@ -73,6 +55,7 @@ jobs:
             -p ergaxiom-windows-production-signer-runtime \
             -p ergaxiom-windows-production-signer-protocol-runtime \
             -p ergaxiom-windows-production-signer-service-runtime \
+            -p ergaxiom-windows-production-signer-transport-runtime \
             -p ergaxiom-windows-cng-key-provider-runtime \
             -p ergaxiom-windows-signer-service-identity-runtime \
             --all-targets --all-features -- -D warnings \
@@ -100,18 +83,17 @@ jobs:
             -p ergaxiom-windows-production-signer-runtime \
             -p ergaxiom-windows-production-signer-protocol-runtime \
             -p ergaxiom-windows-production-signer-service-runtime \
+            -p ergaxiom-windows-production-signer-transport-runtime \
             -p ergaxiom-windows-cng-key-provider-runtime \
             -p ergaxiom-windows-signer-service-identity-runtime \
             --all-features
 
   windows-cng:
-    name: Compile CNG provider, protocol, service and signer caller identity
+    name: Compile CNG provider, protocol, service, transport and caller identity
     runs-on: windows-2025
     steps:
-      - name: Check out pull request branch
+      - name: Check out repository
         uses: actions/checkout@v4
-        with:
-          ref: ${{ github.head_ref }}
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -128,6 +110,7 @@ jobs:
             -p ergaxiom-windows-production-signer-runtime `
             -p ergaxiom-windows-production-signer-protocol-runtime `
             -p ergaxiom-windows-production-signer-service-runtime `
+            -p ergaxiom-windows-production-signer-transport-runtime `
             -p ergaxiom-windows-cng-key-provider-runtime `
             -p ergaxiom-windows-signer-service-identity-runtime `
             --all-targets --all-features -- -D warnings `
@@ -157,6 +140,7 @@ jobs:
             -p ergaxiom-windows-production-signer-runtime `
             -p ergaxiom-windows-production-signer-protocol-runtime `
             -p ergaxiom-windows-production-signer-service-runtime `
+            -p ergaxiom-windows-production-signer-transport-runtime `
             -p ergaxiom-windows-cng-key-provider-runtime `
             -p ergaxiom-windows-signer-service-identity-runtime `
             --all-features
