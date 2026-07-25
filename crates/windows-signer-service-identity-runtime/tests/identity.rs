@@ -3,8 +3,8 @@ use ergaxiom_windows_production_signer_runtime::{
     SignerServiceIdentity,
 };
 use ergaxiom_windows_signer_service_identity_runtime::{
-    AllowedSignerCaller, NamedPipeSecurityContract, SignerCallerAllowlist, SignerIdentityAuthorizer,
-    SignerIdentityError,
+    AllowedSignerCaller, NamedPipeSecurityContract, SignerCallerAllowlist,
+    SignerIdentityAuthorizer, SignerIdentityError,
 };
 
 const HASH_A: &str = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
@@ -47,19 +47,13 @@ fn service() -> SignerServiceIdentity {
 }
 
 #[test]
-fn exact_allowlisted_caller_receives_digest_bound_receipt()
--> Result<(), Box<dyn std::error::Error>> {
+fn exact_allowlisted_caller_receives_digest_bound_receipt() -> Result<(), Box<dyn std::error::Error>>
+{
     let allowlist = SignerCallerAllowlist::build(1, vec![allowed()])?;
     let caller = caller();
     let service = service();
     let mut authorizer = SignerIdentityAuthorizer::default();
-    let receipt = authorizer.authorize(
-        &caller,
-        &service,
-        &allowlist,
-        REQUEST_A,
-        1_800_000_100,
-    )?;
+    let receipt = authorizer.authorize(&caller, &service, &allowlist, REQUEST_A, 1_800_000_100)?;
     receipt.validate(&caller, &service, &allowlist)?;
     assert_eq!(receipt.caller_id, "ergaxiom.backend");
     assert_eq!(receipt.allowlist_revision, 1);
@@ -81,13 +75,7 @@ fn principal_session_path_and_image_substitution_fail_closed()
         }
         let mut authorizer = SignerIdentityAuthorizer::default();
         assert!(matches!(
-            authorizer.authorize(
-                &caller,
-                &service(),
-                &allowlist,
-                REQUEST_A,
-                1_800_000_100,
-            ),
+            authorizer.authorize(&caller, &service(), &allowlist, REQUEST_A, 1_800_000_100,),
             Err(SignerIdentityError::CallerNotAllowlisted)
         ));
     }
@@ -95,30 +83,18 @@ fn principal_session_path_and_image_substitution_fail_closed()
 }
 
 #[test]
-fn reused_pid_and_changed_process_identity_are_rejected()
--> Result<(), Box<dyn std::error::Error>> {
+fn reused_pid_and_changed_process_identity_are_rejected() -> Result<(), Box<dyn std::error::Error>>
+{
     let allowlist = SignerCallerAllowlist::build(1, vec![allowed()])?;
     let service = service();
     let caller = caller();
     let mut authorizer = SignerIdentityAuthorizer::default();
-    authorizer.authorize(
-        &caller,
-        &service,
-        &allowlist,
-        REQUEST_A,
-        1_800_000_100,
-    )?;
+    authorizer.authorize(&caller, &service, &allowlist, REQUEST_A, 1_800_000_100)?;
 
     let mut reused = caller.clone();
     reused.process_creation_time_100ns += 1;
     assert!(matches!(
-        authorizer.authorize(
-            &reused,
-            &service,
-            &allowlist,
-            REQUEST_B,
-            1_800_000_101,
-        ),
+        authorizer.authorize(&reused, &service, &allowlist, REQUEST_B, 1_800_000_101,),
         Err(SignerIdentityError::ProcessIdReused)
     ));
 
@@ -137,38 +113,20 @@ fn reused_pid_and_changed_process_identity_are_rejected()
         ],
     )?;
     assert!(matches!(
-        authorizer.authorize(
-            &changed,
-            &service,
-            &expanded,
-            REQUEST_B,
-            1_800_000_102,
-        ),
+        authorizer.authorize(&changed, &service, &expanded, REQUEST_B, 1_800_000_102,),
         Err(SignerIdentityError::ProcessIdentityChanged)
     ));
     Ok(())
 }
 
 #[test]
-fn request_replay_is_rejected_before_second_authorization()
--> Result<(), Box<dyn std::error::Error>> {
+fn request_replay_is_rejected_before_second_authorization() -> Result<(), Box<dyn std::error::Error>>
+{
     let allowlist = SignerCallerAllowlist::build(1, vec![allowed()])?;
     let mut authorizer = SignerIdentityAuthorizer::default();
-    authorizer.authorize(
-        &caller(),
-        &service(),
-        &allowlist,
-        REQUEST_A,
-        1_800_000_100,
-    )?;
+    authorizer.authorize(&caller(), &service(), &allowlist, REQUEST_A, 1_800_000_100)?;
     assert!(matches!(
-        authorizer.authorize(
-            &caller(),
-            &service(),
-            &allowlist,
-            REQUEST_A,
-            1_800_000_101,
-        ),
+        authorizer.authorize(&caller(), &service(), &allowlist, REQUEST_A, 1_800_000_101,),
         Err(SignerIdentityError::RequestReplayDetected)
     ));
     Ok(())

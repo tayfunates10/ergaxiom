@@ -219,22 +219,14 @@ impl ProcessHandle {
         let mut user = FILETIME::default();
         // SAFETY: self.raw is a live process handle and all FILETIME pointers are
         // writable for the duration of the call.
-        let result = unsafe {
-            GetProcessTimes(
-                self.raw,
-                &mut creation,
-                &mut exit,
-                &mut kernel,
-                &mut user,
-            )
-        };
+        let result =
+            unsafe { GetProcessTimes(self.raw, &mut creation, &mut exit, &mut kernel, &mut user) };
         if result == 0 {
             return Err(SignerIdentityError::ClientProcessTimesReadFailed(
                 std::io::Error::last_os_error(),
             ));
         }
-        let value = (u64::from(creation.dwHighDateTime) << 32)
-            | u64::from(creation.dwLowDateTime);
+        let value = (u64::from(creation.dwHighDateTime) << 32) | u64::from(creation.dwLowDateTime);
         if value == 0 {
             return Err(SignerIdentityError::ClientProcessTimesReadFailed(
                 std::io::Error::from_raw_os_error(87),

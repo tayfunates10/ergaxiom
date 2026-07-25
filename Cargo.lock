@@ -1011,6 +1011,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "ergaxiom-windows-signer-service-identity-runtime"
+version = "0.1.0"
+dependencies = [
+ "ergaxiom-proof-kernel",
+ "ergaxiom-windows-production-signer-runtime",
+ "serde",
+ "serde_json",
+ "sha2",
+ "thiserror",
+ "windows-sys",
+]
+
+[[package]]
 name = "ergaxiom-windows-uia-client-runtime"
 version = "0.1.0"
 dependencies = [

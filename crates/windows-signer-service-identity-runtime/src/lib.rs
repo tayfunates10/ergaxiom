@@ -46,7 +46,9 @@ impl AllowedSignerCaller {
     fn matches(&self, caller: &AuthenticatedCallerIdentity) -> Result<bool, SignerIdentityError> {
         caller.validate()?;
         Ok(self.principal_sid == caller.principal_sid
-            && self.session_id.is_none_or(|session_id| session_id == caller.session_id)
+            && self
+                .session_id
+                .is_none_or(|session_id| session_id == caller.session_id)
             && paths_equal(&self.executable_path, &caller.executable_path)
             && self.executable_sha256 == caller.executable_sha256)
     }
