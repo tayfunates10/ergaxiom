@@ -8,16 +8,21 @@ on:
       - "apps/windows-signer/**"
       - "crates/attestation-issuance-runtime/**"
       - "crates/attestation-runtime/**"
+      - "crates/backend-issuance-runtime/**"
       - "crates/capability-issuance-runtime/**"
       - "crates/capability-runtime/**"
+      - "crates/desktop-shell-runtime/**"
+      - "crates/evidence-runtime/**"
       - "crates/governed-verification-runtime/**"
       - "crates/windows-signer-client-runtime/**"
       - "crates/windows-signer-protocol-runtime/**"
       - "crates/key-governance-runtime/**"
+      - "crates/operator-plan-runtime/**"
       - "crates/proof-kernel/**"
       - "docs/architecture/37-windows-dpapi-isolated-signer.md"
       - "docs/architecture/38-purpose-locked-capability-issuance.md"
       - "docs/architecture/39-purpose-locked-attestation-issuance.md"
+      - "docs/architecture/40-backend-authorized-issuance.md"
       - "docs/status.md"
       - ".github/workflows/windows-dpapi-signer.yml"
   push:
@@ -29,16 +34,21 @@ on:
       - "apps/windows-signer/**"
       - "crates/attestation-issuance-runtime/**"
       - "crates/attestation-runtime/**"
+      - "crates/backend-issuance-runtime/**"
       - "crates/capability-issuance-runtime/**"
       - "crates/capability-runtime/**"
+      - "crates/desktop-shell-runtime/**"
+      - "crates/evidence-runtime/**"
       - "crates/governed-verification-runtime/**"
       - "crates/windows-signer-client-runtime/**"
       - "crates/windows-signer-protocol-runtime/**"
       - "crates/key-governance-runtime/**"
+      - "crates/operator-plan-runtime/**"
       - "crates/proof-kernel/**"
       - "docs/architecture/37-windows-dpapi-isolated-signer.md"
       - "docs/architecture/38-purpose-locked-capability-issuance.md"
       - "docs/architecture/39-purpose-locked-attestation-issuance.md"
+      - "docs/architecture/40-backend-authorized-issuance.md"
       - "docs/status.md"
       - ".github/workflows/windows-dpapi-signer.yml"
 
@@ -70,6 +80,7 @@ jobs:
             -p ergaxiom-windows-signer-client-runtime \
             -p ergaxiom-attestation-issuance-runtime \
             -p ergaxiom-attestation-runtime \
+            -p ergaxiom-backend-issuance-runtime \
             -p ergaxiom-capability-issuance-runtime \
             -p ergaxiom-capability-runtime \
             -p ergaxiom-governed-verification-runtime \
@@ -102,6 +113,7 @@ jobs:
             -p ergaxiom-windows-signer-client-runtime \
             -p ergaxiom-attestation-issuance-runtime \
             -p ergaxiom-attestation-runtime \
+            -p ergaxiom-backend-issuance-runtime \
             -p ergaxiom-capability-issuance-runtime \
             -p ergaxiom-capability-runtime \
             -p ergaxiom-governed-verification-runtime \
@@ -147,6 +159,7 @@ jobs:
             -p ergaxiom-windows-signer-client-runtime `
             -p ergaxiom-attestation-issuance-runtime `
             -p ergaxiom-attestation-runtime `
+            -p ergaxiom-backend-issuance-runtime `
             -p ergaxiom-capability-issuance-runtime `
             -p ergaxiom-capability-runtime `
             -p ergaxiom-governed-verification-runtime `
@@ -179,6 +192,7 @@ jobs:
             -p ergaxiom-windows-signer-client-runtime `
             -p ergaxiom-attestation-issuance-runtime `
             -p ergaxiom-attestation-runtime `
+            -p ergaxiom-backend-issuance-runtime `
             -p ergaxiom-capability-issuance-runtime `
             -p ergaxiom-capability-runtime `
             -p ergaxiom-governed-verification-runtime `

@@ -392,6 +392,28 @@ dependencies = [
 ]
 
 [[package]]
+name = "ergaxiom-backend-issuance-runtime"
+version = "0.1.0"
+dependencies = [
+ "base64",
+ "ed25519-dalek",
+ "ergaxiom-attestation-issuance-runtime",
+ "ergaxiom-attestation-runtime",
+ "ergaxiom-capability-issuance-runtime",
+ "ergaxiom-capability-runtime",
+ "ergaxiom-contract-runtime",
+ "ergaxiom-desktop-shell-runtime",
+ "ergaxiom-evidence-runtime",
+ "ergaxiom-key-governance-runtime",
+ "ergaxiom-operator-plan-runtime",
+ "ergaxiom-proof-kernel",
+ "ergaxiom-windows-signer-protocol-runtime",
+ "serde",
+ "serde_json",
+ "thiserror",
+]
+
+[[package]]
 name = "ergaxiom-background-cleanup-certified-path-runtime"
 version = "0.1.0"
 dependencies = [

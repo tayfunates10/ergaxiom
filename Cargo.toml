@@ -3,6 +3,7 @@ members = [
   "apps/windows-signer",
   "crates/attestation-issuance-runtime",
   "crates/attestation-runtime",
+  "crates/backend-issuance-runtime",
   "crates/background-cleanup-certified-path-runtime",
   "crates/brand-compliant-export-certified-path-runtime",
   "crates/capability-issuance-runtime",
