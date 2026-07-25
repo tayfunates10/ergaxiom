@@ -11,17 +11,13 @@ use windows_sys::Win32::Foundation::{
 };
 use windows_sys::Win32::Security::Authorization::ConvertStringSecurityDescriptorToSecurityDescriptorW;
 use windows_sys::Win32::Security::SECURITY_ATTRIBUTES;
-use windows_sys::Win32::Storage::FileSystem::{
-    CreateFileW, FlushFileBuffers, ReadFile, WriteFile,
-};
+use windows_sys::Win32::Storage::FileSystem::{CreateFileW, FlushFileBuffers, ReadFile, WriteFile};
 use windows_sys::Win32::System::Pipes::{
     ConnectNamedPipe, CreateNamedPipeW, DisconnectNamedPipe, SetNamedPipeHandleState,
     WaitNamedPipeW,
 };
 
-use crate::{
-    PIPE_CONNECT_TIMEOUT_MS, ProductionSignerTransportError,
-};
+use crate::{PIPE_CONNECT_TIMEOUT_MS, ProductionSignerTransportError};
 
 const GENERIC_READ: u32 = 0x8000_0000;
 const GENERIC_WRITE: u32 = 0x4000_0000;
@@ -55,10 +51,8 @@ impl PipeServer {
         };
         let pipe_name = wide(&contract.pipe_name)?;
         let open_mode = PIPE_ACCESS_DUPLEX | FILE_FLAG_FIRST_PIPE_INSTANCE;
-        let pipe_mode = PIPE_TYPE_MESSAGE
-            | PIPE_READMODE_MESSAGE
-            | PIPE_WAIT
-            | PIPE_REJECT_REMOTE_CLIENTS;
+        let pipe_mode =
+            PIPE_TYPE_MESSAGE | PIPE_READMODE_MESSAGE | PIPE_WAIT | PIPE_REJECT_REMOTE_CLIENTS;
         // SAFETY: pipe_name is NUL-terminated, security_attributes references a live
         // self-relative security descriptor for the duration of the call, and all
         // buffer-size and instance values are bounded by the validated contract.
@@ -125,10 +119,7 @@ impl PipeConnection {
         read_message(self.handle, max_bytes)
     }
 
-    pub fn write_message(
-        &mut self,
-        bytes: &[u8],
-    ) -> Result<(), ProductionSignerTransportError> {
+    pub fn write_message(&mut self, bytes: &[u8]) -> Result<(), ProductionSignerTransportError> {
         write_message(self.handle, bytes)
     }
 }
@@ -189,10 +180,7 @@ pub fn client_exchange(
     read_message(handle.raw, max_response_bytes)
 }
 
-fn read_message(
-    handle: HANDLE,
-    max_bytes: u32,
-) -> Result<Vec<u8>, ProductionSignerTransportError> {
+fn read_message(handle: HANDLE, max_bytes: u32) -> Result<Vec<u8>, ProductionSignerTransportError> {
     if max_bytes == 0 {
         return Err(ProductionSignerTransportError::MessageSizeInvalid);
     }
@@ -236,10 +224,7 @@ fn read_message(
     }
 }
 
-fn write_message(
-    handle: HANDLE,
-    bytes: &[u8],
-) -> Result<(), ProductionSignerTransportError> {
+fn write_message(handle: HANDLE, bytes: &[u8]) -> Result<(), ProductionSignerTransportError> {
     if bytes.is_empty() || bytes.len() > u32::MAX as usize {
         return Err(ProductionSignerTransportError::MessageSizeInvalid);
     }

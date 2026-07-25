@@ -60,8 +60,7 @@ impl AuthenticatedPipeConnection {
         #[cfg(windows)]
         {
             let bytes = self.inner.read_message(max_bytes)?;
-            return serde_json::from_slice(&bytes)
-                .map_err(ProductionSignerTransportError::Json);
+            return serde_json::from_slice(&bytes).map_err(ProductionSignerTransportError::Json);
         }
         #[cfg(not(windows))]
         {
@@ -168,8 +167,7 @@ impl ProductionSignerPipeClient {
         #[cfg(windows)]
         {
             let response = windows::client_exchange(&bytes, max_response_bytes)?;
-            return serde_json::from_slice(&response)
-                .map_err(ProductionSignerTransportError::Json);
+            return serde_json::from_slice(&response).map_err(ProductionSignerTransportError::Json);
         }
         #[cfg(not(windows))]
         {

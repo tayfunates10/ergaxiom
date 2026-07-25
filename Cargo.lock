@@ -1047,6 +1047,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "ergaxiom-windows-production-signer-transport-runtime"
+version = "0.1.0"
+dependencies = [
+ "ergaxiom-windows-production-signer-protocol-runtime",
+ "ergaxiom-windows-production-signer-runtime",
+ "ergaxiom-windows-production-signer-service-runtime",
+ "ergaxiom-windows-signer-service-identity-runtime",
+ "serde",
+ "serde_json",
+ "thiserror",
+ "windows-sys",
+]
+
+[[package]]
 name = "ergaxiom-windows-signer"
 version = "0.1.0"
 dependencies = [
