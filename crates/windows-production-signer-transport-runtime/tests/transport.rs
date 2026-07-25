@@ -10,10 +10,12 @@ fn production_sddl_uses_individual_client_rights_not_generic_write()
 -> Result<(), Box<dyn std::error::Error>> {
     let contract = NamedPipeSecurityContract::production("S-1-5-21-1000")?;
     let sddl = production_pipe_sddl(&contract)?;
+    assert!(sddl.starts_with("D:P"));
     assert!(sddl.contains("(A;;GA;;;SY)"));
     assert!(sddl.contains("(A;;GA;;;BA)"));
     assert!(sddl.contains(&format!("0x{CLIENT_PIPE_RIGHTS:08x}")));
     assert!(sddl.contains("S-1-5-21-1000"));
+    assert!(!sddl.contains("O:SY"));
     assert!(!sddl.contains("(A;;GW;;;S-1-5-21-1000)"));
     assert!(!sddl.contains("(A;;GA;;;S-1-5-21-1000)"));
     Ok(())
