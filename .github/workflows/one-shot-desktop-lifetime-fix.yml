@@ -1,0 +1,45 @@
+name: One-shot desktop lifetime fix
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/one-shot-desktop-lifetime-fix.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out implementation branch
+        uses: actions/checkout@v4
+        with:
+          ref: agent/desktop-digest-bound-control-v1
+          fetch-depth: 0
+
+      - name: Bind pipeline approval lifetime
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('apps/desktop/src-tauri/src/pipeline.rs')
+          text = path.read_text(encoding='utf-8')
+          text = text.replace("impl PipelineSnapshotMode<'_> {", "impl<'a> PipelineSnapshotMode<'a> {", 1)
+          text = text.replace(
+              '    fn approval(self) -> Option<&DesktopApprovalRecord> {',
+              "    fn approval(self) -> Option<&'a DesktopApprovalRecord> {",
+              1,
+          )
+          path.write_text(text, encoding='utf-8')
+          PY
+          cargo fmt --manifest-path apps/desktop/src-tauri/Cargo.toml --all
+          git diff --check
+          git config user.name "ergaxiom-maintenance"
+          git config user.email "actions@users.noreply.github.com"
+          git add apps/desktop/src-tauri/src/pipeline.rs
+          git commit -m "Bind desktop approval reference lifetime"
+          git push origin HEAD:agent/desktop-digest-bound-control-v1
