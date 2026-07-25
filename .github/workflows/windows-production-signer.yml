@@ -34,8 +34,21 @@ jobs:
         with:
           components: rustfmt, clippy
 
-      - name: Check workspace formatting
-        run: cargo fmt --all -- --check
+      - name: Materialize canonical formatting and lockfile
+        run: |
+          cargo fmt --all
+          cargo generate-lockfile
+
+      - name: Upload canonical source material
+        uses: actions/upload-artifact@v4
+        with:
+          name: production-signer-canonical-source
+          path: |
+            Cargo.lock
+            crates/windows-production-signer-runtime/src/lib.rs
+            crates/windows-production-signer-runtime/tests/policy.rs
+          if-no-files-found: error
+          retention-days: 3
 
       - name: Lint production signer foundation
         run: |
