@@ -1,4 +1,24 @@
 [[permission]]
 identifier = "allow-get-desktop-shell-snapshot"
-description = "Allows the main window to read one digest-verified desktop shell snapshot."
+description = "Allows the main window to read one digest-verified desktop control snapshot."
 commands.allow = ["get_desktop_shell_snapshot"]
+
+[[permission]]
+identifier = "allow-approve-desktop-job"
+description = "Allows the main window to request a backend-generated approval over the exact displayed digest tuple."
+commands.allow = ["approve_desktop_job"]
+
+[[permission]]
+identifier = "allow-start-desktop-job-execution"
+description = "Allows the main window to request execution using one exact backend approval digest."
+commands.allow = ["start_desktop_job_execution"]
+
+[[permission]]
+identifier = "allow-cancel-desktop-job"
+description = "Allows the main window to request cancellation before execution."
+commands.allow = ["cancel_desktop_job"]
+
+[[permission]]
+identifier = "allow-rollback-desktop-job"
+description = "Allows the main window to request rollback of one completed deterministic execution."
+commands.allow = ["rollback_desktop_job"]
