@@ -6,7 +6,7 @@ This gate binds Capability Token issuance to the isolated Windows signer while k
 
 It adds a new signer-bound Capability Token format alongside the existing direct-Ed25519 token format. Existing tokens and verification paths remain supported; no silent signature-semantics migration occurs.
 
-This package covers Capability Tokens only. Acceptance Certificate issuance, renderer command exposure, TPM or CNG hardware-backed keys, Authenticode and signed installer provenance remain separate work.
+This package covers Capability Tokens only. Acceptance Certificate issuance, renderer command exposure, TPM or CNG hardware-backed keys, Authenticode and signed installer provenance remain separate work. The desktop Tauri invoke handler is not extended by this package, so no renderer-callable issuance command exists.
 
 ## Fixed issuance authority
 
