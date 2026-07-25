@@ -33,6 +33,9 @@ fn malformed_requests_fail_before_process_launch() -> Result<(), Box<dyn std::er
         "release-key-01",
         "not-a-digest",
     );
-    assert!(matches!(client.invoke(&request), Err(SignerClientError::Protocol(_))));
+    assert!(matches!(
+        client.invoke(&request),
+        Err(SignerClientError::Protocol(_))
+    ));
     Ok(())
 }

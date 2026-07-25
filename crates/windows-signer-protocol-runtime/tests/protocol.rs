@@ -2,8 +2,8 @@ use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
 use ed25519_dalek::{Signer, SigningKey};
 use ergaxiom_key_governance_runtime::IssuerRole;
 use ergaxiom_windows_signer_protocol_runtime::{
-    SIGNATURE_ALGORITHM_ED25519, SIGNATURE_ENCODING_BASE64URL, SignerProtocolError,
-    SignerRequest, SignerResponse, SignerSuccess, encode_hex,
+    SIGNATURE_ALGORITHM_ED25519, SIGNATURE_ENCODING_BASE64URL, SignerProtocolError, SignerRequest,
+    SignerResponse, SignerSuccess, encode_hex,
 };
 
 const ISSUER: &str = "ergaxiom.attestation-authority";
@@ -46,7 +46,8 @@ fn exact_role_bound_digest_signature_verifies() -> Result<(), Box<dyn std::error
 }
 
 #[test]
-fn changed_role_digest_or_request_id_invalidates_signature() -> Result<(), Box<dyn std::error::Error>> {
+fn changed_role_digest_or_request_id_invalidates_signature()
+-> Result<(), Box<dyn std::error::Error>> {
     let request = SignerRequest::sign_digest(
         "request.attestation.0002",
         IssuerRole::Attestation,

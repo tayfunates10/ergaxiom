@@ -65,8 +65,8 @@ fn dpapi_current_user_roundtrip_requires_exact_entropy() -> Result<(), Box<dyn s
 }
 
 #[test]
-fn real_dpapi_store_never_persists_raw_seed_and_signs_exact_envelope(
-) -> Result<(), Box<dyn std::error::Error>> {
+fn real_dpapi_store_never_persists_raw_seed_and_signs_exact_envelope()
+-> Result<(), Box<dyn std::error::Error>> {
     let directory = TestDirectory::create("service")?;
     let mut service = SignerService::new(
         directory.path().to_path_buf(),
@@ -86,7 +86,11 @@ fn real_dpapi_store_never_persists_raw_seed_and_signs_exact_envelope(
     let record = entries.next().ok_or("missing DPAPI key record")??.path();
     assert!(entries.next().is_none());
     let stored = fs::read(record)?;
-    assert!(!stored.windows(FIXED_SEED.len()).any(|window| window == FIXED_SEED));
+    assert!(
+        !stored
+            .windows(FIXED_SEED.len())
+            .any(|window| window == FIXED_SEED)
+    );
 
     let signed = service.handle(&SignerRequest::sign_digest(
         "request.release.sign.dpapi.0001",
@@ -103,8 +107,8 @@ fn real_dpapi_store_never_persists_raw_seed_and_signs_exact_envelope(
 }
 
 #[test]
-fn isolated_process_returns_only_public_material_and_rejects_replay(
-) -> Result<(), Box<dyn std::error::Error>> {
+fn isolated_process_returns_only_public_material_and_rejects_replay()
+-> Result<(), Box<dyn std::error::Error>> {
     let directory = TestDirectory::create("process")?;
     let executable = PathBuf::from(env!("CARGO_BIN_EXE_ergaxiom-windows-signer"));
     let client = SignerProcessClient::isolated_test(executable, directory.path())?;
@@ -135,8 +139,8 @@ fn isolated_process_returns_only_public_material_and_rejects_replay(
 }
 
 #[test]
-fn production_process_rejects_test_store_override_without_explicit_test_mode(
-) -> Result<(), Box<dyn std::error::Error>> {
+fn production_process_rejects_test_store_override_without_explicit_test_mode()
+-> Result<(), Box<dyn std::error::Error>> {
     let directory = TestDirectory::create("cli-boundary")?;
     let executable = PathBuf::from(env!("CARGO_BIN_EXE_ergaxiom-windows-signer"));
     let request = SignerRequest::public_key(

@@ -30,12 +30,11 @@ fn execute() -> Result<(), PublicFailure> {
         code: "MALFORMED_JSON",
     })?;
     let request_id = Some(request.request_id.clone());
-    let mut service = SignerService::new(root, DpapiProtector, OsSeedSource).map_err(|error| {
-        PublicFailure {
+    let mut service =
+        SignerService::new(root, DpapiProtector, OsSeedSource).map_err(|error| PublicFailure {
             request_id: request_id.clone(),
             code: error.code(),
-        }
-    })?;
+        })?;
     let response = service.handle(&request).map_err(|error| PublicFailure {
         request_id,
         code: error.code(),

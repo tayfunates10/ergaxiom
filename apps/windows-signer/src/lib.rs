@@ -72,7 +72,10 @@ where
         &self.root
     }
 
-    pub fn handle(&mut self, request: &SignerRequest) -> Result<SignerResponse, SignerServiceError> {
+    pub fn handle(
+        &mut self,
+        request: &SignerRequest,
+    ) -> Result<SignerResponse, SignerServiceError> {
         request.validate()?;
         self.mark_request_id(request)?;
         match request.operation {
@@ -229,7 +232,9 @@ where
         request: &SignerRequest,
         record: &StoredKeyRecord,
     ) -> Result<(), SignerServiceError> {
-        let parent = target.parent().ok_or(SignerServiceError::InvalidStoreLayout)?;
+        let parent = target
+            .parent()
+            .ok_or(SignerServiceError::InvalidStoreLayout)?;
         fs::create_dir_all(parent).map_err(SignerServiceError::CreateStoreDirectory)?;
         let lock_path = target.with_extension("lock");
         let lock = OpenOptions::new()
@@ -294,7 +299,8 @@ impl StoredKeyRecord {
             || self.issuer_id != request.issuer_id
             || self.key_id != request.key_id
             || self.record_digest != stored_record_digest(self)?
-            || ergaxiom_windows_signer_protocol_runtime::decode_hex_32(&self.public_key_hex).is_err()
+            || ergaxiom_windows_signer_protocol_runtime::decode_hex_32(&self.public_key_hex)
+                .is_err()
             || self.protected_seed_base64.is_empty()
         {
             return Err(SignerServiceError::StoredKeyCorrupt);
@@ -308,7 +314,10 @@ fn stored_record_digest(record: &StoredKeyRecord) -> Result<String, SignerServic
     let object = value
         .as_object_mut()
         .ok_or(SignerServiceError::StoredKeyCorrupt)?;
-    object.insert("record_digest".to_owned(), serde_json::Value::String(String::new()));
+    object.insert(
+        "record_digest".to_owned(),
+        serde_json::Value::String(String::new()),
+    );
     Ok(canonical_json_sha256(&value)?)
 }
 
@@ -348,7 +357,8 @@ fn dpapi_transform(
     };
     use windows_sys::Win32::System::Memory::LocalFree;
 
-    let input_len = u32::try_from(input.len()).map_err(|_| SignerServiceError::DpapiInputTooLarge)?;
+    let input_len =
+        u32::try_from(input.len()).map_err(|_| SignerServiceError::DpapiInputTooLarge)?;
     let entropy_len =
         u32::try_from(entropy.len()).map_err(|_| SignerServiceError::DpapiInputTooLarge)?;
     let input_blob = CRYPT_INTEGER_BLOB {
@@ -403,9 +413,8 @@ fn dpapi_transform(
         return Err(SignerServiceError::DpapiReturnedEmptyOutput);
     }
     // SAFETY: DPAPI returned a valid output allocation of cbData bytes on success.
-    let output = unsafe {
-        slice::from_raw_parts(output_blob.pbData, output_blob.cbData as usize).to_vec()
-    };
+    let output =
+        unsafe { slice::from_raw_parts(output_blob.pbData, output_blob.cbData as usize).to_vec() };
     // SAFETY: DPAPI documents that the returned buffer must be released with LocalFree.
     let free_result = unsafe { LocalFree(output_blob.pbData.cast()) };
     if !free_result.is_null() {
@@ -424,14 +433,18 @@ impl SecretProtector for DpapiProtector {
         Err(SignerServiceError::UnsupportedPlatform)
     }
 
-    fn unprotect(&self, _ciphertext: &[u8], _entropy: &[u8]) -> Result<Vec<u8>, SignerServiceError> {
+    fn unprotect(
+        &self,
+        _ciphertext: &[u8],
+        _entropy: &[u8],
+    ) -> Result<Vec<u8>, SignerServiceError> {
         Err(SignerServiceError::UnsupportedPlatform)
     }
 }
 
 pub fn default_store_root() -> Result<PathBuf, SignerServiceError> {
-    let local_app_data = std::env::var_os("LOCALAPPDATA")
-        .ok_or(SignerServiceError::LocalAppDataUnavailable)?;
+    let local_app_data =
+        std::env::var_os("LOCALAPPDATA").ok_or(SignerServiceError::LocalAppDataUnavailable)?;
     let root = PathBuf::from(local_app_data)
         .join("Ergaxiom")
         .join("Signer")

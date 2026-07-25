@@ -306,16 +306,14 @@ pub fn key_identity_digest(
     Ok(canonical_json_sha256(&value)?)
 }
 
-pub fn validate_identifier(
-    field: &'static str,
-    value: &str,
-) -> Result<(), SignerProtocolError> {
+pub fn validate_identifier(field: &'static str, value: &str) -> Result<(), SignerProtocolError> {
     let valid_length = (3..=128).contains(&value.len());
     let mut chars = value.chars();
-    let starts_valid = chars.next().is_some_and(|character| character.is_ascii_alphanumeric());
-    let remaining_valid = chars.all(|character| {
-        character.is_ascii_alphanumeric() || matches!(character, '.' | '_' | '-')
-    });
+    let starts_valid = chars
+        .next()
+        .is_some_and(|character| character.is_ascii_alphanumeric());
+    let remaining_valid = chars
+        .all(|character| character.is_ascii_alphanumeric() || matches!(character, '.' | '_' | '-'));
     if !valid_length || !starts_valid || !remaining_valid {
         return Err(SignerProtocolError::InvalidIdentifier(field));
     }

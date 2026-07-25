@@ -112,8 +112,8 @@ fn requests() -> (SignerRequest, SignerRequest, SignerRequest) {
 }
 
 #[test]
-fn private_seed_stays_protected_and_digest_signature_verifies(
-) -> Result<(), Box<dyn std::error::Error>> {
+fn private_seed_stays_protected_and_digest_signature_verifies()
+-> Result<(), Box<dyn std::error::Error>> {
     let directory = TestDirectory::create("protected-roundtrip")?;
     let mut service = SignerService::new(
         directory.path().to_path_buf(),
@@ -127,13 +127,14 @@ fn private_seed_stays_protected_and_digest_signature_verifies(
 
     let keys_directory = directory.path().join("keys");
     let mut entries = fs::read_dir(keys_directory)?;
-    let record_path = entries
-        .next()
-        .ok_or("missing stored key record")??
-        .path();
+    let record_path = entries.next().ok_or("missing stored key record")??.path();
     assert!(entries.next().is_none());
     let stored_bytes = fs::read(record_path)?;
-    assert!(!stored_bytes.windows(FIXED_SEED.len()).any(|window| window == FIXED_SEED));
+    assert!(
+        !stored_bytes
+            .windows(FIXED_SEED.len())
+            .any(|window| window == FIXED_SEED)
+    );
     let raw_seed_base64 = STANDARD.encode(FIXED_SEED);
     let stored_text = String::from_utf8(stored_bytes)?;
     assert!(!stored_text.contains(&raw_seed_base64));
@@ -149,8 +150,8 @@ fn private_seed_stays_protected_and_digest_signature_verifies(
 }
 
 #[test]
-fn duplicate_request_ids_and_duplicate_initialization_fail_closed(
-) -> Result<(), Box<dyn std::error::Error>> {
+fn duplicate_request_ids_and_duplicate_initialization_fail_closed()
+-> Result<(), Box<dyn std::error::Error>> {
     let directory = TestDirectory::create("replay")?;
     let mut service = SignerService::new(
         directory.path().to_path_buf(),
@@ -184,8 +185,8 @@ fn duplicate_request_ids_and_duplicate_initialization_fail_closed(
 }
 
 #[test]
-fn role_or_key_changes_cannot_open_existing_private_material(
-) -> Result<(), Box<dyn std::error::Error>> {
+fn role_or_key_changes_cannot_open_existing_private_material()
+-> Result<(), Box<dyn std::error::Error>> {
     let directory = TestDirectory::create("role-binding")?;
     let mut service = SignerService::new(
         directory.path().to_path_buf(),
