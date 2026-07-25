@@ -122,13 +122,15 @@ fn non_signing_operations_reject_digest_fields() {
 }
 
 #[test]
-fn error_response_uses_generic_message_and_has_no_secret_fields() {
+fn error_response_uses_generic_message_and_has_no_secret_fields()
+-> Result<(), Box<dyn std::error::Error>> {
     let response = SignerResponse::rejected(
         Some("request.attestation.0003".to_owned()),
         "KEY_UNPROTECT_FAILED",
     );
-    let serialized = serde_json::to_string(&response).expect("response serialization");
+    let serialized = serde_json::to_string(&response)?;
     assert!(serialized.contains("signer request rejected"));
     assert!(!serialized.contains("private"));
     assert!(!response.contains_private_material_field());
+    Ok(())
 }
