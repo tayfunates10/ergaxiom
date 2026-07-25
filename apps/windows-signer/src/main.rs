@@ -54,9 +54,7 @@ fn parse_store_path() -> Result<PathBuf, PublicFailure> {
             code: error.code(),
         });
     };
-    if argument != "--store"
-        || std::env::var("ERGAXIOM_SIGNER_TEST_MODE").as_deref() != Ok("1")
-    {
+    if argument != "--store" || std::env::var("ERGAXIOM_SIGNER_TEST_MODE").as_deref() != Ok("1") {
         return Err(PublicFailure {
             request_id: None,
             code: "COMMAND_LINE_REJECTED",

@@ -352,10 +352,10 @@ fn dpapi_transform(
     use std::ptr::{null, null_mut};
     use std::slice;
 
+    use windows_sys::Win32::Foundation::LocalFree;
     use windows_sys::Win32::Security::Cryptography::{
         CRYPT_INTEGER_BLOB, CRYPTPROTECT_UI_FORBIDDEN, CryptProtectData, CryptUnprotectData,
     };
-    use windows_sys::Win32::System::Memory::LocalFree;
 
     let input_len =
         u32::try_from(input.len()).map_err(|_| SignerServiceError::DpapiInputTooLarge)?;
