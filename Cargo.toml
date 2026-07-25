@@ -37,6 +37,7 @@ members = [
   "crates/svg-approved-copy-runtime",
   "crates/typed-planner-runtime",
   "crates/windows-bridge-runtime",
+  "crates/windows-production-signer-runtime",
   "crates/windows-signer-client-runtime",
   "crates/windows-signer-protocol-runtime",
   "crates/windows-uia-client-runtime"

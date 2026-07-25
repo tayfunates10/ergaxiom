@@ -1,0 +1,50 @@
+name: Windows production signer foundation
+
+on:
+  pull_request:
+    paths:
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "crates/windows-production-signer-runtime/**"
+      - "docs/architecture/41-tpm-cng-production-signer.md"
+      - ".github/workflows/windows-production-signer.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "crates/windows-production-signer-runtime/**"
+      - "docs/architecture/41-tpm-cng-production-signer.md"
+      - ".github/workflows/windows-production-signer.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  policy:
+    name: Verify production signer policy and identity bindings
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Check workspace formatting
+        run: cargo fmt --all -- --check
+
+      - name: Lint production signer foundation
+        run: |
+          cargo clippy \
+            -p ergaxiom-windows-production-signer-runtime \
+            --all-targets --all-features -- -D warnings
+
+      - name: Run production signer policy attacks
+        run: |
+          cargo test \
+            -p ergaxiom-windows-production-signer-runtime \
+            --all-features
