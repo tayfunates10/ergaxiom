@@ -1,4 +1,5 @@
 use ergaxiom_contract_runtime::PermissionAccess;
+use ergaxiom_windows_signer_protocol_runtime::SignerResponse;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -6,6 +7,12 @@ use serde_json::Value;
 pub struct SignedCapabilityToken {
     pub payload: CapabilityTokenPayload,
     pub signature: TokenSignature,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SignerBoundCapabilityToken {
+    pub payload: CapabilityTokenPayload,
+    pub signer_response: SignerResponse,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

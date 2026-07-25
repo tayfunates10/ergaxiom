@@ -20,6 +20,11 @@ thiserror.workspace = true
 zeroize.workspace = true
 
 [dev-dependencies]
+ergaxiom-capability-issuance-runtime = { path = "../../crates/capability-issuance-runtime" }
+ergaxiom-capability-runtime = { path = "../../crates/capability-runtime" }
+ergaxiom-contract-runtime = { path = "../../crates/contract-runtime" }
+ergaxiom-governed-verification-runtime = { path = "../../crates/governed-verification-runtime" }
+ergaxiom-operator-plan-runtime = { path = "../../crates/operator-plan-runtime" }
 ergaxiom-windows-signer-client-runtime = { path = "../../crates/windows-signer-client-runtime" }
 
 [target.'cfg(windows)'.dependencies]

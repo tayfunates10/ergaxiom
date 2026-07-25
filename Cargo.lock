@@ -416,14 +416,33 @@ dependencies = [
 ]
 
 [[package]]
+name = "ergaxiom-capability-issuance-runtime"
+version = "0.1.0"
+dependencies = [
+ "base64",
+ "ed25519-dalek",
+ "ergaxiom-capability-runtime",
+ "ergaxiom-contract-runtime",
+ "ergaxiom-key-governance-runtime",
+ "ergaxiom-proof-kernel",
+ "ergaxiom-windows-signer-client-runtime",
+ "ergaxiom-windows-signer-protocol-runtime",
+ "serde",
+ "serde_json",
+ "thiserror",
+]
+
+[[package]]
 name = "ergaxiom-capability-runtime"
 version = "0.1.0"
 dependencies = [
  "base64",
  "ed25519-dalek",
  "ergaxiom-contract-runtime",
+ "ergaxiom-key-governance-runtime",
  "ergaxiom-operator-plan-runtime",
  "ergaxiom-proof-kernel",
+ "ergaxiom-windows-signer-protocol-runtime",
  "serde",
  "serde_json",
  "thiserror",
@@ -493,6 +512,7 @@ dependencies = [
  "ergaxiom-key-governance-runtime",
  "ergaxiom-operator-plan-runtime",
  "ergaxiom-proof-kernel",
+ "ergaxiom-windows-signer-protocol-runtime",
  "serde_json",
  "thiserror",
 ]
@@ -880,7 +900,12 @@ version = "0.1.0"
 dependencies = [
  "base64",
  "ed25519-dalek",
+ "ergaxiom-capability-issuance-runtime",
+ "ergaxiom-capability-runtime",
+ "ergaxiom-contract-runtime",
+ "ergaxiom-governed-verification-runtime",
  "ergaxiom-key-governance-runtime",
+ "ergaxiom-operator-plan-runtime",
  "ergaxiom-proof-kernel",
  "ergaxiom-windows-signer-client-runtime",
  "ergaxiom-windows-signer-protocol-runtime",
@@ -897,6 +922,7 @@ dependencies = [
 name = "ergaxiom-windows-signer-client-runtime"
 version = "0.1.0"
 dependencies = [
+ "ergaxiom-key-governance-runtime",
  "ergaxiom-windows-signer-protocol-runtime",
  "serde_json",
  "thiserror",

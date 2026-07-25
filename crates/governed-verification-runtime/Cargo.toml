@@ -20,6 +20,7 @@ thiserror.workspace = true
 
 [dev-dependencies]
 ergaxiom-evidence-runtime = { path = "../evidence-runtime" }
+ergaxiom-windows-signer-protocol-runtime = { path = "../windows-signer-protocol-runtime" }
 
 [lints]
 workspace = true

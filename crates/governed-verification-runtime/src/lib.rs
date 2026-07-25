@@ -1,5 +1,7 @@
 #![forbid(unsafe_code)]
 
+mod signer_bound;
+
 use std::collections::BTreeMap;
 
 use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
