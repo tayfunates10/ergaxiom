@@ -24,7 +24,8 @@ A capability is marked **certified path** only when the repository has an automa
 | Role-separated public-key governance | Implemented | Capability, execution, normalization, attestation and release verification keys are role, issuer, key ID, validity-window, revision and registry-digest bound. Public-key reuse, stale updates and role confusion fail closed. |
 | Governed capability and attestation verification | Implemented | Real Capability Token and Acceptance Certificate signatures pass through the current governed registry before the existing contract, plan, replay and evidence checks. Revoked keys invalidate current verification, including material signed before revocation. |
 | Deterministic release evidence | Implemented | SPDX 2.3 dependency inventory, source/toolchain/artifact manifest and sorted SHA-256 checksums reproduce from identical inputs. Permanent Windows CI compiles an unsigned candidate and proves it remains explicitly ineligible without signing and installer-provenance evidence. |
-| Windows private-key protection and release signing | Planned | DPAPI/TPM-backed non-exportable keys, isolated signer IPC, Authenticode, trusted timestamps and signed installer provenance are not implemented. |
+| Windows DPAPI isolated signer | Implemented | A separate one-request signer process protects persisted Ed25519 seeds with DPAPI CurrentUser and identity-specific entropy, accepts only role-bound lowercase SHA-256 digests, persists replay markers and returns public material only. This is software-backed per-user protection, not TPM non-exportability or protection from arbitrary malicious same-user code. |
+| Windows production release signing | Planned | TPM/CNG hardware-backed production keys, Authenticode, trusted timestamps, certificate-chain verification and signed installer provenance are not implemented. |
 | Windows Bridge protocol | Implemented | Signed pre-state, action-boundary state, post-state and TOCTOU checks. |
 | Windows UI Automation host and Rust client | Demonstrated | Real bounded action against a controlled WPF target; not arbitrary Windows application control. |
 | Inkscape adapter | Demonstrated | Exact binary binding, source immutability, action-boundary checks and a restricted proof-bound operator set with real Inkscape regression. |
@@ -64,7 +65,7 @@ A capability is marked **certified path** only when the repository has an automa
 
 ### Phase 3 — Windows execution bridge
 
-**Status: demonstrated, not closed.** A genuine WPF UI Automation action is signed and independently verified. The phase remains open because production application coverage, broader UI patterns, recovery, code signing and real-user environment hardening are incomplete.
+**Status: demonstrated, not closed.** A genuine WPF UI Automation action is signed and independently verified. A bounded DPAPI-protected signer process now exists, but the phase remains open because production application coverage, broader UI patterns, recovery, hardware-backed keys, code signing and real-user environment hardening are incomplete.
 
 ### Phase 4 — Graphic Designer Alpha
 
@@ -74,7 +75,7 @@ This does not claim unrestricted design automation, general commercial-print cer
 
 ### Windows Product Alpha control gate
 
-**Status: implemented for one bounded fixture, product gate remains open.** The desktop application can review and submit the exact snapshot, contract, plan and permission tuple; Rust issues an expiring approval and owns execution, cancellation, rollback and audit receipts. Public verification-key roles, rotation, revocation and deterministic unsigned release evidence are implemented. Hardware-backed private keys, Authenticode, signed installer provenance, persistence and all four profession paths in one user-driven desktop flow remain open.
+**Status: implemented for one bounded fixture, product gate remains open.** The desktop application can review and submit the exact snapshot, contract, plan and permission tuple; Rust issues an expiring approval and owns execution, cancellation, rollback and audit receipts. Public verification-key roles, rotation, revocation, deterministic unsigned release evidence and a separate DPAPI CurrentUser signer process are implemented. Hardware-backed non-exportable keys, Authenticode, signed installer provenance, persistent user jobs and all four profession paths in one user-driven desktop flow remain open.
 
 ### Phase 5 — Profession learning laboratory
 
@@ -104,14 +105,16 @@ This does not claim unrestricted design automation, general commercial-print cer
 9. Print-Ready Poster Preflight with restricted outlined-vector SVG validation, deterministic PDF boxes, independent PDF resource/security proofs, real Inkscape export and a verified Acceptance Certificate.
 10. Digest-bound desktop approval and execution lifecycle with stale-state rejection, expiry, cancellation, rollback and canonical command receipts.
 11. Role-separated public-key governance with rotation, revocation, stale-registry rejection, governed Capability Token and Acceptance Certificate verification, reproducible SPDX/manifest/checksum evidence and fail-closed unsigned Windows candidates.
+12. Separate Windows signer executable with DPAPI CurrentUser at-rest protection, role-bound digest-only signatures, persistent replay rejection, generic error responses and real Windows process-isolation tests.
 
 ## Next gates
 
-1. Add DPAPI or TPM-backed non-exportable private keys, isolated signer IPC, Authenticode signing, trusted timestamps and signed installer upgrade/rollback provenance.
-2. Replace the bounded desktop fixture with user-selected immutable inputs and route all four certified Graphic Designer job types through the same control lifecycle.
-3. Expand the Windows Bridge across real application patterns and recovery cases.
-4. Build the Profession Learning Laboratory in a cryptographically separate environment.
-5. Add cross-platform bridges and additional profession capsules only after the Windows Product Alpha gates hold.
+1. Add TPM/CNG hardware-provider non-exportable production keys, production issuer provisioning and authenticated signer-service identity hardening.
+2. Add Authenticode, trusted timestamps, certificate-chain verification and signed installer upgrade/rollback provenance.
+3. Replace the bounded desktop fixture with user-selected immutable inputs and route all four certified Graphic Designer job types through the same control lifecycle.
+4. Expand the Windows Bridge across real application patterns and recovery cases.
+5. Build the Profession Learning Laboratory in a cryptographically separate environment.
+6. Add cross-platform bridges and additional profession capsules only after the Windows Product Alpha gates hold.
 
 ## Non-negotiable rule
 

@@ -875,6 +875,47 @@ dependencies = [
 ]
 
 [[package]]
+name = "ergaxiom-windows-signer"
+version = "0.1.0"
+dependencies = [
+ "base64",
+ "ed25519-dalek",
+ "ergaxiom-key-governance-runtime",
+ "ergaxiom-proof-kernel",
+ "ergaxiom-windows-signer-client-runtime",
+ "ergaxiom-windows-signer-protocol-runtime",
+ "rand_core 0.6.4",
+ "serde",
+ "serde_json",
+ "sha2",
+ "thiserror",
+ "windows-sys",
+ "zeroize",
+]
+
+[[package]]
+name = "ergaxiom-windows-signer-client-runtime"
+version = "0.1.0"
+dependencies = [
+ "ergaxiom-windows-signer-protocol-runtime",
+ "serde_json",
+ "thiserror",
+]
+
+[[package]]
+name = "ergaxiom-windows-signer-protocol-runtime"
+version = "0.1.0"
+dependencies = [
+ "base64",
+ "ed25519-dalek",
+ "ergaxiom-key-governance-runtime",
+ "ergaxiom-proof-kernel",
+ "serde",
+ "serde_json",
+ "thiserror",
+]
+
+[[package]]
 name = "ergaxiom-windows-uia-client-runtime"
 version = "0.1.0"
 dependencies = [
