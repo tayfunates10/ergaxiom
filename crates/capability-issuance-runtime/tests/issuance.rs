@@ -3,12 +3,10 @@ use std::error::Error;
 use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
 use ed25519_dalek::{Signer, SigningKey};
 use ergaxiom_capability_issuance_runtime::{
-    CAPABILITY_ISSUER_ID, CAPABILITY_KEY_ID, CapabilityIssuanceAuthority,
-    CapabilityIssuanceError, CapabilitySignerTransport, CapabilityTokenDraft,
+    CAPABILITY_ISSUER_ID, CAPABILITY_KEY_ID, CapabilityIssuanceAuthority, CapabilityIssuanceError,
+    CapabilitySignerTransport, CapabilityTokenDraft,
 };
-use ergaxiom_capability_runtime::{
-    CapabilityBindings, CapabilityGrant, CapabilitySubject,
-};
+use ergaxiom_capability_runtime::{CapabilityBindings, CapabilityGrant, CapabilitySubject};
 use ergaxiom_contract_runtime::PermissionAccess;
 use ergaxiom_key_governance_runtime::IssuerRole;
 use ergaxiom_windows_signer_protocol_runtime::{

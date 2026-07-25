@@ -7,8 +7,8 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use ergaxiom_capability_issuance_runtime::{
-    CAPABILITY_ISSUER_ID, CAPABILITY_KEY_ID, CapabilityIssuanceAuthority,
-    CapabilityIssuanceError, CapabilityTokenDraft,
+    CAPABILITY_ISSUER_ID, CAPABILITY_KEY_ID, CapabilityIssuanceAuthority, CapabilityIssuanceError,
+    CapabilityTokenDraft,
 };
 use ergaxiom_capability_runtime::{
     CapabilityAuthorizer, CapabilityBindings, CapabilityGrant, CapabilitySubject,
@@ -177,8 +177,7 @@ fn initialized_public_key(response: SignerResponse) -> Result<[u8; 32], Box<dyn 
 }
 
 #[test]
-fn real_dpapi_signer_issues_and_governs_purpose_locked_capability()
--> Result<(), Box<dyn Error>> {
+fn real_dpapi_signer_issues_and_governs_purpose_locked_capability() -> Result<(), Box<dyn Error>> {
     let directory = TestDirectory::create("real-process")?;
     let executable = PathBuf::from(env!("CARGO_BIN_EXE_ergaxiom-windows-signer"));
     let client = SignerProcessClient::isolated_test(executable, directory.path())?;

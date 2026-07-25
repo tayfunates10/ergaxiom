@@ -48,12 +48,13 @@ impl GovernedVerificationRuntime {
             token.payload.issuer_id.clone(),
             token.payload.key_id.clone(),
         );
-        let authorizer = self.capability_authorizers.get_mut(&identity).ok_or_else(|| {
-            GovernedVerificationError::MissingCapabilityAuthorizer {
+        let authorizer = self
+            .capability_authorizers
+            .get_mut(&identity)
+            .ok_or_else(|| GovernedVerificationError::MissingCapabilityAuthorizer {
                 issuer_id: identity.0.clone(),
                 key_id: identity.1.clone(),
-            }
-        })?;
+            })?;
         Ok(authorizer.authorize_signer_bound(
             token_value,
             compiled_contract,

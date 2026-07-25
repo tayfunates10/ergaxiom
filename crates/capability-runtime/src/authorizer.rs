@@ -255,8 +255,7 @@ impl CapabilityAuthorizer {
         validate_grant(&payload.grant, &compiled_contract.permissions)?;
 
         let token_digest = canonical_json_sha256(token_value)?;
-        let payload_value =
-            serde_json::to_value(&payload).map_err(CapabilityError::TokenDecode)?;
+        let payload_value = serde_json::to_value(&payload).map_err(CapabilityError::TokenDecode)?;
         let payload_digest = canonical_json_sha256(&payload_value)?;
         let usage_key = (payload.issuer_id.clone(), payload.token_id.clone());
         let usage_record = self.usage.entry(usage_key).or_insert_with(|| UsageRecord {

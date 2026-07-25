@@ -78,8 +78,7 @@ fn token(signing_key: &SigningKey) -> Result<SignerBoundCapabilityToken, Box<dyn
 }
 
 #[test]
-fn governed_registry_accepts_then_revokes_signer_bound_capability()
--> Result<(), Box<dyn Error>> {
+fn governed_registry_accepts_then_revokes_signer_bound_capability() -> Result<(), Box<dyn Error>> {
     let signing_key = SigningKey::from_bytes(&[71_u8; 32]);
     let token_value = serde_json::to_value(token(&signing_key)?)?;
     let mut runtime = GovernedVerificationRuntime::default();

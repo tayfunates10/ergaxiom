@@ -167,9 +167,7 @@ fn signer_bound_token(
     Ok(serde_json::to_value(token)?)
 }
 
-fn authorizer(
-    trusted_signing_key: &SigningKey,
-) -> Result<CapabilityAuthorizer, CapabilityError> {
+fn authorizer(trusted_signing_key: &SigningKey) -> Result<CapabilityAuthorizer, CapabilityError> {
     let mut keys = TrustedKeyRegistry::default();
     keys.insert_ed25519(
         ISSUER_ID,
