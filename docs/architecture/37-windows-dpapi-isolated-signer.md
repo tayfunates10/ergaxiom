@@ -61,7 +61,7 @@ For every key identity it:
 6. persists only public metadata and the DPAPI ciphertext;
 7. zeroizes temporary plaintext buffers when they leave scope.
 
-Unprotection uses `CryptUnprotectData` with the same identity entropy. The public key reconstructed from the unprotected seed must equal the persisted public key before a signature can be issued.
+Unprotection uses `CryptUnprotectData` with the same identity entropy. The public key reconstructed from the unprotected seed must equal the persisted public key before a signature can be issued. DPAPI output buffers are copied into owned Rust memory and released immediately with the Win32 `LocalFree` function required by the API contract.
 
 ## Storage and replay controls
 
