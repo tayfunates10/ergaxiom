@@ -401,7 +401,12 @@ fn real_dpapi_signer_issues_and_governs_acceptance_certificate() -> Result<(), B
         AssuranceLevel::E1,
         certificate_draft.clone(),
     )?;
-    assert!(!package.certificate.signer_response.contains_private_material_field());
+    assert!(
+        !package
+            .certificate
+            .signer_response
+            .contains_private_material_field()
+    );
 
     let mut trusted = AttestationKeyRegistry::default();
     trusted.insert_ed25519(ATTESTATION_ISSUER_ID, ATTESTATION_KEY_ID, public_key)?;

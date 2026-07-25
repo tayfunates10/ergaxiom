@@ -18,8 +18,8 @@ use thiserror::Error;
 
 use crate::issuer::{AttestationIssueError, build_replay_manifest};
 use crate::model::{
-    AcceptanceCertificatePayload, AttestationPackage, ReplayManifest, SignerBoundAttestationPackage,
-    VerifiedAttestation,
+    AcceptanceCertificatePayload, AttestationPackage, ReplayManifest,
+    SignerBoundAttestationPackage, VerifiedAttestation,
 };
 
 const REPLAY_MANIFEST_SCHEMA: &str = "0.1.0";
@@ -116,11 +116,7 @@ pub fn verify_attestation(
         .map_err(|_| AttestationVerifyError::InvalidSignatureLength)?;
     key.verify_strict(&canonical_json_bytes(&payload_value)?, &signature)
         .map_err(|_| AttestationVerifyError::SignatureVerificationFailed)?;
-    verified_result(
-        payload,
-        &package.certificate,
-        replay_manifest_digest,
-    )
+    verified_result(payload, &package.certificate, replay_manifest_digest)
 }
 
 pub fn verify_signer_bound_attestation(
@@ -151,11 +147,7 @@ pub fn verify_signer_bound_attestation(
     if response_public_key(&package.certificate.signer_response)? != key.to_bytes() {
         return Err(AttestationVerifyError::SignerPublicKeyMismatch);
     }
-    verified_result(
-        payload,
-        &package.certificate,
-        replay_manifest_digest,
-    )
+    verified_result(payload, &package.certificate, replay_manifest_digest)
 }
 
 pub fn verify_attestation_against_bundle(

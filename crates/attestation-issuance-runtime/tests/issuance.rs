@@ -408,8 +408,14 @@ fn authority_reassesses_bundle_and_fixes_all_signer_fields() -> Result<(), Box<d
     assert_eq!(calls.get(), 1);
     assert_eq!(package.certificate.payload.issuer_id, ATTESTATION_ISSUER_ID);
     assert_eq!(package.certificate.payload.key_id, ATTESTATION_KEY_ID);
-    assert_eq!(package.certificate.payload.decision, ergaxiom_proof_kernel::DecisionStatus::Accepted);
-    let envelope = package.certificate.signer_response.verify_digest_signature()?;
+    assert_eq!(
+        package.certificate.payload.decision,
+        ergaxiom_proof_kernel::DecisionStatus::Accepted
+    );
+    let envelope = package
+        .certificate
+        .signer_response
+        .verify_digest_signature()?;
     assert_eq!(envelope.role, IssuerRole::Attestation);
     assert_eq!(envelope.issuer_id, ATTESTATION_ISSUER_ID);
     assert_eq!(envelope.key_id, ATTESTATION_KEY_ID);
@@ -521,12 +527,7 @@ fn failed_proof_blocks_before_signer_invocation() -> Result<(), Box<dyn Error>> 
 fn payload_and_manifest_mutation_fail_independent_verification() -> Result<(), Box<dyn Error>> {
     let context = context()?;
     let signing_key = SigningKey::from_bytes(&[66_u8; 32]);
-    let package = authority(
-        signing_key.clone(),
-        Mutation::None,
-        Rc::new(Cell::new(0)),
-    )
-    .issue(
+    let package = authority(signing_key.clone(), Mutation::None, Rc::new(Cell::new(0))).issue(
         context.contract.clone(),
         &context.plan,
         &context.bundle,
@@ -551,8 +552,9 @@ fn payload_and_manifest_mutation_fail_independent_verification() -> Result<(), B
             &context.bundle,
             AssuranceLevel::E1,
         ),
-        Err(AttestationVerifyError::ManifestPayloadMismatch("plan_digest"))
-            | Err(AttestationVerifyError::SignerDigestMismatch)
+        Err(AttestationVerifyError::ManifestPayloadMismatch(
+            "plan_digest"
+        )) | Err(AttestationVerifyError::SignerDigestMismatch)
     ));
 
     let mut manifest_tampered = package;

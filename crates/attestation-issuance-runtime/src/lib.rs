@@ -8,9 +8,7 @@ use ergaxiom_contract_runtime::CompiledContract;
 use ergaxiom_evidence_runtime::{EvidenceBundle, EvidenceBundleError, assess_bundle};
 use ergaxiom_key_governance_runtime::IssuerRole;
 use ergaxiom_operator_plan_runtime::CompiledPlan;
-use ergaxiom_proof_kernel::{
-    AssuranceLevel, DecisionStatus, HashingError, canonical_json_sha256,
-};
+use ergaxiom_proof_kernel::{AssuranceLevel, DecisionStatus, HashingError, canonical_json_sha256};
 use ergaxiom_windows_signer_client_runtime::{SignerClientError, SignerProcessClient};
 use ergaxiom_windows_signer_protocol_runtime::{
     SignerProtocolError, SignerRequest, SignerResponse, SignerSuccess, decode_hex_32,
