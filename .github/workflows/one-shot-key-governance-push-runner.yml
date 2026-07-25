@@ -12,6 +12,7 @@ permissions:
 
 jobs:
   run-integration:
+    # One execution only; this workflow is deleted after the integration commit.
     runs-on: ubuntu-24.04
     steps:
       - name: Check out implementation branch
