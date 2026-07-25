@@ -30,6 +30,8 @@ A signing request is converted into a canonical envelope containing:
 
 The Ed25519 signature covers the entire envelope. Changing any field invalidates independent verification. Arbitrary message bytes, alternate algorithms, path-shaped identifiers and digest fields on non-signing operations fail closed.
 
+The response enum intentionally carries the complete canonical envelope inline. The executable handles exactly one bounded response and exits, so the larger success variant is retained to avoid changing the public JSON schema or introducing nullable indirection across the trust boundary.
+
 ### Backend process client
 
 `ergaxiom-windows-signer-client-runtime` launches an exact absolute executable path without a shell and communicates through one inherited stdin/stdout exchange. The client:
