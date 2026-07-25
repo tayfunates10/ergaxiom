@@ -121,8 +121,8 @@ fn capability_key_material_cannot_cross_into_attestation_role() -> Result<(), Bo
 }
 
 #[test]
-fn revoked_attestation_key_invalidates_a_real_acceptance_certificate()
--> Result<(), Box<dyn Error>> {
+fn revoked_attestation_key_invalidates_a_real_acceptance_certificate() -> Result<(), Box<dyn Error>>
+{
     let signing_key = SigningKey::from_bytes(&[41_u8; 32]);
     let manifest = ReplayManifest {
         schema_version: "0.1.0".to_owned(),

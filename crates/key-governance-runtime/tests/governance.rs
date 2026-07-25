@@ -1,9 +1,7 @@
 use std::error::Error;
 
 use ed25519_dalek::SigningKey;
-use ergaxiom_key_governance_runtime::{
-    GovernedKeyRegistry, IssuerRole, KeyGovernanceError,
-};
+use ergaxiom_key_governance_runtime::{GovernedKeyRegistry, IssuerRole, KeyGovernanceError};
 
 #[test]
 fn cross_role_reuse_revocation_and_stale_updates_fail_closed() -> Result<(), Box<dyn Error>> {
@@ -21,12 +19,7 @@ fn cross_role_reuse_revocation_and_stale_updates_fail_closed() -> Result<(), Box
     )?;
     assert!(
         registry
-            .resolve_ed25519(
-                IssuerRole::Capability,
-                "issuer.local",
-                "capability.v1",
-                500,
-            )
+            .resolve_ed25519(IssuerRole::Capability, "issuer.local", "capability.v1", 500,)
             .is_ok()
     );
     assert!(matches!(
@@ -62,12 +55,7 @@ fn cross_role_reuse_revocation_and_stale_updates_fail_closed() -> Result<(), Box
         &"a".repeat(64),
     )?;
     assert!(matches!(
-        registry.resolve_ed25519(
-            IssuerRole::Capability,
-            "issuer.local",
-            "capability.v1",
-            500,
-        ),
+        registry.resolve_ed25519(IssuerRole::Capability, "issuer.local", "capability.v1", 500,),
         Err(KeyGovernanceError::KeyRevoked)
     ));
     assert!(matches!(

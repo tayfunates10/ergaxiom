@@ -150,8 +150,8 @@ impl GovernedKeyRegistry {
     }
 
     pub fn registry_digest(&self) -> Result<String, KeyGovernanceError> {
-        let value = serde_json::to_value(self.snapshot())
-            .map_err(KeyGovernanceError::Serialization)?;
+        let value =
+            serde_json::to_value(self.snapshot()).map_err(KeyGovernanceError::Serialization)?;
         Ok(canonical_json_sha256(&value)?)
     }
 
@@ -229,9 +229,10 @@ impl GovernedKeyRegistry {
         self.require_unused_public_key(&new_verifying_key)?;
 
         let current_identity = (role, issuer_id.to_owned(), current_key_id.to_owned());
-        let current = self.records.get(&current_identity).ok_or_else(|| {
-            self.unknown_or_role_mismatch(role, issuer_id, current_key_id)
-        })?;
+        let current = self
+            .records
+            .get(&current_identity)
+            .ok_or_else(|| self.unknown_or_role_mismatch(role, issuer_id, current_key_id))?;
         if current.status == GovernedKeyStatus::Revoked
             || current_retirement_at_epoch_s <= current.not_before_epoch_s
         {
@@ -304,9 +305,10 @@ impl GovernedKeyRegistry {
             return Err(KeyGovernanceError::InvalidRevocationReasonDigest);
         }
         let identity = (role, issuer_id.to_owned(), key_id.to_owned());
-        let current = self.records.get(&identity).ok_or_else(|| {
-            self.unknown_or_role_mismatch(role, issuer_id, key_id)
-        })?;
+        let current = self
+            .records
+            .get(&identity)
+            .ok_or_else(|| self.unknown_or_role_mismatch(role, issuer_id, key_id))?;
         if current.status == GovernedKeyStatus::Revoked {
             return Err(KeyGovernanceError::InvalidKeyState);
         }
@@ -342,9 +344,10 @@ impl GovernedKeyRegistry {
         signed_at_epoch_s: u64,
     ) -> Result<&VerifyingKey, KeyGovernanceError> {
         let identity = (role, issuer_id.to_owned(), key_id.to_owned());
-        let record = self.records.get(&identity).ok_or_else(|| {
-            self.unknown_or_role_mismatch(role, issuer_id, key_id)
-        })?;
+        let record = self
+            .records
+            .get(&identity)
+            .ok_or_else(|| self.unknown_or_role_mismatch(role, issuer_id, key_id))?;
         if record.status == GovernedKeyStatus::Revoked {
             return Err(KeyGovernanceError::KeyRevoked);
         }
@@ -499,8 +502,8 @@ impl GovernedKeyRegistry {
             effective_at_epoch_s,
             receipt_digest: String::new(),
         };
-        let mut value = serde_json::to_value(&receipt)
-            .map_err(KeyGovernanceError::Serialization)?;
+        let mut value =
+            serde_json::to_value(&receipt).map_err(KeyGovernanceError::Serialization)?;
         let object = value.as_object_mut().ok_or_else(|| {
             KeyGovernanceError::Serialization(serde_json::Error::io(std::io::Error::other(
                 "key mutation receipt did not serialize to an object",

@@ -261,13 +261,17 @@ impl GovernedVerificationRuntime {
         expected_device_id: Option<&str>,
     ) -> Result<AuthorizationReceipt, GovernedVerificationError> {
         let token = self.verify_capability_token_signature(token_value)?;
-        let identity = (token.payload.issuer_id.clone(), token.payload.key_id.clone());
-        let authorizer = self.capability_authorizers.get_mut(&identity).ok_or_else(|| {
-            GovernedVerificationError::MissingCapabilityAuthorizer {
+        let identity = (
+            token.payload.issuer_id.clone(),
+            token.payload.key_id.clone(),
+        );
+        let authorizer = self
+            .capability_authorizers
+            .get_mut(&identity)
+            .ok_or_else(|| GovernedVerificationError::MissingCapabilityAuthorizer {
                 issuer_id: identity.0.clone(),
                 key_id: identity.1.clone(),
-            }
-        })?;
+            })?;
         Ok(authorizer.authorize(
             token_value,
             compiled_contract,
