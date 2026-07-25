@@ -19,15 +19,17 @@ on:
       - ".github/workflows/windows-production-signer.yml"
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   policy:
-    name: Verify production signer policy and identity bindings
+    name: Canonicalize and verify production signer foundation
     runs-on: ubuntu-24.04
     steps:
-      - name: Check out repository
+      - name: Check out pull request branch
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref }}
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -39,16 +41,21 @@ jobs:
           cargo fmt --all
           cargo generate-lockfile
 
-      - name: Upload canonical source material
-        uses: actions/upload-artifact@v4
-        with:
-          name: production-signer-canonical-source
-          path: |
-            Cargo.lock
-            crates/windows-production-signer-runtime/src/lib.rs
-            crates/windows-production-signer-runtime/tests/policy.rs
-          if-no-files-found: error
-          retention-days: 3
+      - name: Commit canonical source when needed
+        if: github.event_name == 'pull_request'
+        shell: bash
+        run: |
+          if git diff --quiet -- Cargo.lock crates/windows-production-signer-runtime; then
+            exit 0
+          fi
+          git config user.name "ergaxiom-ci"
+          git config user.email "ergaxiom-ci@users.noreply.github.com"
+          git add Cargo.lock crates/windows-production-signer-runtime
+          git commit -m "Canonicalize production signer foundation"
+          git push origin "HEAD:${{ github.head_ref }}"
+
+      - name: Check workspace formatting
+        run: cargo fmt --all -- --check
 
       - name: Lint production signer foundation
         run: |
