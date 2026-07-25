@@ -105,7 +105,6 @@ pub fn verify_attestation(
     trusted_keys: &AttestationKeyRegistry,
 ) -> Result<VerifiedAttestation, AttestationVerifyError> {
     let payload = &package.certificate.payload;
-    let replay_manifest_digest = validate_document(&package.replay_manifest, payload)?;
     let key = trusted_key(trusted_keys, payload)?;
     let payload_value =
         serde_json::to_value(payload).map_err(AttestationVerifyError::Serialization)?;
@@ -116,6 +115,7 @@ pub fn verify_attestation(
         .map_err(|_| AttestationVerifyError::InvalidSignatureLength)?;
     key.verify_strict(&canonical_json_bytes(&payload_value)?, &signature)
         .map_err(|_| AttestationVerifyError::SignatureVerificationFailed)?;
+    let replay_manifest_digest = validate_document(&package.replay_manifest, payload)?;
     verified_result(payload, &package.certificate, replay_manifest_digest)
 }
 
