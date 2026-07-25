@@ -20,7 +20,7 @@ pub fn production_pipe_sddl(
 ) -> Result<String, ProductionSignerTransportError> {
     contract.validate()?;
     Ok(format!(
-        "O:SYG:SYD:P(A;;GA;;;SY)(A;;GA;;;BA)(A;;0x{CLIENT_PIPE_RIGHTS:08x};;;{})",
+        "D:P(A;;GA;;;SY)(A;;GA;;;BA)(A;;0x{CLIENT_PIPE_RIGHTS:08x};;;{})",
         contract.allowed_principal_sid
     ))
 }
