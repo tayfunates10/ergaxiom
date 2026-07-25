@@ -28,7 +28,6 @@ use ergaxiom_desktop_shell_runtime::{
     build_desktop_shell_snapshot, issue_desktop_approval, issue_desktop_command_receipt,
 };
 use ergaxiom_evidence_runtime::{EvidenceBundle, assess_bundle};
-use ergaxiom_key_governance_runtime::IssuerRole;
 use ergaxiom_operator_plan_runtime::{CompiledPlan, compile_plan};
 use ergaxiom_proof_kernel::{AssuranceLevel, canonical_json_bytes, canonical_json_sha256};
 use ergaxiom_windows_signer_protocol_runtime::{
@@ -83,19 +82,21 @@ impl TestTransport {
 
 impl CapabilitySignerTransport for TestTransport {
     fn invoke(&self, request: &SignerRequest) -> Result<SignerResponse, CapabilityIssuanceError> {
-        self.sign(request)
-            .map_err(|error| CapabilityIssuanceError::Serialization(serde_json::Error::io(
-                std::io::Error::other(error.to_string()),
+        self.sign(request).map_err(|error| {
+            CapabilityIssuanceError::Serialization(serde_json::Error::io(std::io::Error::other(
+                error.to_string(),
             )))
+        })
     }
 }
 
 impl AttestationSignerTransport for TestTransport {
     fn invoke(&self, request: &SignerRequest) -> Result<SignerResponse, AttestationIssuanceError> {
-        self.sign(request)
-            .map_err(|error| AttestationIssuanceError::Serialization(serde_json::Error::io(
-                std::io::Error::other(error.to_string()),
+        self.sign(request).map_err(|error| {
+            AttestationIssuanceError::Serialization(serde_json::Error::io(std::io::Error::other(
+                error.to_string(),
             )))
+        })
     }
 }
 
@@ -106,7 +107,6 @@ struct Context {
 }
 
 struct ControlChain {
-    pending: DesktopShellSnapshot,
     approved: DesktopShellSnapshot,
     executed: DesktopShellSnapshot,
     approval: DesktopApprovalRecord,
@@ -210,7 +210,6 @@ fn control_chain(context: &Context) -> Result<ControlChain, Box<dyn Error>> {
         EXECUTION_AT,
     )?;
     Ok(ControlChain {
-        pending,
         approved,
         executed,
         approval,
@@ -420,7 +419,8 @@ fn exact_backend_flow_issues_capability_and_attestation() -> Result<(), Box<dyn 
 }
 
 #[test]
-fn capability_step_subject_and_permission_substitution_fail_before_signer() -> Result<(), Box<dyn Error>> {
+fn capability_step_subject_and_permission_substitution_fail_before_signer()
+-> Result<(), Box<dyn Error>> {
     let context = context()?;
     let chain = control_chain(&context)?;
     let cases = ["step", "subject", "permission"];
@@ -434,18 +434,20 @@ fn capability_step_subject_and_permission_substitution_fail_before_signer() -> R
             "permission" => draft.grant.access = PermissionAccess::Write,
             _ => unreachable!(),
         }
-        assert!(authority
-            .issue_capability(
-                &chain.approved,
-                &chain.approval,
-                &chain.approve_receipt,
-                &context.contract,
-                &context.plan,
-                draft,
-                CAPABILITY_AT,
-                60,
-            )
-            .is_err());
+        assert!(
+            authority
+                .issue_capability(
+                    &chain.approved,
+                    &chain.approval,
+                    &chain.approve_receipt,
+                    &context.contract,
+                    &context.plan,
+                    draft,
+                    CAPABILITY_AT,
+                    60,
+                )
+                .is_err()
+        );
         assert_eq!(calls.get(), 0);
     }
     Ok(())
@@ -476,26 +478,29 @@ fn wrong_receipt_and_mutated_evidence_fail_before_signer() -> Result<(), Box<dyn
 
     let mut mutated_bundle = context.bundle.clone();
     mutated_bundle["artifacts"][0]["digest"] = json!("mutated-output-digest");
-    assert!(authority
-        .issue_attestation(
-            &chain.executed,
-            &chain.approval,
-            &chain.execute_receipt,
-            context.contract,
-            &context.plan,
-            &mutated_bundle,
-            AssuranceLevel::E1,
-            chain.attestation_draft,
-            ATTESTATION_AT,
-            60,
-        )
-        .is_err());
+    assert!(
+        authority
+            .issue_attestation(
+                &chain.executed,
+                &chain.approval,
+                &chain.execute_receipt,
+                context.contract,
+                &context.plan,
+                &mutated_bundle,
+                AssuranceLevel::E1,
+                chain.attestation_draft,
+                ATTESTATION_AT,
+                60,
+            )
+            .is_err()
+    );
     assert_eq!(attestation_calls.get(), 0);
     Ok(())
 }
 
 #[test]
-fn authorization_is_one_shot_and_same_intent_cannot_be_reauthorized() -> Result<(), Box<dyn Error>> {
+fn authorization_is_one_shot_and_same_intent_cannot_be_reauthorized() -> Result<(), Box<dyn Error>>
+{
     let context = context()?;
     let chain = control_chain(&context)?;
     let draft = capability_draft(&context);
@@ -586,34 +591,38 @@ fn expired_approval_and_stale_snapshot_fail_closed() -> Result<(), Box<dyn Error
     let mut authority = authority(calls.clone(), Rc::new(Cell::new(0)), false);
     let mut stale = chain.approved.clone();
     stale.snapshot_digest = "f".repeat(64);
-    assert!(authority
-        .issue_capability(
-            &stale,
-            &chain.approval,
-            &chain.approve_receipt,
-            &context.contract,
-            &context.plan,
-            capability_draft(&context),
-            CAPABILITY_AT,
-            60,
-        )
-        .is_err());
+    assert!(
+        authority
+            .issue_capability(
+                &stale,
+                &chain.approval,
+                &chain.approve_receipt,
+                &context.contract,
+                &context.plan,
+                capability_draft(&context),
+                CAPABILITY_AT,
+                60,
+            )
+            .is_err()
+    );
     let mut expired_draft = capability_draft(&context);
     expired_draft.issued_at_epoch_s = APPROVAL_AT + APPROVAL_TTL_S + 1;
     expired_draft.not_before_epoch_s = expired_draft.issued_at_epoch_s;
     expired_draft.expires_at_epoch_s = expired_draft.issued_at_epoch_s + 1;
-    assert!(authority
-        .issue_capability(
-            &chain.approved,
-            &chain.approval,
-            &chain.approve_receipt,
-            &context.contract,
-            &context.plan,
-            expired_draft,
-            APPROVAL_AT + APPROVAL_TTL_S + 1,
-            60,
-        )
-        .is_err());
+    assert!(
+        authority
+            .issue_capability(
+                &chain.approved,
+                &chain.approval,
+                &chain.approve_receipt,
+                &context.contract,
+                &context.plan,
+                expired_draft,
+                APPROVAL_AT + APPROVAL_TTL_S + 1,
+                60,
+            )
+            .is_err()
+    );
     assert_eq!(calls.get(), 0);
     Ok(())
 }
@@ -724,7 +733,8 @@ fn bundle_value(
         policy_key.verifying_key().to_bytes(),
     )?;
     let mut authorizer = CapabilityAuthorizer::new(trusted_keys);
-    let receipt = authorizer.authorize(&token, contract, plan, 2_000, EXECUTOR_ID, Some(DEVICE_ID))?;
+    let receipt =
+        authorizer.authorize(&token, contract, plan, 2_000, EXECUTOR_ID, Some(DEVICE_ID))?;
     let receipt_value = serde_json::to_value(&receipt)?;
     let receipt_digest = canonical_json_sha256(&receipt_value)?;
     Ok(json!({

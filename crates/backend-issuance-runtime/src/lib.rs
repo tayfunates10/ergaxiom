@@ -18,14 +18,13 @@ use ergaxiom_contract_runtime::CompiledContract;
 use ergaxiom_desktop_shell_runtime::{
     DesktopApprovalRecord, DesktopCommandAction, DesktopCommandReceipt, DesktopControlError,
     DesktopControlStatus, DesktopShellSnapshot, StageStatus, control_status_from_snapshot,
-    verify_desktop_approval, verify_desktop_approval_binding, verify_desktop_approval_for_execution,
-    verify_desktop_command_receipt, verify_desktop_shell_snapshot,
+    verify_desktop_approval, verify_desktop_approval_binding,
+    verify_desktop_approval_for_execution, verify_desktop_command_receipt,
+    verify_desktop_shell_snapshot,
 };
 use ergaxiom_evidence_runtime::{EvidenceBundle, EvidenceBundleError, assess_bundle};
 use ergaxiom_operator_plan_runtime::CompiledPlan;
-use ergaxiom_proof_kernel::{
-    AssuranceLevel, DecisionStatus, HashingError, canonical_json_sha256,
-};
+use ergaxiom_proof_kernel::{AssuranceLevel, DecisionStatus, HashingError, canonical_json_sha256};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use thiserror::Error;
@@ -173,12 +172,9 @@ impl BackendIssuancePolicy {
         {
             return Err(BackendIssuanceError::EvidenceNotAccepted);
         }
-        let evidence_item = snapshot
-            .evidence_bundle
-            .as_ref()
-            .ok_or(BackendIssuanceError::MissingAttestationSource(
-                "evidence_bundle",
-            ))?;
+        let evidence_item = snapshot.evidence_bundle.as_ref().ok_or(
+            BackendIssuanceError::MissingAttestationSource("evidence_bundle"),
+        )?;
         if evidence_item.status != StageStatus::Passed
             || evidence_item.digest != assessment.bundle_digest
         {
@@ -201,12 +197,9 @@ impl BackendIssuancePolicy {
         )?;
         let replay_value = serde_json::to_value(&replay_manifest)?;
         let replay_digest = canonical_json_sha256(&replay_value)?;
-        let replay_item = snapshot
-            .replay_manifest
-            .as_ref()
-            .ok_or(BackendIssuanceError::MissingAttestationSource(
-                "replay_manifest",
-            ))?;
+        let replay_item = snapshot.replay_manifest.as_ref().ok_or(
+            BackendIssuanceError::MissingAttestationSource("replay_manifest"),
+        )?;
         if replay_item.status != StageStatus::Passed || replay_item.digest != replay_digest {
             return Err(BackendIssuanceError::AttestationSourceMismatch(
                 "replay_manifest",
@@ -274,8 +267,8 @@ impl BackendIssuancePolicy {
             .checked_add(ttl_s)
             .ok_or(BackendIssuanceError::InvalidAuthorizationTtl)?;
         let intent_scope_value = serde_json::json!({
-            "approval_digest": bindings.approval_digest,
-            "intent_digest": intent_digest,
+            "approval_digest": &bindings.approval_digest,
+            "intent_digest": &intent_digest,
             "kind": kind,
         });
         let intent_scope_digest = canonical_json_sha256(&intent_scope_value)?;
@@ -283,11 +276,11 @@ impl BackendIssuancePolicy {
             return Err(BackendIssuanceError::IntentAlreadyAuthorized);
         }
         let identity_value = serde_json::json!({
-            "command_receipt_digest": bindings.command_receipt_digest,
-            "intent_digest": intent_digest,
+            "command_receipt_digest": &bindings.command_receipt_digest,
+            "intent_digest": &intent_digest,
             "issued_at_epoch_s": trusted_now_epoch_s,
             "kind": kind,
-            "snapshot_digest": bindings.snapshot_digest,
+            "snapshot_digest": &bindings.snapshot_digest,
         });
         let identity_digest = canonical_json_sha256(&identity_value)?;
         let mut authorization = BackendIssuanceAuthorization {
