@@ -1,4 +1,5 @@
 import type {
+  DesktopControlStatus,
   DesktopShellSnapshot,
   DesktopSnapshotResponse,
   StageStatus,
@@ -15,10 +16,18 @@ export const STATUS_LABELS: Record<StageStatus, string> = {
 
 export const AUTHORITY_LABELS: Record<DesktopShellSnapshot['authority_status'], string> = {
   unresolved: 'Zorunlu alanlar çözülmedi',
-  ready: 'Doğrulanmış simülasyon hazır',
+  ready: 'Backend kontrolü hazır',
   running: 'Yürütme devam ediyor',
   verified_accepted: 'Sertifikalı kabul',
   verified_rejected: 'Doğrulanmış ret',
+};
+
+export const CONTROL_LABELS: Record<DesktopControlStatus, string> = {
+  awaiting_approval: 'Exact digest onayı bekleniyor',
+  approved: 'Backend onayı verildi',
+  executed: 'Deterministik yürütme tamamlandı',
+  cancelled: 'İş yürütülmeden iptal edildi',
+  rolled_back: 'Yürütme geri alındı',
 };
 
 export function isVerifiedAccepted(response: DesktopSnapshotResponse): boolean {
@@ -38,19 +47,56 @@ export function hasMandatoryUnknowns(snapshot: DesktopShellSnapshot): boolean {
   return snapshot.unresolved.some((item) => item.mandatory);
 }
 
-export function canReviewApproval(response: DesktopSnapshotResponse): boolean {
+function hasVerifiedDigestTuple(response: DesktopSnapshotResponse): boolean {
   const { snapshot } = response;
+  const approval = snapshot.approval;
   return Boolean(
     response.verified &&
+      response.source === 'desktop_control_authority' &&
       !hasMandatoryUnknowns(snapshot) &&
       snapshot.contract?.status === 'passed' &&
-      snapshot.plan?.status === 'passed',
+      snapshot.plan?.status === 'passed' &&
+      approval &&
+      snapshot.contract.digest === approval.contract_digest &&
+      snapshot.plan.digest === approval.plan_digest,
+  );
+}
+
+export function canReviewApproval(response: DesktopSnapshotResponse): boolean {
+  return Boolean(
+    hasVerifiedDigestTuple(response) &&
+      response.control.status === 'awaiting_approval' &&
+      response.snapshot.approval?.status === 'pending',
   );
 }
 
 export function canStartExecution(response: DesktopSnapshotResponse): boolean {
+  const backendApproval = response.control.approval;
+  const summary = response.snapshot.approval;
   return Boolean(
-    canReviewApproval(response) && response.snapshot.approval?.status === 'passed',
+    hasVerifiedDigestTuple(response) &&
+      response.control.status === 'approved' &&
+      summary?.status === 'passed' &&
+      backendApproval &&
+      backendApproval.contract_digest === summary.contract_digest &&
+      backendApproval.plan_digest === summary.plan_digest &&
+      backendApproval.permission_digest === summary.permission_digest &&
+      backendApproval.approval_digest.length === 64,
+  );
+}
+
+export function canCancelExecution(response: DesktopSnapshotResponse): boolean {
+  return Boolean(
+    response.verified &&
+      (response.control.status === 'awaiting_approval' || response.control.status === 'approved'),
+  );
+}
+
+export function canRollbackExecution(response: DesktopSnapshotResponse): boolean {
+  return Boolean(
+    response.verified &&
+      response.control.status === 'executed' &&
+      response.control.approval?.approval_digest.length === 64,
   );
 }
 
