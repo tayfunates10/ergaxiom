@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -11,6 +12,7 @@ SPEC = importlib.util.spec_from_file_location("generate_release_evidence", MODUL
 if SPEC is None or SPEC.loader is None:
     raise RuntimeError("release evidence module could not be loaded")
 MODULE = importlib.util.module_from_spec(SPEC)
+sys.modules[SPEC.name] = MODULE
 SPEC.loader.exec_module(MODULE)
 
 
