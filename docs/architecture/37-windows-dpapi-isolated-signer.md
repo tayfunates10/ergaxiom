@@ -43,6 +43,8 @@ The Ed25519 signature covers the entire envelope. Changing any field invalidates
 
 The test-only store override requires the explicit `ERGAXIOM_SIGNER_TEST_MODE=1` environment binding. Production calls use the per-user default store.
 
+This PR provides the backend-shaped client and executable boundary but does not yet add Tauri commands that invoke it. Wiring specific capability, execution, normalization, attestation or release issuance flows to the signer remains a separate authorization package.
+
 ### Windows signer executable
 
 `ergaxiom-windows-signer` is a separate process. It reads at most one bounded JSON request, writes one bounded JSON response and exits.
