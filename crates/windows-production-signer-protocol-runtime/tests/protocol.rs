@@ -4,23 +4,17 @@ use ergaxiom_windows_production_signer_protocol_runtime::{
     ProductionSignerSuccess,
 };
 use ergaxiom_windows_production_signer_runtime::{
-    AUTHENTICATED_CALLER_SCHEMA, AuthenticatedCallerIdentity, ECDSA_P256_SHA256,
-    HardwareAssurance, HardwareKeyDescriptor, HardwareSignature, P1363_FIXED_64,
-    ProductionKeyPolicy, SIGNER_SERVICE_IDENTITY_SCHEMA, SEC1_UNCOMPRESSED_P256,
-    SignerRequestBinding, SignerServiceIdentity,
+    AUTHENTICATED_CALLER_SCHEMA, AuthenticatedCallerIdentity, ECDSA_P256_SHA256, HardwareAssurance,
+    HardwareKeyDescriptor, HardwareSignature, P1363_FIXED_64, ProductionKeyPolicy,
+    SEC1_UNCOMPRESSED_P256, SIGNER_SERVICE_IDENTITY_SCHEMA, SignerRequestBinding,
+    SignerServiceIdentity,
 };
-use p256::ecdsa::{
-    Signature, SigningKey,
-    signature::hazmat::PrehashSigner,
-};
+use p256::ecdsa::{Signature, SigningKey, signature::hazmat::PrehashSigner};
 use sha2::{Digest, Sha256};
 
-const PAYLOAD_DIGEST: &str =
-    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
-const CALLER_IMAGE: &str =
-    "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
-const SERVICE_IMAGE: &str =
-    "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc";
+const PAYLOAD_DIGEST: &str = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+const CALLER_IMAGE: &str = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+const SERVICE_IMAGE: &str = "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc";
 
 fn caller() -> AuthenticatedCallerIdentity {
     AuthenticatedCallerIdentity {
@@ -55,12 +49,8 @@ fn signed_response(
         &policy,
         PAYLOAD_DIGEST,
     )?;
-    let binding = SignerRequestBinding::build(
-        request.digest_for(&policy)?,
-        &caller(),
-        &service(),
-        &policy,
-    )?;
+    let binding =
+        SignerRequestBinding::build(request.digest_for(&policy)?, &caller(), &service(), &policy)?;
     let envelope = request.envelope(&policy, binding.clone())?;
     let envelope_digest = envelope.digest_for(&policy)?;
     let envelope_digest_bytes = decode_sha256(&envelope_digest)?;
@@ -122,11 +112,14 @@ fn p256_response_verifies_cryptographically_without_claiming_hardware()
 }
 
 #[test]
-fn proven_hardware_response_reaches_eligible_verification()
--> Result<(), Box<dyn std::error::Error>> {
+fn proven_hardware_response_reaches_eligible_verification() -> Result<(), Box<dyn std::error::Error>>
+{
     let response = signed_response(HardwareAssurance::ProvenHardwareBacked)?;
     let envelope = response.verify_production_eligible(&ProductionKeyPolicy::capability())?;
-    assert_eq!(envelope.request.identity.role, ergaxiom_key_governance_runtime::IssuerRole::Capability);
+    assert_eq!(
+        envelope.request.identity.role,
+        ergaxiom_key_governance_runtime::IssuerRole::Capability
+    );
     Ok(())
 }
 
@@ -144,9 +137,11 @@ fn provider_algorithm_and_public_key_substitution_fail_closed()
             2 => result.descriptor.public_key_base64url = URL_SAFE_NO_PAD.encode([4_u8; 65]),
             _ => return Err("unexpected mutation".into()),
         }
-        assert!(response
-            .verify_cryptographic(&ProductionKeyPolicy::capability())
-            .is_err());
+        assert!(
+            response
+                .verify_cryptographic(&ProductionKeyPolicy::capability())
+                .is_err()
+        );
     }
     Ok(())
 }
@@ -176,8 +171,7 @@ fn caller_service_and_request_binding_substitution_fail_closed()
 }
 
 #[test]
-fn signature_and_envelope_mutation_fail_verification()
--> Result<(), Box<dyn std::error::Error>> {
+fn signature_and_envelope_mutation_fail_verification() -> Result<(), Box<dyn std::error::Error>> {
     let mut signature_changed = signed_response(HardwareAssurance::ProvenHardwareBacked)?;
     let ProductionSignerResponse::Success { result, .. } = &mut signature_changed else {
         return Err("expected success".into());
@@ -194,9 +188,11 @@ fn signature_and_envelope_mutation_fail_verification()
         return Err("expected success".into());
     };
     result.envelope.request.digest = SERVICE_IMAGE.to_owned();
-    assert!(envelope_changed
-        .verify_cryptographic(&ProductionKeyPolicy::capability())
-        .is_err());
+    assert!(
+        envelope_changed
+            .verify_cryptographic(&ProductionKeyPolicy::capability())
+            .is_err()
+    );
     Ok(())
 }
 

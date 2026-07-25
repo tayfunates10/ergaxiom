@@ -173,10 +173,7 @@ pub enum ProductionSignerResponse {
 
 impl ProductionSignerResponse {
     #[must_use]
-    pub fn success(
-        request_id: impl Into<String>,
-        result: ProductionSignerSuccess,
-    ) -> Self {
+    pub fn success(request_id: impl Into<String>, result: ProductionSignerSuccess) -> Self {
         Self::Success {
             request_id: request_id.into(),
             result,
@@ -205,9 +202,7 @@ impl ProductionSignerResponse {
         }
         validate_descriptor_contract(&result.descriptor, policy)?;
         let envelope_digest = result.envelope.digest_for(policy)?;
-        if result.envelope_digest != envelope_digest
-            || result.signature.digest != envelope_digest
-        {
+        if result.envelope_digest != envelope_digest || result.signature.digest != envelope_digest {
             return Err(ProductionSignerProtocolError::EnvelopeDigestMismatch);
         }
         result
