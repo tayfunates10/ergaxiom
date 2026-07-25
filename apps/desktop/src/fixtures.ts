@@ -12,7 +12,7 @@ export function unavailableResponse(error: unknown): DesktopSnapshotResponse {
     unresolved: [
       {
         field: 'trusted_backend',
-        question: 'Doğrulanmış Rust snapshot hizmeti neden kullanılamıyor?',
+        question: 'Doğrulanmış Rust kontrol hizmeti neden kullanılamıyor?',
         mandatory: true,
         status: 'blocked',
       },
@@ -36,6 +36,11 @@ export function unavailableResponse(error: unknown): DesktopSnapshotResponse {
     verified: false,
     source: 'unavailable',
     snapshot,
+    control: {
+      status: 'cancelled',
+      approval: null,
+      receipts: [],
+    },
     error: message,
   };
 }
