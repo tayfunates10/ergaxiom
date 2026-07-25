@@ -6,6 +6,8 @@ This gate connects the existing purpose-locked Capability Token and Acceptance C
 
 It does not add a generic signing service. It does not expose signer configuration, roles, issuer identities, key identities, digests, request IDs, executable paths or signer-store paths to the renderer.
 
+Snapshot decoding and digest-verification failures remain typed desktop-control errors and fail closed before authorization material is registered.
+
 ## Two distinct authorization phases
 
 Capability Token issuance and Acceptance Certificate issuance occur at different lifecycle points and therefore use different backend gates.
