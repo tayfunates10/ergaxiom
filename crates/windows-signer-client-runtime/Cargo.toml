@@ -11,5 +11,8 @@ ergaxiom-windows-signer-protocol-runtime = { path = "../windows-signer-protocol-
 serde_json.workspace = true
 thiserror.workspace = true
 
+[dev-dependencies]
+ergaxiom-key-governance-runtime = { path = "../key-governance-runtime" }
+
 [lints]
 workspace = true
