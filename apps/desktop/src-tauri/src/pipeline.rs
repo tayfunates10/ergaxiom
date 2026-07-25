@@ -33,7 +33,7 @@ pub enum PipelineSnapshotMode<'a> {
     RolledBack(&'a DesktopApprovalRecord),
 }
 
-impl PipelineSnapshotMode<'_> {
+impl<'a> PipelineSnapshotMode<'a> {
     fn control_status(self) -> DesktopControlStatus {
         match self {
             Self::AwaitingApproval => DesktopControlStatus::AwaitingApproval,
@@ -44,7 +44,7 @@ impl PipelineSnapshotMode<'_> {
         }
     }
 
-    fn approval(self) -> Option<&DesktopApprovalRecord> {
+    fn approval(self) -> Option<&'a DesktopApprovalRecord> {
         match self {
             Self::AwaitingApproval => None,
             Self::Approved(record) | Self::Executed(record) | Self::RolledBack(record) => {
