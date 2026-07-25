@@ -60,7 +60,7 @@ impl AuthenticatedPipeConnection {
         #[cfg(windows)]
         {
             let bytes = self.inner.read_message(max_bytes)?;
-            return serde_json::from_slice(&bytes).map_err(ProductionSignerTransportError::Json);
+            serde_json::from_slice(&bytes).map_err(ProductionSignerTransportError::Json)
         }
         #[cfg(not(windows))]
         {
@@ -80,7 +80,7 @@ impl AuthenticatedPipeConnection {
         }
         #[cfg(windows)]
         {
-            return self.inner.write_message(&bytes);
+            self.inner.write_message(&bytes)
         }
         #[cfg(not(windows))]
         {
@@ -105,7 +105,7 @@ impl ProductionSignerPipeServer {
         #[cfg(windows)]
         {
             let inner = windows::PipeServer::bind(&contract, &sddl)?;
-            return Ok(Self { inner, contract });
+            Ok(Self { inner, contract })
         }
         #[cfg(not(windows))]
         {
@@ -120,12 +120,12 @@ impl ProductionSignerPipeServer {
         #[cfg(windows)]
         {
             let (inner, caller) = self.inner.accept()?;
-            return Ok(AuthenticatedPipeConnection {
+            Ok(AuthenticatedPipeConnection {
                 inner,
                 caller,
                 max_request_bytes: self.contract.max_request_bytes,
                 max_response_bytes: self.contract.max_response_bytes,
-            });
+            })
         }
         #[cfg(not(windows))]
         {
@@ -167,7 +167,7 @@ impl ProductionSignerPipeClient {
         #[cfg(windows)]
         {
             let response = windows::client_exchange(&bytes, max_response_bytes)?;
-            return serde_json::from_slice(&response).map_err(ProductionSignerTransportError::Json);
+            serde_json::from_slice(&response).map_err(ProductionSignerTransportError::Json)
         }
         #[cfg(not(windows))]
         {
