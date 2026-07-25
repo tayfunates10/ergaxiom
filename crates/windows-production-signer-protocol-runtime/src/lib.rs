@@ -3,7 +3,7 @@
 use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
 use ergaxiom_proof_kernel::{HashingError, canonical_json_bytes, canonical_json_sha256};
 use ergaxiom_windows_production_signer_runtime::{
-    ECDSA_P256_SHA256, HardwareAssurance, HardwareKeyDescriptor, HardwareSignature,
+    ECDSA_P256_SHA256, HardwareKeyDescriptor, HardwareSignature,
     MICROSOFT_PLATFORM_CRYPTO_PROVIDER, NON_EXPORTABLE_POLICY, P1363_FIXED_64,
     ProductionKeyIdentity, ProductionKeyPolicy, ProductionSignerError, SEC1_UNCOMPRESSED_P256,
     SignerRequestBinding, validate_identifier, validate_sha256,
@@ -158,6 +158,7 @@ pub struct ProductionSignerSuccess {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[allow(clippy::large_enum_variant)]
 #[serde(tag = "status", rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum ProductionSignerResponse {
     Success {
