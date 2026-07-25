@@ -20,6 +20,8 @@ thiserror.workspace = true
 zeroize.workspace = true
 
 [dev-dependencies]
+ergaxiom-attestation-issuance-runtime = { path = "../../crates/attestation-issuance-runtime" }
+ergaxiom-attestation-runtime = { path = "../../crates/attestation-runtime" }
 ergaxiom-capability-issuance-runtime = { path = "../../crates/capability-issuance-runtime" }
 ergaxiom-capability-runtime = { path = "../../crates/capability-runtime" }
 ergaxiom-contract-runtime = { path = "../../crates/contract-runtime" }
