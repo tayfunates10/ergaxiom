@@ -22,7 +22,10 @@ thiserror.workspace = true
 
 [dev-dependencies]
 base64.workspace = true
+ed25519-dalek.workspace = true
+ergaxiom-key-governance-runtime = { path = "../key-governance-runtime" }
 ergaxiom-windows-production-signer-protocol-runtime = { path = "../windows-production-signer-protocol-runtime" }
+ergaxiom-windows-signer-protocol-runtime = { path = "../windows-signer-protocol-runtime" }
 ergaxiom-windows-signer-service-identity-runtime = { path = "../windows-signer-service-identity-runtime" }
 p256.workspace = true
 sha2.workspace = true
