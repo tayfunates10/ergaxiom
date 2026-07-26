@@ -54,7 +54,7 @@ struct TestResponse {
 
 #[cfg(windows)]
 #[test]
-fn real_local_message_pipe_derives_the_connected_process_identity()
+fn real_local_message_pipe_reads_before_deriving_connected_process_identity()
 -> Result<(), Box<dyn std::error::Error>> {
     let contract = NamedPipeSecurityContract::production("S-1-1-0")?;
     let mut server = ProductionSignerPipeServer::bind(contract)?;
@@ -69,11 +69,16 @@ fn real_local_message_pipe_derives_the_connected_process_identity()
     });
 
     let mut connection = server.accept()?;
+    assert!(matches!(
+        connection.caller(),
+        Err(ProductionSignerTransportError::CallerIdentityUnavailable)
+    ));
     let request: TestRequest = connection.read_json(1024)?;
     assert_eq!(request.value, "request");
-    assert_eq!(connection.caller().process_id, std::process::id());
-    assert!(!connection.caller().principal_sid.is_empty());
-    assert!(!connection.caller().executable_sha256.is_empty());
+    let caller = connection.caller()?;
+    assert_eq!(caller.process_id, std::process::id());
+    assert!(!caller.principal_sid.is_empty());
+    assert!(!caller.executable_sha256.is_empty());
     connection.write_json(
         &TestResponse {
             value: "response".to_owned(),
