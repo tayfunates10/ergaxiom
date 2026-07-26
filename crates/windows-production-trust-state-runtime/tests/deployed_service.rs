@@ -442,7 +442,7 @@ fn service_identity() -> SignerServiceIdentity {
         process_creation_time_100ns: 6001,
         executable_sha256: SERVICE_IMAGE.to_owned(),
         started_at_epoch_s: ACTIVATION + 1,
-        instance_nonce: "production-instance-a".to_owned(),
+        instance_nonce: "production-instance-a-0123456789abcdef".to_owned(),
     }
 }
 

@@ -151,6 +151,19 @@ fn explicit_bootstrap_and_monotonic_activation_reject_unsigned_stale_forked_and_
         Err(ProductionTrustStateError::NonMonotonicRevision)
     ));
 
+    let skipped = governance.state_envelope(state_body(
+        4,
+        Some(state_two.body.body_digest.clone()),
+        registry.snapshot(),
+        4,
+        4,
+        1,
+    )?)?;
+    assert!(matches!(
+        activator.activate(&skipped, &governance.policy, ACTIVATION + 2),
+        Err(ProductionTrustStateError::NonMonotonicRevision)
+    ));
+
     let forked = governance.state_envelope(state_body(
         3,
         Some(DIGEST_C.to_owned()),

@@ -927,7 +927,7 @@ impl ProductionTrustStateActivator {
         if next.deployment_id != checkpoint.deployment_id {
             return Err(ProductionTrustStateError::DeploymentIdentityMismatch);
         }
-        if next.revision <= checkpoint.revision {
+        if next.revision != checkpoint.revision.saturating_add(1) {
             return Err(ProductionTrustStateError::NonMonotonicRevision);
         }
         if next.previous_state_digest.as_deref() != Some(checkpoint.state_digest.as_str()) {
