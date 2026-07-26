@@ -13,9 +13,9 @@ permissions:
   contents: write
 
 jobs:
-  fix-windows-service-host:
-    name: Fix Windows production signer service host bindings
-    runs-on: windows-2025
+  finalize-service-host-attacks:
+    name: Finalize production signer service host attacks
+    runs-on: ubuntu-24.04
     steps:
       - name: Check out pull request branch
         uses: actions/checkout@v4
@@ -27,90 +27,102 @@ jobs:
         with:
           components: rustfmt, clippy
 
-      - name: Apply canonical Windows bindings
-        shell: pwsh
+      - name: Bind executable path and register tests
+        shell: bash
         run: |
-          @'
+          python - <<'PY'
           from pathlib import Path
 
           lib = Path("crates/windows-production-signer-host-runtime/src/lib.rs")
           text = lib.read_text()
-          insertion = "#[cfg(windows)]\nuse ergaxiom_windows_production_signer_service_runtime::ProductionSignerService;\n"
-          if insertion not in text:
-              anchor = "use ergaxiom_windows_production_signer_service_runtime::{\n    HardwareSignerBackend, HardwareSignerBackendError, ProductionSignerServiceError,\n};\n"
+          if "#[cfg(test)]\nmod tests;" not in text:
+              anchor = "#[cfg(windows)]\nmod windows;\n"
               if anchor not in text:
-                  raise SystemExit("service import anchor missing")
-              text = text.replace(anchor, anchor + insertion, 1)
+                  raise SystemExit("windows module anchor missing")
+              text = text.replace(anchor, anchor + "\n#[cfg(test)]\nmod tests;\n", 1)
+          old = "        let service_identity = windows::current_service_identity(\n            &loaded.deployment_policy.service_id,\n            &loaded.manifest.executable_sha256,\n            trusted_now_epoch_s,\n        )?;"
+          new = "        let service_identity = windows::current_service_identity(\n            &loaded.deployment_policy.service_id,\n            Path::new(&loaded.manifest.executable_path),\n            &loaded.manifest.executable_sha256,\n            trusted_now_epoch_s,\n        )?;"
+          if old not in text:
+              raise SystemExit("current service identity call anchor missing")
+          text = text.replace(old, new, 1)
+          error_anchor = "    #[error(\"production signer executable digest does not match the manifest\")]\n    ExecutableDigestMismatch,"
+          error_new = error_anchor + "\n    #[error(\"production signer executable path does not match the manifest\")]\n    ExecutablePathMismatch,"
+          if "ExecutablePathMismatch" not in text:
+              if error_anchor not in text:
+                  raise SystemExit("executable digest error anchor missing")
+              text = text.replace(error_anchor, error_new, 1)
           lib.write_text(text)
 
           win = Path("crates/windows-production-signer-host-runtime/src/windows.rs")
           text = win.read_text()
-          text = text.replace(
-              "    ProductionSignerPipeServer, ProductionSignerTransportError,\n",
-              "    ProductionSignerPipeServer,\n",
-          )
-          text = text.replace(
-              "use windows_sys::Win32::Security::{DACL_SECURITY_INFORMATION, SetServiceObjectSecurity};",
-              "use windows_sys::Win32::Security::DACL_SECURITY_INFORMATION;",
-          )
-          old = "    SERVICE_TABLE_ENTRYW, SERVICE_WIN32_OWN_PROCESS, SetServiceStatus, StartServiceCtrlDispatcherW,\n"
-          new = "    SERVICE_TABLE_ENTRYW, SERVICE_WIN32_OWN_PROCESS, SetServiceObjectSecurity, SetServiceStatus,\n    StartServiceCtrlDispatcherW,\n"
-          if "SetServiceObjectSecurity" not in text.split("use windows_sys::Win32::System::Services::{", 1)[1].split("};", 1)[0]:
-              if old not in text:
-                  raise SystemExit("service function import anchor missing")
-              text = text.replace(old, new, 1)
-          if "const DELETE_ACCESS: u32 = 0x0001_0000;" not in text:
-              text = text.replace(
-                  'const SERVICE_DACL_SDDL: &str =',
-                  'const DELETE_ACCESS: u32 = 0x0001_0000;\nconst SERVICE_DACL_SDDL: &str =',
-                  1,
-              )
-          text = text.replace(
-              "SERVICE_STOP | SERVICE_QUERY_STATUS | windows_sys::Win32::System::Services::DELETE,",
-              "SERVICE_STOP | SERVICE_QUERY_STATUS | DELETE_ACCESS,",
-          )
-          replacements = [
-              ("(&mut description).cast()", "(&mut description as *mut SERVICE_DESCRIPTIONW).cast()"),
-              ("(&mut delayed).cast()", "(&mut delayed as *mut SERVICE_DELAYED_AUTO_START_INFO).cast()"),
-              ("(&mut sid).cast()", "(&mut sid as *mut SERVICE_SID_INFO).cast()"),
-              ("(&mut privilege_info).cast()", "(&mut privilege_info as *mut SERVICE_REQUIRED_PRIVILEGES_INFOW).cast()"),
-              ("(&mut failure_actions).cast()", "(&mut failure_actions as *mut SERVICE_FAILURE_ACTIONSW).cast()"),
-              ("(&mut failure_flag).cast()", "(&mut failure_flag as *mut SERVICE_FAILURE_ACTIONS_FLAG).cast()"),
-              ("(&mut preshutdown).cast()", "(&mut preshutdown as *mut SERVICE_PRESHUTDOWN_INFO).cast()"),
-          ]
-          for old, new in replacements:
-              text = text.replace(old, new)
+          old = "pub fn current_service_identity(\n    service_id: &str,\n    executable_sha256: &str,\n    started_at_epoch_s: u64,\n)"
+          new = "pub fn current_service_identity(\n    service_id: &str,\n    expected_executable_path: &Path,\n    executable_sha256: &str,\n    started_at_epoch_s: u64,\n)"
+          if old not in text:
+              raise SystemExit("current service identity signature anchor missing")
+          text = text.replace(old, new, 1)
+          old = "    let current_executable = std::env::current_exe()?;\n    if hash_stable_file(&current_executable, PRODUCTION_SIGNER_MAX_EXECUTABLE_BYTES)?\n        != executable_sha256\n    {\n        return Err(ProductionSignerHostError::ExecutableDigestMismatch);\n    }"
+          new = "    let current_executable = std::fs::canonicalize(std::env::current_exe()?)?;\n    let expected_executable = std::fs::canonicalize(expected_executable_path)?;\n    if current_executable != expected_executable {\n        return Err(ProductionSignerHostError::ExecutablePathMismatch);\n    }\n    if hash_stable_file(&current_executable, PRODUCTION_SIGNER_MAX_EXECUTABLE_BYTES)?\n        != executable_sha256\n    {\n        return Err(ProductionSignerHostError::ExecutableDigestMismatch);\n    }"
+          if old not in text:
+              raise SystemExit("current executable digest anchor missing")
+          text = text.replace(old, new, 1)
           win.write_text(text)
-          '@ | python
+
+          tests = Path("crates/windows-production-signer-host-runtime/src/tests.rs")
+          text = tests.read_text()
+          text = text.replace("use std::path::{Path, PathBuf};", "use std::path::PathBuf;")
+          text = text.replace(
+              '    let mutations: Vec<Box<dyn Fn(&mut ProductionSignerServiceManifest)>> = vec![',
+              '    let mutations: [fn(&mut ProductionSignerServiceManifest); 10] = [',
+          )
+          text = text.replace("        Box::new(|value| value.service_name = \"ErgaxiomSignerDev\".to_owned()),", "        |value| value.service_name = \"ErgaxiomSignerDev\".to_owned(),")
+          text = text.replace("        Box::new(|value| value.service_account = \"LocalService\".to_owned()),", "        |value| value.service_account = \"LocalService\".to_owned(),")
+          text = text.replace("        Box::new(|value| value.service_type = \"SHARED_PROCESS\".to_owned()),", "        |value| value.service_type = \"SHARED_PROCESS\".to_owned(),")
+          text = text.replace("        Box::new(|value| value.start_mode = \"DEMAND\".to_owned()),", "        |value| value.start_mode = \"DEMAND\".to_owned(),")
+          text = text.replace("        Box::new(|value| value.error_control = \"IGNORE\".to_owned()),", "        |value| value.error_control = \"IGNORE\".to_owned(),")
+          text = text.replace("        Box::new(|value| value.service_sid_type = \"NONE\".to_owned()),", "        |value| value.service_sid_type = \"NONE\".to_owned(),")
+          text = text.replace("        Box::new(|value| value.required_privileges.push(\"SeDebugPrivilege\".to_owned())),", "        |value| value.required_privileges.push(\"SeDebugPrivilege\".to_owned()),")
+          text = text.replace("        Box::new(|value| value.failure_restart_delays_ms = vec![0, 0]),", "        |value| value.failure_restart_delays_ms = vec![0, 0],")
+          text = text.replace("        Box::new(|value| value.preshutdown_timeout_ms = 0),", "        |value| value.preshutdown_timeout_ms = 0,")
+          text = text.replace("        Box::new(|value| value.max_config_file_bytes = 0),", "        |value| value.max_config_file_bytes = 0,")
+          text = text.replace("    let path = Path::new(\"/tmp/ergaxiom-production-service.json\");", "    let path = std::path::Path::new(\"/tmp/ergaxiom-production-service.json\");")
+          old = "    let identity = crate::windows::current_service_identity(\n        \"ergaxiom-production-signer\",\n        &digest,\n        trusted_test_time()?,\n    )?;"
+          new = "    let identity = crate::windows::current_service_identity(\n        \"ergaxiom-production-signer\",\n        &current,\n        &digest,\n        trusted_test_time()?,\n    )?;"
+          if old not in text:
+              raise SystemExit("Windows identity test anchor missing")
+          text = text.replace(old, new, 1)
+          tests.write_text(text)
+          PY
 
       - name: Materialize canonical formatting
         run: cargo fmt --all
 
-      - name: Commit Windows SCM binding fixes
-        shell: pwsh
+      - name: Commit service host attack boundary
+        shell: bash
         run: |
+          set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add crates/windows-production-signer-host-runtime/src/lib.rs crates/windows-production-signer-host-runtime/src/windows.rs
-          git diff --cached --quiet
-          if ($LASTEXITCODE -ne 0) {
-            git commit -m "Fix Windows production signer SCM bindings"
+          git add crates/windows-production-signer-host-runtime/src
+          if git diff --cached --quiet; then
+            echo "No source changes"
+          else
+            git commit -m "Bind production signer service executable path"
             git push origin HEAD:agent/tpm-cng-signer-service-v1
-          }
+          fi
 
       - name: Check workspace formatting
         run: cargo fmt --all -- --check
 
-      - name: Lint Windows service host
+      - name: Lint service host attacks
         run: |
-          cargo clippy `
-            -p ergaxiom-windows-production-signer-host-runtime `
-            -p ergaxiom-windows-production-signer-service `
+          cargo clippy \
+            -p ergaxiom-windows-production-signer-host-runtime \
+            -p ergaxiom-windows-production-signer-service \
             --all-targets --all-features -- -D warnings
 
-      - name: Run Windows service host tests
+      - name: Run service host attacks
         run: |
-          cargo test `
-            -p ergaxiom-windows-production-signer-host-runtime `
-            -p ergaxiom-windows-production-signer-service `
+          cargo test \
+            -p ergaxiom-windows-production-signer-host-runtime \
+            -p ergaxiom-windows-production-signer-service \
             --all-features -- --nocapture
