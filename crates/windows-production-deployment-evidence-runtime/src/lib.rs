@@ -376,7 +376,7 @@ impl SignedProductionSignerInstallationEvidence {
         {
             return Err(DeploymentEvidenceError::InvalidInstallationEnvelope);
         }
-        self.receipt.validate_seal()?;
+        self.receipt.verify_against_accepted(accepted)?;
         policy.validate_cryptographic_separation(trust_governance_policy, accepted)?;
         if self.evidence_policy_digest != policy.policy_digest
             || self.receipt.trust_state_binding != *accepted.binding()
@@ -447,7 +447,7 @@ impl SignedProductionSignerRecoveryEvidence {
         {
             return Err(DeploymentEvidenceError::InvalidRecoveryEnvelope);
         }
-        self.receipt.validate_seal()?;
+        self.receipt.verify_against_accepted(accepted)?;
         policy.validate_cryptographic_separation(trust_governance_policy, accepted)?;
         if self.evidence_policy_digest != policy.policy_digest
             || self.receipt.after.trust_state_binding != *accepted.binding()
@@ -525,9 +525,10 @@ fn nibble(value: u8) -> Result<u8, DeploymentEvidenceError> {
 
 fn decode_fixed<const N: usize>(value: &str) -> Result<[u8; N], base64::DecodeError> {
     let bytes = URL_SAFE_NO_PAD.decode(value)?;
+    let length = bytes.len();
     bytes
         .try_into()
-        .map_err(|_| base64::DecodeError::InvalidLength(bytes.len()))
+        .map_err(|_| base64::DecodeError::InvalidLength(length))
 }
 
 fn lowercase_sha256(bytes: &[u8]) -> String {
