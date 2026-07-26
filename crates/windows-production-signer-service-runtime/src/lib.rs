@@ -2,6 +2,9 @@
 
 use ergaxiom_key_governance_runtime::IssuerRole;
 use ergaxiom_proof_kernel::{HashingError, canonical_json_sha256};
+use ergaxiom_windows_production_key_governance_runtime::{
+    ProductionKeyGovernanceError, ProductionKeyRegistry, ProductionKeyTrustBinding,
+};
 use ergaxiom_windows_production_signer_protocol_runtime::{
     ProductionSignerEnvelope, ProductionSignerProtocolError, ProductionSignerRequest,
     ProductionSignerResponse, ProductionSignerSuccess,
@@ -44,6 +47,35 @@ impl ProductionSignerTrustSnapshot {
         validate_sha256(&self.signer_service_identity_digest)?;
         if self.allowlist_revision == 0 {
             return Err(ProductionSignerServiceError::InvalidTrustAllowlistRevision);
+        }
+        Ok(())
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GovernedProductionSignerTrustSnapshot {
+    pub signer: ProductionSignerTrustSnapshot,
+    pub key: ProductionKeyTrustBinding,
+}
+
+impl GovernedProductionSignerTrustSnapshot {
+    pub fn validate_for(
+        &self,
+        policy: &ProductionKeyPolicy,
+        registry: &ProductionKeyRegistry,
+        signed_at_epoch_s: u64,
+    ) -> Result<(), ProductionSignerServiceError> {
+        self.signer.validate_for(policy)?;
+        self.key.validate_shape()?;
+        if self.key.identity != self.signer.identity || self.key.identity != policy.identity {
+            return Err(ProductionSignerServiceError::TrustIdentityMismatch);
+        }
+        if self.key.public_key_digest != self.signer.public_key_digest {
+            return Err(ProductionSignerServiceError::TrustPublicKeyDigestMismatch);
+        }
+        let record = registry.verify_binding(&self.key, signed_at_epoch_s)?;
+        if record.public_key_digest != self.signer.public_key_digest {
+            return Err(ProductionSignerServiceError::TrustPublicKeyDigestMismatch);
         }
         Ok(())
     }
@@ -105,6 +137,22 @@ impl AuthorizedProductionSignerPackage {
         }
         if envelope.binding.signer_service_identity_digest != trust.signer_service_identity_digest {
             return Err(ProductionSignerServiceError::TrustServiceIdentityMismatch);
+        }
+        Ok(envelope)
+    }
+
+    pub fn verify_governed(
+        &self,
+        trust: &GovernedProductionSignerTrustSnapshot,
+        registry: &ProductionKeyRegistry,
+        signed_at_epoch_s: u64,
+    ) -> Result<ProductionSignerEnvelope, ProductionSignerServiceError> {
+        let envelope = self.verify_trusted(&trust.signer)?;
+        let policy = policy_for_identity(&envelope.request.identity)?;
+        trust.validate_for(&policy, registry, signed_at_epoch_s)?;
+        let descriptor = response_descriptor(&self.signer_response)?;
+        if descriptor.public_key_digest != trust.key.public_key_digest {
+            return Err(ProductionSignerServiceError::TrustPublicKeyDigestMismatch);
         }
         Ok(envelope)
     }
@@ -341,6 +389,8 @@ pub enum ProductionSignerServiceError {
     Protocol(#[from] ProductionSignerProtocolError),
     #[error(transparent)]
     Production(#[from] ProductionSignerError),
+    #[error(transparent)]
+    Governance(#[from] ProductionKeyGovernanceError),
     #[error(transparent)]
     Identity(#[from] SignerIdentityError),
 }
