@@ -341,7 +341,7 @@ fn read_bounded_bytes(
     max_file_bytes: u64,
 ) -> Result<Vec<u8>, ProductionTrustStoreError> {
     reject_symlink(path)?;
-    let mut file = File::open(path)?;
+    let file = File::open(path)?;
     let metadata = file.metadata()?;
     ensure_size(metadata.len(), max_file_bytes)?;
     let mut bytes = Vec::with_capacity(metadata.len() as usize);

@@ -8,7 +8,7 @@ use ergaxiom_windows_production_key_governance_runtime::{
     ProductionKeyRegistrySnapshot, ProductionKeyStatus,
 };
 use ergaxiom_windows_production_signer_runtime::{
-    ProductionKeyIdentity, ProductionSignerError, validate_identifier, validate_sha256,
+    ProductionSignerError, validate_identifier, validate_sha256,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
