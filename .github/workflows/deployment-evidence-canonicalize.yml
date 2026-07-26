@@ -1,0 +1,42 @@
+name: Canonicalize deployment evidence
+
+on:
+  push:
+    branches:
+      - agent/tpm-cng-signer-service-v1
+
+permissions:
+  contents: write
+
+jobs:
+  canonicalize:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out branch
+        uses: actions/checkout@v4
+        with:
+          ref: agent/tpm-cng-signer-service-v1
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+
+      - name: Canonicalize Rust and lockfile
+        run: |
+          cargo fmt --all
+          cargo generate-lockfile
+
+      - name: Commit canonical files
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Cargo.lock Cargo.toml apps/windows-production-signer-service crates/windows-production-deployment-evidence-runtime crates/windows-production-installation-evidence-runtime
+          if git diff --cached --quiet; then
+            echo "No canonical changes"
+          else
+            git commit -m "Canonicalize production deployment evidence"
+            git push origin HEAD:agent/tpm-cng-signer-service-v1
+          fi
