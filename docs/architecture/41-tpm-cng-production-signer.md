@@ -151,6 +151,7 @@ The production protocol is separate from the existing DPAPI/Ed25519 protocol. It
 - production key-policy digest,
 - authenticated caller identity digest,
 - signer-service instance identity digest,
+- accepted production trust-state binding digest on deployed packages,
 - exact provider, algorithm and public-key digest, and
 - the signer request and envelope digests.
 
@@ -172,6 +173,31 @@ A verifier does not need private process handles. The combined governed snapshot
 The caller authorization receipt is independently canonical-hash verified before these values are compared. Altering its authorization time, caller, allowlist or service fields without recomputing the sealed receipt therefore fails even when the remaining package is unchanged.
 
 Any registry mutation makes an older trust snapshot stale because its revision and digest no longer match. A fresh snapshot must be produced from the accepted registry state before new issuance can continue.
+
+## Persisted signed production trust state
+
+`ergaxiom-windows-production-trust-state-runtime` authenticates and persists the complete production trust boundary rather than relying on an in-memory registry alone. A state envelope binds:
+
+- deployment identity and exact monotonic revision,
+- previous accepted state digest,
+- complete canonical P-256 registry snapshot and digest,
+- caller-allowlist revision and digest,
+- signer executable digest,
+- signer deployment-policy revision and digest,
+- activation and validity intervals,
+- minimum accepted revision,
+- recovery-policy identity, and
+- threshold signatures from a cryptographically separate Ed25519 governance policy.
+
+The initial state requires an explicit offline expectation. Normal activation requires exactly the next revision and exact previous-state digest. Stale, skipped, forked and downgraded states fail closed.
+
+The filesystem store writes immutable digest-named state and recovery files before atomically replacing one sealed `accepted.json` pointer. It rejects relative paths, symbolic links, oversized files, metadata changes during reads and immutable-file conflicts. Windows directories use a protected DACL and pointer activation uses write-through atomic replacement.
+
+Recovery has a separate signature domain, sequence, expiry, damaged/replacement digest binding and minimum uncompromised revision. It cannot reactivate a revoked P-256 generation.
+
+`TrustBoundProductionSignerService` requires the accepted registry, allowlist, service executable and deployment policy to match before startup. It opens the exact active generation and rejects a backend that substitutes another generation. The accepted trust-state binding digest enters the signer request binding and therefore the P-256 hardware signature. Backend verification rejects a cryptographically valid response from a different accepted state.
+
+Existing fixed-snapshot artifacts remain backward compatible because the trust-state field is optional and omitted from the earlier path. New deployed issuance requires it.
 
 ## Caller identity
 
@@ -269,8 +295,14 @@ The permanent read-only Linux and Windows matrix covers:
 - provider/software fallback and export-policy attacks,
 - P-256 prehash verification,
 - caller, service-instance, receipt-seal and replay substitution attacks,
-- named-pipe ACL construction and bounded read-before-impersonation transport, and
-- a real local Windows named-pipe round trip that derives the connected process identity.
+- named-pipe ACL construction and bounded read-before-impersonation transport,
+- threshold-signed trust-state bootstrap and exact monotonic activation,
+- stale, skipped, forked and downgraded state rejection,
+- guarded atomic state persistence and independently sealed accepted checkpoints,
+- separately authorized recovery, replay rejection and revoked-key reactivation rejection,
+- exact active-generation backend startup matching,
+- hardware-signed trust-state binding and stale backend-versus-signer rejection, and
+- real Windows protected-DACL, atomic-pointer and named-pipe round trips.
 
 The canonical Ubuntu and Windows matrix passed formatting, open-only build checks, warnings-deny Clippy and the complete governed test set. The workflow remains in permanent `contents: read` mode.
 
@@ -280,7 +312,8 @@ The following remain open:
 
 - independently trusted physical-TPM evidence that can promote a key from `UNPROVEN` to `PROVEN_HARDWARE_BACKED`,
 - an operational elevated provisioning ceremony on controlled hardware and custody of its evidence,
-- persistent, signed and securely distributed registry/trust-snapshot storage and recovery,
+- operational generation, custody and recovery procedures for the separate trust-governance private keys,
+- administrator-controlled packaging and distribution of signed trust-state updates,
 - deployment of the authenticated production signer as a hardened Windows service, and
 - full desktop/backend orchestration through the deployed service.
 
