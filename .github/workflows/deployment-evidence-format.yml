@@ -1,0 +1,35 @@
+name: Format deployment evidence wrapper
+
+on:
+  pull_request:
+    paths:
+      - "crates/windows-production-installation-evidence-runtime/src/lib_wrapper.rs"
+      - ".github/workflows/deployment-evidence-format.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  format:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/tpm-cng-signer-service-v1
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+      - run: cargo fmt --all
+      - name: Commit formatting
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add crates/windows-production-installation-evidence-runtime/src/lib_wrapper.rs
+          if git diff --cached --quiet; then
+            echo "No formatting changes"
+          else
+            git commit -m "Format deployment evidence registry shim"
+            git push origin HEAD:agent/tpm-cng-signer-service-v1
+          fi
