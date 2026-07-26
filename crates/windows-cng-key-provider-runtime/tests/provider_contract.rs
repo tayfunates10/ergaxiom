@@ -25,7 +25,12 @@ fn non_windows_platform_fails_closed_without_emulation() {
         Err(CngProviderError::UnsupportedPlatform)
     ));
     assert!(matches!(
-        provider.describe_or_provision_unverified(&ProductionKeyPolicy::capability(), None),
+        provider.describe_existing_unverified(&ProductionKeyPolicy::capability(), None),
+        Err(CngProviderError::UnsupportedPlatform)
+    ));
+    #[cfg(feature = "provisioning")]
+    assert!(matches!(
+        provider.provision_unverified(&ProductionKeyPolicy::capability(), None),
         Err(CngProviderError::UnsupportedPlatform)
     ));
 }
