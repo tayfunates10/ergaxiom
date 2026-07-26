@@ -6,6 +6,8 @@ This document defines the next bounded gate after governed P-256 rotation and re
 
 The current repository can canonically add, rotate, retire and revoke P-256 generations and can bind Capability Token and Acceptance Certificate verification to an exact registry revision and digest. It does not yet persist, authenticate, distribute, recover or atomically activate that registry across installed production components.
 
+This gate remains part of the open deployment lifecycle under Issue #60. It must not be represented as implemented merely because this specification exists.
+
 ## Goal
 
 Provide one fail-closed lifecycle for production trust state so that the provisioner, signer service, backend issuance authority and independent verifier consume the same authenticated registry snapshot and cannot silently downgrade, fork or roll back it.
