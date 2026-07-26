@@ -16,7 +16,7 @@ pub struct SignerBoundCapabilityToken {
     pub signer_response: SignerResponse,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ProductionSignerBoundCapabilityToken {
     pub payload: CapabilityTokenPayload,
     pub signer_package: AuthorizedProductionSignerPackage,
