@@ -2,9 +2,7 @@ use ergaxiom_contract_runtime::CompiledContract;
 use ergaxiom_evidence_runtime::{EvidenceBundle, EvidenceBundleError, assess_bundle};
 use ergaxiom_key_governance_runtime::IssuerRole;
 use ergaxiom_operator_plan_runtime::CompiledPlan;
-use ergaxiom_proof_kernel::{
-    AssuranceLevel, DecisionStatus, HashingError, canonical_json_sha256,
-};
+use ergaxiom_proof_kernel::{AssuranceLevel, DecisionStatus, HashingError, canonical_json_sha256};
 use ergaxiom_windows_production_signer_service_runtime::{
     ProductionSignerServiceError, ProductionSignerTrustSnapshot,
 };
@@ -77,8 +75,8 @@ pub fn verify_production_signer_bound_attestation(
     if envelope.request.identity.key_id != payload.key_id {
         return Err(ProductionAttestationVerifyError::SignerKeyMismatch);
     }
-    let payload_value = serde_json::to_value(payload)
-        .map_err(ProductionAttestationVerifyError::Serialization)?;
+    let payload_value =
+        serde_json::to_value(payload).map_err(ProductionAttestationVerifyError::Serialization)?;
     if envelope.request.digest != canonical_json_sha256(&payload_value)? {
         return Err(ProductionAttestationVerifyError::SignerDigestMismatch);
     }
@@ -132,8 +130,8 @@ fn validate_document(
     {
         return Err(ProductionAttestationVerifyError::InvalidAcceptedCounts);
     }
-    let manifest_value = serde_json::to_value(manifest)
-        .map_err(ProductionAttestationVerifyError::Serialization)?;
+    let manifest_value =
+        serde_json::to_value(manifest).map_err(ProductionAttestationVerifyError::Serialization)?;
     let replay_manifest_digest = canonical_json_sha256(&manifest_value)?;
     if replay_manifest_digest != payload.replay_manifest_digest {
         return Err(ProductionAttestationVerifyError::ManifestDigestMismatch);
@@ -237,10 +235,7 @@ fn validate_manifest_payload_match(
         manifest.mandatory_unknown == payload.mandatory_unknown,
         "mandatory_unknown",
     )?;
-    check_equal(
-        manifest.expected_decision == payload.decision,
-        "decision",
-    )?;
+    check_equal(manifest.expected_decision == payload.decision, "decision")?;
     Ok(())
 }
 

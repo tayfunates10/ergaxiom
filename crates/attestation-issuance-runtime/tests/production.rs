@@ -8,10 +8,10 @@ use ergaxiom_attestation_issuance_runtime::{
 use ergaxiom_attestation_runtime::verify_production_signer_bound_attestation_against_bundle;
 use ergaxiom_windows_production_signer_protocol_runtime::ProductionSignerRequest;
 use ergaxiom_windows_production_signer_runtime::{
-    AUTHENTICATED_CALLER_SCHEMA, AuthenticatedCallerIdentity, ECDSA_P256_SHA256,
-    HardwareAssurance, HardwareKeyDescriptor, HardwareSignature, P1363_FIXED_64,
-    ProductionKeyPolicy, SEC1_UNCOMPRESSED_P256, SIGNER_SERVICE_IDENTITY_SCHEMA,
-    SignerRequestBinding, SignerServiceIdentity,
+    AUTHENTICATED_CALLER_SCHEMA, AuthenticatedCallerIdentity, ECDSA_P256_SHA256, HardwareAssurance,
+    HardwareKeyDescriptor, HardwareSignature, P1363_FIXED_64, ProductionKeyPolicy,
+    SEC1_UNCOMPRESSED_P256, SIGNER_SERVICE_IDENTITY_SCHEMA, SignerRequestBinding,
+    SignerServiceIdentity,
 };
 use ergaxiom_windows_production_signer_service_runtime::{
     AuthorizedProductionSignerPackage, HardwareSignerBackend, HardwareSignerBackendError,
@@ -21,8 +21,7 @@ use ergaxiom_windows_signer_service_identity_runtime::{
     AllowedSignerCaller, SignerCallerAllowlist,
 };
 use p256::ecdsa::{
-    Signature as P256Signature, SigningKey as P256SigningKey,
-    signature::hazmat::PrehashSigner,
+    Signature as P256Signature, SigningKey as P256SigningKey, signature::hazmat::PrehashSigner,
 };
 use sha2::{Digest, Sha256};
 
@@ -203,7 +202,12 @@ fn production_authority_reassesses_and_issues_verified_p256_certificate()
     assert_eq!(envelope.request.identity.role, IssuerRole::Attestation);
     assert_eq!(envelope.request.identity.issuer_id, ATTESTATION_ISSUER_ID);
     assert_eq!(envelope.request.identity.key_id, ATTESTATION_KEY_ID);
-    assert!(envelope.request.request_id.starts_with("attestation.issue."));
+    assert!(
+        envelope
+            .request
+            .request_id
+            .starts_with("attestation.issue.")
+    );
     verify_production_signer_bound_attestation_against_bundle(
         &package,
         &trust,
@@ -225,15 +229,17 @@ fn production_failed_proof_blocks_before_signer_invocation() -> Result<(), Box<d
     context.bundle["claimed_decision"]["mandatory_failed"] = json!(1);
     let calls = Rc::new(Cell::new(0));
     let (authority, _) = production_authority(calls.clone())?;
-    assert!(authority
-        .issue(
-            context.contract,
-            &context.plan,
-            &context.bundle,
-            AssuranceLevel::E1,
-            draft(),
-        )
-        .is_err());
+    assert!(
+        authority
+            .issue(
+                context.contract,
+                &context.plan,
+                &context.bundle,
+                AssuranceLevel::E1,
+                draft(),
+            )
+            .is_err()
+    );
     assert_eq!(calls.get(), 0);
     Ok(())
 }

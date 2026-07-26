@@ -196,8 +196,7 @@ fn exact_authenticated_request_reaches_verified_production_signature()
 }
 
 #[test]
-fn public_trust_snapshot_verifies_the_exact_package()
--> Result<(), Box<dyn std::error::Error>> {
+fn public_trust_snapshot_verifies_the_exact_package() -> Result<(), Box<dyn std::error::Error>> {
     let backend = FakeHardwareBackend::proven()?;
     let mut service = ProductionSignerService::new(backend, service_identity(), allowlist()?)?;
     let caller = caller();
@@ -218,8 +217,7 @@ fn public_trust_snapshot_verifies_the_exact_package()
 }
 
 #[test]
-fn public_trust_snapshot_substitution_fails_closed()
--> Result<(), Box<dyn std::error::Error>> {
+fn public_trust_snapshot_substitution_fails_closed() -> Result<(), Box<dyn std::error::Error>> {
     let backend = FakeHardwareBackend::proven()?;
     let mut service = ProductionSignerService::new(backend, service_identity(), allowlist()?)?;
     let caller = caller();

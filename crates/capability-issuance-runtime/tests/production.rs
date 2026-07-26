@@ -13,10 +13,10 @@ use ergaxiom_windows_production_signer_protocol_runtime::{
     ProductionSignerRequest, ProductionSignerResponse,
 };
 use ergaxiom_windows_production_signer_runtime::{
-    AUTHENTICATED_CALLER_SCHEMA, AuthenticatedCallerIdentity, ECDSA_P256_SHA256,
-    HardwareAssurance, HardwareKeyDescriptor, HardwareSignature, P1363_FIXED_64,
-    ProductionKeyPolicy, SEC1_UNCOMPRESSED_P256, SIGNER_SERVICE_IDENTITY_SCHEMA,
-    SignerRequestBinding, SignerServiceIdentity,
+    AUTHENTICATED_CALLER_SCHEMA, AuthenticatedCallerIdentity, ECDSA_P256_SHA256, HardwareAssurance,
+    HardwareKeyDescriptor, HardwareSignature, P1363_FIXED_64, ProductionKeyPolicy,
+    SEC1_UNCOMPRESSED_P256, SIGNER_SERVICE_IDENTITY_SCHEMA, SignerRequestBinding,
+    SignerServiceIdentity,
 };
 use ergaxiom_windows_production_signer_service_runtime::{
     AuthorizedProductionSignerPackage, HardwareSignerBackend, HardwareSignerBackendError,
@@ -239,8 +239,14 @@ fn production_authority_fixes_identity_digest_and_public_trust() -> Result<(), B
         envelope.request.request_id.len(),
         "capability.issue.".len() + 48
     );
-    assert!(!token.signer_package.signer_response.contains_private_material_field());
-    let ProductionSignerResponse::Success { result, .. } = token.signer_package.signer_response else {
+    assert!(
+        !token
+            .signer_package
+            .signer_response
+            .contains_private_material_field()
+    );
+    let ProductionSignerResponse::Success { result, .. } = token.signer_package.signer_response
+    else {
         return Err("expected production signer response".into());
     };
     assert_eq!(result.descriptor.public_key_digest, trust.public_key_digest);
