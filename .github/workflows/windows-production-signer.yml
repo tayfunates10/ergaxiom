@@ -1,127 +1,144 @@
 name: Windows production signer foundation
 
 on:
+  pull_request:
+    paths:
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "apps/windows-production-signer-provisioner/**"
+      - "apps/windows-production-signer-service/**"
+      - "crates/attestation-issuance-runtime/**"
+      - "crates/attestation-runtime/**"
+      - "crates/capability-issuance-runtime/**"
+      - "crates/capability-runtime/**"
+      - "crates/windows-cng-key-provider-runtime/**"
+      - "crates/windows-production-deployment-evidence-runtime/**"
+      - "crates/windows-production-governed-issuance-runtime/**"
+      - "crates/windows-production-installation-evidence-runtime/**"
+      - "crates/windows-production-key-governance-runtime/**"
+      - "crates/windows-production-signer-host-runtime/**"
+      - "crates/windows-production-signer-protocol-runtime/**"
+      - "crates/windows-production-signer-provisioning-runtime/**"
+      - "crates/windows-production-signer-runtime/**"
+      - "crates/windows-production-signer-service-runtime/**"
+      - "crates/windows-production-signer-transport-runtime/**"
+      - "crates/windows-production-trust-state-runtime/**"
+      - "crates/windows-signer-service-identity-runtime/**"
+      - "docs/architecture/41-tpm-cng-production-signer.md"
+      - "docs/architecture/42-production-trust-registry-deployment.md"
+      - "docs/architecture/43-windows-production-signer-service.md"
+      - "docs/architecture/44-controlled-machine-deployment-evidence.md"
+      - "docs/status.md"
+      - ".github/workflows/windows-production-signer.yml"
   push:
     branches:
-      - agent/tpm-cng-signer-service-v1
+      - main
+    paths:
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "apps/windows-production-signer-provisioner/**"
+      - "apps/windows-production-signer-service/**"
+      - "crates/attestation-issuance-runtime/**"
+      - "crates/attestation-runtime/**"
+      - "crates/capability-issuance-runtime/**"
+      - "crates/capability-runtime/**"
+      - "crates/windows-cng-key-provider-runtime/**"
+      - "crates/windows-production-deployment-evidence-runtime/**"
+      - "crates/windows-production-governed-issuance-runtime/**"
+      - "crates/windows-production-installation-evidence-runtime/**"
+      - "crates/windows-production-key-governance-runtime/**"
+      - "crates/windows-production-signer-host-runtime/**"
+      - "crates/windows-production-signer-protocol-runtime/**"
+      - "crates/windows-production-signer-provisioning-runtime/**"
+      - "crates/windows-production-signer-runtime/**"
+      - "crates/windows-production-signer-service-runtime/**"
+      - "crates/windows-production-signer-transport-runtime/**"
+      - "crates/windows-production-trust-state-runtime/**"
+      - "crates/windows-signer-service-identity-runtime/**"
+      - "docs/architecture/41-tpm-cng-production-signer.md"
+      - "docs/architecture/42-production-trust-registry-deployment.md"
+      - "docs/architecture/43-windows-production-signer-service.md"
+      - "docs/architecture/44-controlled-machine-deployment-evidence.md"
+      - "docs/status.md"
+      - ".github/workflows/windows-production-signer.yml"
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  deployment-evidence-ubuntu:
-    name: Verify platform-neutral deployment evidence
-    runs-on: ubuntu-24.04
+  governed-production-service:
+    name: Verify production signer service (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-24.04
+          - windows-2025
+    runs-on: ${{ matrix.os }}
     steps:
-      - name: Check out branch
+      - name: Check out repository
         uses: actions/checkout@v4
-        with:
-          ref: agent/tpm-cng-signer-service-v1
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
 
-      - name: Apply exact portable evidence fixes
-        shell: bash
-        run: |
-          python - <<'PY'
-          from pathlib import Path
-
-          path = Path("crates/windows-production-deployment-evidence-runtime/src/lib.rs")
-          text = path.read_text()
-          text = text.replace(
-              '        self.receipt.validate_seal()?;\n        policy.validate_cryptographic_separation(trust_governance_policy, accepted)?;\n',
-              '        self.receipt.verify_against_accepted(accepted)?;\n        policy.validate_cryptographic_separation(trust_governance_policy, accepted)?;\n',
-              1,
-          )
-          marker = 'impl SignedProductionSignerRecoveryEvidence {'
-          before, after = text.split(marker, 1)
-          after = after.replace(
-              '        self.receipt.validate_seal()?;\n        policy.validate_cryptographic_separation(trust_governance_policy, accepted)?;\n',
-              '        self.receipt.verify_against_accepted(accepted)?;\n        policy.validate_cryptographic_separation(trust_governance_policy, accepted)?;\n',
-              1,
-          )
-          text = before + marker + after
-          old = '''fn decode_fixed<const N: usize>(value: &str) -> Result<[u8; N], base64::DecodeError> {
-    let bytes = URL_SAFE_NO_PAD.decode(value)?;
-    bytes
-        .try_into()
-        .map_err(|_| base64::DecodeError::InvalidLength(bytes.len()))
-}
-'''
-          new = '''fn decode_fixed<const N: usize>(value: &str) -> Result<[u8; N], base64::DecodeError> {
-    let bytes = URL_SAFE_NO_PAD.decode(value)?;
-    let length = bytes.len();
-    bytes
-        .try_into()
-        .map_err(|_| base64::DecodeError::InvalidLength(length))
-}
-'''
-          if old not in text:
-              raise SystemExit("decode_fixed marker missing")
-          path.write_text(text.replace(old, new, 1))
-
-          path = Path("crates/windows-production-installation-evidence-runtime/src/lib.rs")
-          text = path.read_text()
-          old = '    let unc_absolute = value.starts_with(r"\\\\") && value[2..].contains([\'\\\\\', \'/\']);\n'
-          new = '    let unc_absolute = value.starts_with(r"\\\\")\n        && (value[2..].contains(\'\\\\\') || value[2..].contains(\'/\'));\n'
-          if old not in text:
-              raise SystemExit("UNC marker missing")
-          path.write_text(text.replace(old, new, 1))
-          PY
-
-      - name: Canonicalize sources
-        run: cargo fmt --all
-
-      - name: Commit exact source fixes
-        shell: bash
-        run: |
-          set -euo pipefail
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add crates/windows-production-deployment-evidence-runtime crates/windows-production-installation-evidence-runtime
-          if git diff --cached --quiet; then
-            echo "No source changes"
-          else
-            git commit -m "Bind deployment evidence to accepted registry"
-            git push origin HEAD:agent/tpm-cng-signer-service-v1
-          fi
-
-      - name: Check formatting
+      - name: Check workspace formatting
         run: cargo fmt --all -- --check
 
-      - name: Capture Ubuntu Clippy diagnostics
+      - name: Prove normal CNG runtime is open-only
+        run: cargo check -p ergaxiom-windows-cng-key-provider-runtime --no-default-features
+
+      - name: Lint production service and signer boundary
         shell: bash
         run: |
-          set +e
           cargo clippy \
-            -p ergaxiom-windows-production-installation-evidence-runtime \
-            -p ergaxiom-windows-production-deployment-evidence-runtime \
+            -p ergaxiom-attestation-runtime \
+            -p ergaxiom-attestation-issuance-runtime \
+            -p ergaxiom-capability-runtime \
+            -p ergaxiom-capability-issuance-runtime \
+            -p ergaxiom-windows-production-signer-provisioner \
             -p ergaxiom-windows-production-signer-service \
-            --all-targets --all-features -- -D warnings \
-            > deployment-evidence-clippy.txt 2>&1
-          status=$?
-          echo "$status" > deployment-evidence-clippy.status
-          exit 0
+            -p ergaxiom-windows-cng-key-provider-runtime \
+            -p ergaxiom-windows-production-deployment-evidence-runtime \
+            -p ergaxiom-windows-production-governed-issuance-runtime \
+            -p ergaxiom-windows-production-installation-evidence-runtime \
+            -p ergaxiom-windows-production-key-governance-runtime \
+            -p ergaxiom-windows-production-signer-host-runtime \
+            -p ergaxiom-windows-production-signer-runtime \
+            -p ergaxiom-windows-production-signer-protocol-runtime \
+            -p ergaxiom-windows-production-signer-provisioning-runtime \
+            -p ergaxiom-windows-production-signer-service-runtime \
+            -p ergaxiom-windows-production-signer-transport-runtime \
+            -p ergaxiom-windows-production-trust-state-runtime \
+            -p ergaxiom-windows-signer-service-identity-runtime \
+            --all-targets --all-features -- -D warnings
 
-      - name: Upload Ubuntu Clippy diagnostics
-        uses: actions/upload-artifact@v4
-        with:
-          name: deployment-evidence-ubuntu-clippy
-          path: |
-            deployment-evidence-clippy.txt
-            deployment-evidence-clippy.status
-
-      - name: Fail on lint mismatch
+      - name: Run production service and signer attacks
         shell: bash
-        run: test "$(cat deployment-evidence-clippy.status)" = "0"
-
-      - name: Run platform-neutral tests
         run: |
           cargo test \
-            -p ergaxiom-windows-production-installation-evidence-runtime \
-            -p ergaxiom-windows-production-deployment-evidence-runtime \
+            -p ergaxiom-attestation-runtime \
+            -p ergaxiom-attestation-issuance-runtime \
+            -p ergaxiom-capability-runtime \
+            -p ergaxiom-capability-issuance-runtime \
+            -p ergaxiom-windows-production-signer-provisioner \
             -p ergaxiom-windows-production-signer-service \
+            -p ergaxiom-windows-cng-key-provider-runtime \
+            -p ergaxiom-windows-production-deployment-evidence-runtime \
+            -p ergaxiom-windows-production-governed-issuance-runtime \
+            -p ergaxiom-windows-production-installation-evidence-runtime \
+            -p ergaxiom-windows-production-key-governance-runtime \
+            -p ergaxiom-windows-production-signer-host-runtime \
+            -p ergaxiom-windows-production-signer-runtime \
+            -p ergaxiom-windows-production-signer-protocol-runtime \
+            -p ergaxiom-windows-production-signer-provisioning-runtime \
+            -p ergaxiom-windows-production-signer-service-runtime \
+            -p ergaxiom-windows-production-signer-transport-runtime \
+            -p ergaxiom-windows-production-trust-state-runtime \
+            -p ergaxiom-windows-signer-service-identity-runtime \
             --all-features -- --nocapture
+
+      - name: Compile production signer service executable
+        run: cargo build -p ergaxiom-windows-production-signer-service --release
