@@ -5,6 +5,8 @@ on:
     paths:
       - "Cargo.toml"
       - "Cargo.lock"
+      - "crates/attestation-issuance-runtime/**"
+      - "crates/attestation-runtime/**"
       - "crates/capability-issuance-runtime/**"
       - "crates/capability-runtime/**"
       - "crates/windows-cng-key-provider-runtime/**"
@@ -21,6 +23,8 @@ on:
     paths:
       - "Cargo.toml"
       - "Cargo.lock"
+      - "crates/attestation-issuance-runtime/**"
+      - "crates/attestation-runtime/**"
       - "crates/capability-issuance-runtime/**"
       - "crates/capability-runtime/**"
       - "crates/windows-cng-key-provider-runtime/**"
@@ -37,7 +41,7 @@ permissions:
 
 jobs:
   policy:
-    name: Verify production signer and capability issuance contracts
+    name: Verify production signer and purpose-locked issuance contracts
     runs-on: ubuntu-24.04
     steps:
       - name: Check out repository
@@ -56,6 +60,8 @@ jobs:
         run: |
           set +e
           cargo clippy \
+            -p ergaxiom-attestation-runtime \
+            -p ergaxiom-attestation-issuance-runtime \
             -p ergaxiom-capability-runtime \
             -p ergaxiom-capability-issuance-runtime \
             -p ergaxiom-windows-production-signer-runtime \
@@ -86,6 +92,8 @@ jobs:
       - name: Run platform-neutral production signer attacks
         run: |
           cargo test \
+            -p ergaxiom-attestation-runtime \
+            -p ergaxiom-attestation-issuance-runtime \
             -p ergaxiom-capability-runtime \
             -p ergaxiom-capability-issuance-runtime \
             -p ergaxiom-windows-production-signer-runtime \
@@ -97,7 +105,7 @@ jobs:
             --all-features
 
   windows-cng:
-    name: Compile CNG signer and capability issuance boundary
+    name: Compile CNG signer and purpose-locked issuance boundary
     runs-on: windows-2025
     steps:
       - name: Check out repository
@@ -115,6 +123,8 @@ jobs:
         shell: pwsh
         run: |
           cargo clippy `
+            -p ergaxiom-attestation-runtime `
+            -p ergaxiom-attestation-issuance-runtime `
             -p ergaxiom-capability-runtime `
             -p ergaxiom-capability-issuance-runtime `
             -p ergaxiom-windows-production-signer-runtime `
@@ -147,6 +157,8 @@ jobs:
         shell: pwsh
         run: |
           cargo test `
+            -p ergaxiom-attestation-runtime `
+            -p ergaxiom-attestation-issuance-runtime `
             -p ergaxiom-capability-runtime `
             -p ergaxiom-capability-issuance-runtime `
             -p ergaxiom-windows-production-signer-runtime `
