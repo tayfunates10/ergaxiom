@@ -1,5 +1,6 @@
 [workspace]
 members = [
+  "apps/windows-production-signer-provisioner",
   "apps/windows-signer",
   "crates/attestation-issuance-runtime",
   "crates/attestation-runtime",
@@ -39,6 +40,7 @@ members = [
   "crates/windows-bridge-runtime",
   "crates/windows-cng-key-provider-runtime",
   "crates/windows-production-signer-protocol-runtime",
+  "crates/windows-production-signer-provisioning-runtime",
   "crates/windows-production-signer-runtime",
   "crates/windows-production-signer-service-runtime",
   "crates/windows-production-signer-transport-runtime",
