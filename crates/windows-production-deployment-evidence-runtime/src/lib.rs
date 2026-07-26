@@ -28,8 +28,7 @@ pub const SIGNED_RECOVERY_EVIDENCE_SCHEMA: &str = "0.1.0";
 pub const DEPLOYMENT_EVIDENCE_POLICY_ID: &str = "ergaxiom.production-deployment-evidence";
 pub const DEPLOYMENT_EVIDENCE_ALGORITHM: &str = "ed25519-sha256-digest";
 
-const INSTALLATION_SIGNATURE_DOMAIN: &[u8] =
-    b"ergaxiom-production-installation-evidence-v1";
+const INSTALLATION_SIGNATURE_DOMAIN: &[u8] = b"ergaxiom-production-installation-evidence-v1";
 const RECOVERY_SIGNATURE_DOMAIN: &[u8] = b"ergaxiom-production-recovery-evidence-v1";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -117,7 +116,10 @@ impl DeploymentEvidenceKeyRecord {
         Ok(())
     }
 
-    fn valid_for_signature_at(&self, signed_at_epoch_s: u64) -> Result<(), DeploymentEvidenceError> {
+    fn valid_for_signature_at(
+        &self,
+        signed_at_epoch_s: u64,
+    ) -> Result<(), DeploymentEvidenceError> {
         self.validate_seal()?;
         if self.status != DeploymentEvidenceKeyStatus::Active {
             return Err(DeploymentEvidenceError::KeyRevoked);

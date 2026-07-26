@@ -297,10 +297,9 @@ impl ProductionSignerInstallationValidationReceipt {
             return Err(InstallationEvidenceError::InstallationTrustMismatch);
         }
         for observation in &self.active_keys {
-            let record = accepted.registry().active_record(
-                &observation.identity,
-                self.observed_at_epoch_s,
-            )?;
+            let record = accepted
+                .registry()
+                .active_record(&observation.identity, self.observed_at_epoch_s)?;
             if record.generation != observation.generation
                 || record.public_key_digest != observation.public_key_digest
                 || record.record_digest != observation.key_record_digest
@@ -343,11 +342,7 @@ impl ProductionSignerRecoveryExerciseReceipt {
         exercise_id: impl Into<String>,
         trusted_now_epoch_s: u64,
     ) -> Result<Self, InstallationEvidenceError> {
-        platform::execute_recovery_exercise(
-            manifest_path,
-            exercise_id.into(),
-            trusted_now_epoch_s,
-        )
+        platform::execute_recovery_exercise(manifest_path, exercise_id.into(), trusted_now_epoch_s)
     }
 
     #[cfg(not(windows))]
@@ -495,7 +490,8 @@ fn validate_windows_absolute_path_text(value: &str) -> Result<(), InstallationEv
 }
 
 fn windows_paths_equal(left: &str, right: &str) -> bool {
-    left.replace('/', "\\").eq_ignore_ascii_case(&right.replace('/', "\\"))
+    left.replace('/', "\\")
+        .eq_ignore_ascii_case(&right.replace('/', "\\"))
 }
 
 fn validate_canonical_identities(
@@ -587,19 +583,14 @@ mod platform {
         CloseHandle, ERROR_INSUFFICIENT_BUFFER, ERROR_SERVICE_ALREADY_RUNNING,
         ERROR_SERVICE_NOT_ACTIVE, FILETIME, HANDLE, LocalFree,
     };
-    use windows_sys::Win32::Security::Authorization::{
-        ConvertSecurityDescriptorToStringSecurityDescriptorW,
-    };
+    use windows_sys::Win32::Security::Authorization::ConvertSecurityDescriptorToStringSecurityDescriptorW;
     use windows_sys::Win32::Security::DACL_SECURITY_INFORMATION;
-    use windows_sys::Win32::System::Registry::{
-        HKEY_LOCAL_MACHINE, RRF_RT_REG_SZ, RegGetValueW,
-    };
+    use windows_sys::Win32::System::Registry::{HKEY_LOCAL_MACHINE, RRF_RT_REG_SZ, RegGetValueW};
     use windows_sys::Win32::System::Services::{
-        CloseServiceHandle, ControlService, OpenSCManagerW, OpenServiceW,
-        QueryServiceConfig2W, QueryServiceConfigW, QueryServiceObjectSecurity,
-        QueryServiceStatusEx, SC_ACTION_NONE, SC_ACTION_RESTART, SC_HANDLE,
-        SC_MANAGER_CONNECT, SC_STATUS_PROCESS_INFO, SERVICE_AUTO_START,
-        SERVICE_CONFIG_DELAYED_AUTO_START_INFO, SERVICE_CONFIG_FAILURE_ACTIONS,
+        CloseServiceHandle, ControlService, OpenSCManagerW, OpenServiceW, QueryServiceConfig2W,
+        QueryServiceConfigW, QueryServiceObjectSecurity, QueryServiceStatusEx, SC_ACTION_NONE,
+        SC_ACTION_RESTART, SC_HANDLE, SC_MANAGER_CONNECT, SC_STATUS_PROCESS_INFO,
+        SERVICE_AUTO_START, SERVICE_CONFIG_DELAYED_AUTO_START_INFO, SERVICE_CONFIG_FAILURE_ACTIONS,
         SERVICE_CONFIG_FAILURE_ACTIONS_FLAG, SERVICE_CONFIG_PRESHUTDOWN_INFO,
         SERVICE_CONFIG_REQUIRED_PRIVILEGES_INFO, SERVICE_CONFIG_SERVICE_SID_INFO,
         SERVICE_CONTROL_STOP, SERVICE_DELAYED_AUTO_START_INFO, SERVICE_ERROR_SEVERE,
@@ -610,8 +601,7 @@ mod platform {
         SERVICE_WIN32_OWN_PROCESS, StartServiceW,
     };
     use windows_sys::Win32::System::Threading::{
-        GetProcessTimes, OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION,
-        QueryFullProcessImageNameW,
+        GetProcessTimes, OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION, QueryFullProcessImageNameW,
     };
 
     use super::*;
@@ -711,7 +701,8 @@ mod platform {
         if !probe.hardware_flag_present || probe.software_flag_present {
             return Err(InstallationEvidenceError::CngObservationInvalid);
         }
-        let mut observations = Vec::with_capacity(loaded.deployment_policy.enabled_identities.len());
+        let mut observations =
+            Vec::with_capacity(loaded.deployment_policy.enabled_identities.len());
         for identity in &loaded.deployment_policy.enabled_identities {
             let record = loaded
                 .accepted
@@ -790,10 +781,7 @@ mod platform {
             service.raw,
             SERVICE_CONFIG_DELAYED_AUTO_START_INFO,
         )?;
-        let sid = query_config2::<SERVICE_SID_INFO>(
-            service.raw,
-            SERVICE_CONFIG_SERVICE_SID_INFO,
-        )?;
+        let sid = query_config2::<SERVICE_SID_INFO>(service.raw, SERVICE_CONFIG_SERVICE_SID_INFO)?;
         let privileges = query_required_privileges(service.raw)?;
         let (failure_actions, failure_reset_period_seconds) = query_failure_actions(service.raw)?;
         let failure_flag = query_config2::<SERVICE_FAILURE_ACTIONS_FLAG>(
@@ -847,8 +835,8 @@ mod platform {
             },
             required_privileges: privileges,
             failure_actions,
-            failure_actions_on_non_crash_failures:
-                failure_flag.fFailureActionsOnNonCrashFailures != 0,
+            failure_actions_on_non_crash_failures: failure_flag.fFailureActionsOnNonCrashFailures
+                != 0,
             failure_reset_period_seconds,
             preshutdown_timeout_ms: preshutdown.dwPreshutdownTimeout,
             service_dacl_sddl: dacl,
@@ -937,7 +925,9 @@ mod platform {
         Err(InstallationEvidenceError::ServiceStateTimeout)
     }
 
-    fn query_status(handle: SC_HANDLE) -> Result<SERVICE_STATUS_PROCESS, InstallationEvidenceError> {
+    fn query_status(
+        handle: SC_HANDLE,
+    ) -> Result<SERVICE_STATUS_PROCESS, InstallationEvidenceError> {
         let mut status: SERVICE_STATUS_PROCESS = unsafe { zeroed() };
         let mut needed = 0_u32;
         if unsafe {
@@ -975,12 +965,7 @@ mod platform {
         let words = (required as usize).div_ceil(size_of::<usize>());
         let mut buffer = vec![0_usize; words];
         if unsafe {
-            QueryServiceConfigW(
-                handle,
-                buffer.as_mut_ptr().cast(),
-                required,
-                &mut required,
-            )
+            QueryServiceConfigW(handle, buffer.as_mut_ptr().cast(), required, &mut required)
         } == 0
         {
             return Err(last_windows_error());
@@ -1055,7 +1040,8 @@ mod platform {
         if info.cActions == 0 || info.lpsaActions.is_null() {
             return Err(InstallationEvidenceError::ServiceHardeningMismatch);
         }
-        let actions = unsafe { std::slice::from_raw_parts(info.lpsaActions, info.cActions as usize) };
+        let actions =
+            unsafe { std::slice::from_raw_parts(info.lpsaActions, info.cActions as usize) };
         let mut output = Vec::with_capacity(actions.len());
         for action in actions {
             let name = match action.Type {
@@ -1071,9 +1057,7 @@ mod platform {
         Ok((output, info.dwResetPeriod))
     }
 
-    fn query_service_dacl_sddl(
-        handle: SC_HANDLE,
-    ) -> Result<String, InstallationEvidenceError> {
+    fn query_service_dacl_sddl(handle: SC_HANDLE) -> Result<String, InstallationEvidenceError> {
         let mut required = 0_u32;
         unsafe {
             let _ = QueryServiceObjectSecurity(
@@ -1134,14 +1118,14 @@ mod platform {
         let process = KernelHandle { raw };
         let mut buffer = vec![0_u16; MAX_PROCESS_PATH_UNITS];
         let mut length = buffer.len() as u32;
-        if unsafe {
-            QueryFullProcessImageNameW(process.raw, 0, buffer.as_mut_ptr(), &mut length)
-        } == 0
+        if unsafe { QueryFullProcessImageNameW(process.raw, 0, buffer.as_mut_ptr(), &mut length) }
+            == 0
         {
             return Err(last_windows_error());
         }
         buffer.truncate(length as usize);
-        let path = String::from_utf16(&buffer).map_err(|_| InstallationEvidenceError::PathInvalid)?;
+        let path =
+            String::from_utf16(&buffer).map_err(|_| InstallationEvidenceError::PathInvalid)?;
         let mut creation = FILETIME::default();
         let mut exit = FILETIME::default();
         let mut kernel = FILETIME::default();
@@ -1222,7 +1206,10 @@ mod platform {
         Ok(encode_hex(&hasher.finalize()))
     }
 
-    fn hash_stable_file(path: &Path, maximum_bytes: u64) -> Result<String, InstallationEvidenceError> {
+    fn hash_stable_file(
+        path: &Path,
+        maximum_bytes: u64,
+    ) -> Result<String, InstallationEvidenceError> {
         let before = std::fs::metadata(path)?;
         if !before.is_file() || before.len() == 0 || before.len() > maximum_bytes {
             return Err(InstallationEvidenceError::FileSizeInvalid);
@@ -1440,7 +1427,8 @@ pub enum InstallationEvidenceError {
     Cng(#[from] ergaxiom_windows_cng_key_provider_runtime::CngProviderError),
     #[error(transparent)]
     Transport(
-        #[from] ergaxiom_windows_production_signer_transport_runtime::ProductionSignerTransportError,
+        #[from]
+        ergaxiom_windows_production_signer_transport_runtime::ProductionSignerTransportError,
     ),
     #[error(transparent)]
     Hashing(#[from] HashingError),
