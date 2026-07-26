@@ -1,14 +1,6 @@
 name: Windows production signer foundation
 
 on:
-  pull_request:
-    paths:
-      - "Cargo.toml"
-      - "Cargo.lock"
-      - "apps/windows-production-signer-service/**"
-      - "crates/windows-production-deployment-evidence-runtime/**"
-      - "crates/windows-production-signer-host-runtime/**"
-      - ".github/workflows/windows-production-signer.yml"
   push:
     branches:
       - agent/tpm-cng-signer-service-v1
@@ -17,11 +9,11 @@ permissions:
   contents: write
 
 jobs:
-  canonicalize-deployment-evidence:
-    name: Canonicalize controlled-machine deployment evidence
+  deployment-evidence-ubuntu:
+    name: Verify platform-neutral deployment evidence
     runs-on: ubuntu-24.04
     steps:
-      - name: Check out pull request branch
+      - name: Check out branch
         uses: actions/checkout@v4
         with:
           ref: agent/tpm-cng-signer-service-v1
@@ -31,149 +23,105 @@ jobs:
         with:
           components: rustfmt, clippy
 
-      - name: Integrate deployment evidence packages
+      - name: Apply exact portable evidence fixes
         shell: bash
         run: |
           python - <<'PY'
           from pathlib import Path
 
-          root = Path("Cargo.toml")
-          text = root.read_text()
-          member = '  "crates/windows-production-deployment-evidence-runtime",\n'
-          marker = '  "crates/windows-production-governed-issuance-runtime",\n'
-          if member not in text:
-              if marker not in text:
-                  raise SystemExit("workspace marker missing")
-              text = text.replace(marker, member + marker, 1)
-          root.write_text(text)
-
-          cargo = Path("crates/windows-production-signer-host-runtime/Cargo.toml")
-          text = cargo.read_text()
-          dependency = 'ergaxiom-key-governance-runtime = { path = "../key-governance-runtime" }\n'
-          marker = '[dependencies]\n'
-          if dependency not in text:
-              text = text.replace(marker, marker + dependency, 1)
-          registry_feature = '  "Win32_System_Registry",\n'
-          services_feature = '  "Win32_System_Services",\n'
-          if registry_feature not in text:
-              text = text.replace(services_feature, registry_feature + services_feature, 1)
-          cargo.write_text(text)
-
-          lib = Path("crates/windows-production-signer-host-runtime/src/lib.rs")
-          text = lib.read_text()
-          module = 'mod installation;\n'
-          marker = '#[cfg(windows)]\nmod windows;\n'
-          if module not in text:
-              text = text.replace(marker, marker + '\n' + module, 1)
-          export = 'pub use installation::*;\n'
-          marker = '#[cfg(test)]\nmod tests;\n'
-          if export not in text:
-              text = text.replace(marker, marker + '\n' + export, 1)
-          lib.write_text(text)
-
-          installation = Path("crates/windows-production-signer-host-runtime/src/installation.rs")
-          text = installation.read_text()
+          path = Path("crates/windows-production-deployment-evidence-runtime/src/lib.rs")
+          text = path.read_text()
           text = text.replace(
-              'use ergaxiom_windows_production_key_governance_runtime::ProductionKeyStatus;\n',
-              '#[cfg(windows)]\nuse ergaxiom_windows_production_key_governance_runtime::ProductionKeyStatus;\n',
+              '        self.receipt.validate_seal()?;\n        policy.validate_cryptographic_separation(trust_governance_policy, accepted)?;\n',
+              '        self.receipt.verify_against_accepted(accepted)?;\n        policy.validate_cryptographic_separation(trust_governance_policy, accepted)?;\n',
               1,
           )
-          text = text.replace(
-              'use ergaxiom_windows_production_signer_runtime::{\n    ProductionKeyIdentity, ProductionKeyPolicy, ProductionSignerError, validate_identifier,\n    validate_sha256,\n};\n',
-              'use ergaxiom_windows_production_signer_runtime::{\n    ProductionKeyIdentity, ProductionSignerError, validate_identifier, validate_sha256,\n};\n#[cfg(windows)]\nuse ergaxiom_windows_production_signer_runtime::ProductionKeyPolicy;\n',
+          marker = 'impl SignedProductionSignerRecoveryEvidence {'
+          before, after = text.split(marker, 1)
+          after = after.replace(
+              '        self.receipt.validate_seal()?;\n        policy.validate_cryptographic_separation(trust_governance_policy, accepted)?;\n',
+              '        self.receipt.verify_against_accepted(accepted)?;\n        policy.validate_cryptographic_separation(trust_governance_policy, accepted)?;\n',
               1,
           )
-          field = '    pub manifest: ProductionSignerServiceManifest,\n'
-          marker = '    pub manifest_path: String,\n'
-          if field not in text:
-              text = text.replace(marker, marker + field, 1)
-          capture = '            manifest: loaded.manifest.clone(),\n'
-          marker = '            manifest_path: path_text(&manifest_path)?,\n'
-          if capture not in text:
-              text = text.replace(marker, marker + capture, 1)
-          old = '''        let manifest_path = require_absolute_path_text(&self.manifest_path)?;
-        let manifest: ProductionSignerServiceManifest =
-            read_bounded_json(&manifest_path, PRODUCTION_SIGNER_MAX_CONFIG_BYTES)?;
-        manifest.validate_seal()?;
-        if manifest.manifest_digest != self.manifest_digest
-            || manifest.deployment_id != self.deployment_id
-            || manifest.governance_policy_digest != self.governance_policy_digest
-            || manifest.executable_sha256
-                != self.trust_state_binding.signer_service_executable_digest
-            || manifest.caller_allowlist_revision
-                != self.trust_state_binding.caller_allowlist_revision
-            || manifest.caller_allowlist_digest
-                != self.trust_state_binding.caller_allowlist_digest
-            || manifest.deployment_policy_revision
-                != self.trust_state_binding.service_policy_revision
-            || manifest.deployment_policy_digest
-                != self.trust_state_binding.service_policy_digest
-        {
-            return Err(InstallationEvidenceError::InstallationTrustMismatch);
-        }
-        self.service_snapshot.validate_for(&manifest, &manifest_path)?;
+          text = before + marker + after
+          old = '''fn decode_fixed<const N: usize>(value: &str) -> Result<[u8; N], base64::DecodeError> {
+    let bytes = URL_SAFE_NO_PAD.decode(value)?;
+    bytes
+        .try_into()
+        .map_err(|_| base64::DecodeError::InvalidLength(bytes.len()))
+}
 '''
-          new = '''        let manifest_path = require_absolute_path_text(&self.manifest_path)?;
-        self.manifest.validate_seal()?;
-        if self.manifest.manifest_digest != self.manifest_digest
-            || self.manifest.deployment_id != self.deployment_id
-            || self.manifest.governance_policy_digest != self.governance_policy_digest
-            || self.manifest.executable_sha256
-                != self.trust_state_binding.signer_service_executable_digest
-            || self.manifest.caller_allowlist_revision
-                != self.trust_state_binding.caller_allowlist_revision
-            || self.manifest.caller_allowlist_digest
-                != self.trust_state_binding.caller_allowlist_digest
-            || self.manifest.deployment_policy_revision
-                != self.trust_state_binding.service_policy_revision
-            || self.manifest.deployment_policy_digest
-                != self.trust_state_binding.service_policy_digest
-        {
-            return Err(InstallationEvidenceError::InstallationTrustMismatch);
-        }
-        self.service_snapshot.validate_for(&self.manifest, &manifest_path)?;
+          new = '''fn decode_fixed<const N: usize>(value: &str) -> Result<[u8; N], base64::DecodeError> {
+    let bytes = URL_SAFE_NO_PAD.decode(value)?;
+    let length = bytes.len();
+    bytes
+        .try_into()
+        .map_err(|_| base64::DecodeError::InvalidLength(length))
+}
 '''
-          if old in text:
-              text = text.replace(old, new, 1)
-          elif new not in text:
-              raise SystemExit("portable manifest validation marker missing")
-          installation.write_text(text)
+          if old not in text:
+              raise SystemExit("decode_fixed marker missing")
+          path.write_text(text.replace(old, new, 1))
+
+          path = Path("crates/windows-production-installation-evidence-runtime/src/lib.rs")
+          text = path.read_text()
+          old = '    let unc_absolute = value.starts_with(r"\\\\") && value[2..].contains([\'\\\\\', \'/\']);\n'
+          new = '    let unc_absolute = value.starts_with(r"\\\\")\n        && (value[2..].contains(\'\\\\\') || value[2..].contains(\'/\'));\n'
+          if old not in text:
+              raise SystemExit("UNC marker missing")
+          path.write_text(text.replace(old, new, 1))
           PY
 
-      - name: Materialize canonical formatting and lockfile
-        run: |
-          cargo fmt --all
-          cargo generate-lockfile
+      - name: Canonicalize sources
+        run: cargo fmt --all
 
-      - name: Commit canonical deployment evidence sources
+      - name: Commit exact source fixes
         shell: bash
         run: |
           set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add Cargo.toml Cargo.lock apps/windows-production-signer-service crates/windows-production-deployment-evidence-runtime crates/windows-production-signer-host-runtime
+          git add crates/windows-production-deployment-evidence-runtime crates/windows-production-installation-evidence-runtime
           if git diff --cached --quiet; then
-            echo "No canonical changes"
+            echo "No source changes"
           else
-            git commit -m "Integrate controlled-machine deployment evidence"
+            git commit -m "Bind deployment evidence to accepted registry"
             git push origin HEAD:agent/tpm-cng-signer-service-v1
           fi
 
-      - name: Check workspace formatting
+      - name: Check formatting
         run: cargo fmt --all -- --check
 
-      - name: Lint platform-neutral deployment evidence
+      - name: Capture Ubuntu Clippy diagnostics
+        shell: bash
         run: |
+          set +e
           cargo clippy \
+            -p ergaxiom-windows-production-installation-evidence-runtime \
             -p ergaxiom-windows-production-deployment-evidence-runtime \
-            -p ergaxiom-windows-production-signer-host-runtime \
             -p ergaxiom-windows-production-signer-service \
-            --all-targets --all-features -- -D warnings
+            --all-targets --all-features -- -D warnings \
+            > deployment-evidence-clippy.txt 2>&1
+          status=$?
+          echo "$status" > deployment-evidence-clippy.status
+          exit 0
 
-      - name: Run platform-neutral deployment evidence tests
+      - name: Upload Ubuntu Clippy diagnostics
+        uses: actions/upload-artifact@v4
+        with:
+          name: deployment-evidence-ubuntu-clippy
+          path: |
+            deployment-evidence-clippy.txt
+            deployment-evidence-clippy.status
+
+      - name: Fail on lint mismatch
+        shell: bash
+        run: test "$(cat deployment-evidence-clippy.status)" = "0"
+
+      - name: Run platform-neutral tests
         run: |
           cargo test \
+            -p ergaxiom-windows-production-installation-evidence-runtime \
             -p ergaxiom-windows-production-deployment-evidence-runtime \
-            -p ergaxiom-windows-production-signer-host-runtime \
             -p ergaxiom-windows-production-signer-service \
             --all-features -- --nocapture
