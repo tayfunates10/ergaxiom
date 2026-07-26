@@ -27,7 +27,7 @@ jobs:
         with:
           components: rustfmt, clippy
 
-      - name: Apply exact Windows diagnostics
+      - name: Apply canonical Windows bindings
         shell: pwsh
         run: |
           @'
@@ -35,11 +35,12 @@ jobs:
 
           lib = Path("crates/windows-production-signer-host-runtime/src/lib.rs")
           text = lib.read_text()
-          marker = "use ergaxiom_windows_production_signer_service_runtime::{\n    HardwareSignerBackend, HardwareSignerBackendError, ProductionSignerServiceError,\n};"
-          replacement = "use ergaxiom_windows_production_signer_service_runtime::{\n    HardwareSignerBackend, HardwareSignerBackendError, ProductionSignerServiceError,\n};\n#[cfg(windows)]\nuse ergaxiom_windows_production_signer_service_runtime::ProductionSignerService;"
-          if marker not in text:
-              raise SystemExit("service import marker missing")
-          text = text.replace(marker, replacement, 1)
+          insertion = "#[cfg(windows)]\nuse ergaxiom_windows_production_signer_service_runtime::ProductionSignerService;\n"
+          if insertion not in text:
+              anchor = "use ergaxiom_windows_production_signer_service_runtime::{\n    HardwareSignerBackend, HardwareSignerBackendError, ProductionSignerServiceError,\n};\n"
+              if anchor not in text:
+                  raise SystemExit("service import anchor missing")
+              text = text.replace(anchor, anchor + insertion, 1)
           lib.write_text(text)
 
           win = Path("crates/windows-production-signer-host-runtime/src/windows.rs")
@@ -47,46 +48,38 @@ jobs:
           text = text.replace(
               "    ProductionSignerPipeServer, ProductionSignerTransportError,\n",
               "    ProductionSignerPipeServer,\n",
-              1,
           )
           text = text.replace(
               "use windows_sys::Win32::Security::{DACL_SECURITY_INFORMATION, SetServiceObjectSecurity};",
               "use windows_sys::Win32::Security::DACL_SECURITY_INFORMATION;",
-              1,
           )
-          services = "    SetServiceStatus, StartServiceCtrlDispatcherW,\n"
-          if services not in text:
-              raise SystemExit("services import marker missing")
-          text = text.replace(
-              services,
-              "    SetServiceObjectSecurity, SetServiceStatus, StartServiceCtrlDispatcherW,\n",
-              1,
-          )
-          const_marker = "const SERVICE_DACL_SDDL: &str ="
+          old = "    SERVICE_TABLE_ENTRYW, SERVICE_WIN32_OWN_PROCESS, SetServiceStatus, StartServiceCtrlDispatcherW,\n"
+          new = "    SERVICE_TABLE_ENTRYW, SERVICE_WIN32_OWN_PROCESS, SetServiceObjectSecurity, SetServiceStatus,\n    StartServiceCtrlDispatcherW,\n"
+          if "SetServiceObjectSecurity" not in text.split("use windows_sys::Win32::System::Services::{", 1)[1].split("};", 1)[0]:
+              if old not in text:
+                  raise SystemExit("service function import anchor missing")
+              text = text.replace(old, new, 1)
           if "const DELETE_ACCESS: u32 = 0x0001_0000;" not in text:
               text = text.replace(
-                  const_marker,
-                  "const DELETE_ACCESS: u32 = 0x0001_0000;\n" + const_marker,
+                  'const SERVICE_DACL_SDDL: &str =',
+                  'const DELETE_ACCESS: u32 = 0x0001_0000;\nconst SERVICE_DACL_SDDL: &str =',
                   1,
               )
           text = text.replace(
               "SERVICE_STOP | SERVICE_QUERY_STATUS | windows_sys::Win32::System::Services::DELETE,",
               "SERVICE_STOP | SERVICE_QUERY_STATUS | DELETE_ACCESS,",
-              1,
           )
-          replacements = {
-              "(&mut description).cast()": "(&mut description as *mut SERVICE_DESCRIPTIONW).cast()",
-              "(&mut delayed).cast()": "(&mut delayed as *mut SERVICE_DELAYED_AUTO_START_INFO).cast()",
-              "(&mut sid).cast()": "(&mut sid as *mut SERVICE_SID_INFO).cast()",
-              "(&mut privilege_info).cast()": "(&mut privilege_info as *mut SERVICE_REQUIRED_PRIVILEGES_INFOW).cast()",
-              "(&mut failure_actions).cast()": "(&mut failure_actions as *mut SERVICE_FAILURE_ACTIONSW).cast()",
-              "(&mut failure_flag).cast()": "(&mut failure_flag as *mut SERVICE_FAILURE_ACTIONS_FLAG).cast()",
-              "(&mut preshutdown).cast()": "(&mut preshutdown as *mut SERVICE_PRESHUTDOWN_INFO).cast()",
-          }
-          for old, new in replacements.items():
-              if old not in text:
-                  raise SystemExit(f"Windows cast marker missing: {old}")
-              text = text.replace(old, new, 1)
+          replacements = [
+              ("(&mut description).cast()", "(&mut description as *mut SERVICE_DESCRIPTIONW).cast()"),
+              ("(&mut delayed).cast()", "(&mut delayed as *mut SERVICE_DELAYED_AUTO_START_INFO).cast()"),
+              ("(&mut sid).cast()", "(&mut sid as *mut SERVICE_SID_INFO).cast()"),
+              ("(&mut privilege_info).cast()", "(&mut privilege_info as *mut SERVICE_REQUIRED_PRIVILEGES_INFOW).cast()"),
+              ("(&mut failure_actions).cast()", "(&mut failure_actions as *mut SERVICE_FAILURE_ACTIONSW).cast()"),
+              ("(&mut failure_flag).cast()", "(&mut failure_flag as *mut SERVICE_FAILURE_ACTIONS_FLAG).cast()"),
+              ("(&mut preshutdown).cast()", "(&mut preshutdown as *mut SERVICE_PRESHUTDOWN_INFO).cast()"),
+          ]
+          for old, new in replacements:
+              text = text.replace(old, new)
           win.write_text(text)
           '@ | python
 
