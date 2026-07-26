@@ -46,6 +46,7 @@ members = [
   "crates/windows-production-signer-runtime",
   "crates/windows-production-signer-service-runtime",
   "crates/windows-production-signer-transport-runtime",
+  "crates/windows-production-trust-state-runtime",
   "crates/windows-signer-client-runtime",
   "crates/windows-signer-protocol-runtime",
   "crates/windows-signer-service-identity-runtime",
