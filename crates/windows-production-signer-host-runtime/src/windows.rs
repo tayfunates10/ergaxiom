@@ -10,16 +10,14 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use ergaxiom_windows_production_signer_runtime::{
     SIGNER_SERVICE_IDENTITY_SCHEMA, SignerServiceIdentity,
 };
-use ergaxiom_windows_production_signer_transport_runtime::{
-    ProductionSignerPipeServer, ProductionSignerTransportError,
-};
+use ergaxiom_windows_production_signer_transport_runtime::ProductionSignerPipeServer;
 use rand_core::{OsRng, RngCore};
 use windows_sys::Win32::Foundation::{
     CloseHandle, ERROR_INSUFFICIENT_BUFFER, ERROR_SERVICE_ALREADY_RUNNING, FILETIME, HANDLE,
     LocalFree, NO_ERROR,
 };
 use windows_sys::Win32::Security::Authorization::ConvertStringSecurityDescriptorToSecurityDescriptorW;
-use windows_sys::Win32::Security::{DACL_SECURITY_INFORMATION, SetServiceObjectSecurity};
+use windows_sys::Win32::Security::DACL_SECURITY_INFORMATION;
 use windows_sys::Win32::System::Services::{
     ChangeServiceConfig2W, ControlService, CreateServiceW, DeleteService, OpenSCManagerW,
     OpenServiceW, QueryServiceConfigW, QueryServiceStatusEx, RegisterServiceCtrlHandlerExW,
@@ -36,7 +34,8 @@ use windows_sys::Win32::System::Services::{
     SERVICE_REQUIRED_PRIVILEGES_INFOW, SERVICE_RUNNING, SERVICE_SID_INFO,
     SERVICE_SID_TYPE_UNRESTRICTED, SERVICE_START_PENDING, SERVICE_STATUS, SERVICE_STATUS_HANDLE,
     SERVICE_STATUS_PROCESS, SERVICE_STOP, SERVICE_STOP_PENDING, SERVICE_STOPPED,
-    SERVICE_TABLE_ENTRYW, SERVICE_WIN32_OWN_PROCESS, SetServiceStatus, StartServiceCtrlDispatcherW,
+    SERVICE_TABLE_ENTRYW, SERVICE_WIN32_OWN_PROCESS, SetServiceObjectSecurity, SetServiceStatus,
+    StartServiceCtrlDispatcherW,
 };
 use windows_sys::Win32::System::Threading::{
     CreateEventW, GetCurrentProcess, GetCurrentProcessId, GetProcessTimes, INFINITE, SetEvent,
@@ -53,6 +52,7 @@ use crate::{
     ProductionSignerHostError, ProductionSignerServiceManifest, hash_stable_file,
 };
 
+const DELETE_ACCESS: u32 = 0x0001_0000;
 const SERVICE_DACL_SDDL: &str = "D:P(A;;GA;;;SY)(A;;GA;;;BA)";
 const SERVICE_DESCRIPTION: &str =
     "Ergaxiom production Capability and Attestation signer bound to accepted trust state";
@@ -178,7 +178,7 @@ pub fn uninstall_service(manifest_path: &Path) -> Result<(), ProductionSignerHos
         OpenServiceW(
             scm.raw,
             name.as_ptr(),
-            SERVICE_STOP | SERVICE_QUERY_STATUS | windows_sys::Win32::System::Services::DELETE,
+            SERVICE_STOP | SERVICE_QUERY_STATUS | DELETE_ACCESS,
         )
     };
     if raw.is_null() {
@@ -316,7 +316,7 @@ fn configure_service(service: &ServiceHandle) -> Result<(), ProductionSignerHost
     change_config(
         service,
         SERVICE_CONFIG_DESCRIPTION,
-        (&mut description).cast(),
+        (&mut description as *mut SERVICE_DESCRIPTIONW).cast(),
     )?;
 
     let mut delayed = SERVICE_DELAYED_AUTO_START_INFO {
@@ -325,13 +325,17 @@ fn configure_service(service: &ServiceHandle) -> Result<(), ProductionSignerHost
     change_config(
         service,
         SERVICE_CONFIG_DELAYED_AUTO_START_INFO,
-        (&mut delayed).cast(),
+        (&mut delayed as *mut SERVICE_DELAYED_AUTO_START_INFO).cast(),
     )?;
 
     let mut sid = SERVICE_SID_INFO {
         dwServiceSidType: SERVICE_SID_TYPE_UNRESTRICTED,
     };
-    change_config(service, SERVICE_CONFIG_SERVICE_SID_INFO, (&mut sid).cast())?;
+    change_config(
+        service,
+        SERVICE_CONFIG_SERVICE_SID_INFO,
+        (&mut sid as *mut SERVICE_SID_INFO).cast(),
+    )?;
 
     let mut privileges = wide_multisz(&[PRODUCTION_SIGNER_REQUIRED_PRIVILEGE])?;
     let mut privilege_info = SERVICE_REQUIRED_PRIVILEGES_INFOW {
@@ -340,7 +344,7 @@ fn configure_service(service: &ServiceHandle) -> Result<(), ProductionSignerHost
     change_config(
         service,
         SERVICE_CONFIG_REQUIRED_PRIVILEGES_INFO,
-        (&mut privilege_info).cast(),
+        (&mut privilege_info as *mut SERVICE_REQUIRED_PRIVILEGES_INFOW).cast(),
     )?;
 
     let mut actions = [
@@ -367,7 +371,7 @@ fn configure_service(service: &ServiceHandle) -> Result<(), ProductionSignerHost
     change_config(
         service,
         SERVICE_CONFIG_FAILURE_ACTIONS,
-        (&mut failure_actions).cast(),
+        (&mut failure_actions as *mut SERVICE_FAILURE_ACTIONSW).cast(),
     )?;
     let mut failure_flag = SERVICE_FAILURE_ACTIONS_FLAG {
         fFailureActionsOnNonCrashFailures: 1,
@@ -375,7 +379,7 @@ fn configure_service(service: &ServiceHandle) -> Result<(), ProductionSignerHost
     change_config(
         service,
         SERVICE_CONFIG_FAILURE_ACTIONS_FLAG,
-        (&mut failure_flag).cast(),
+        (&mut failure_flag as *mut SERVICE_FAILURE_ACTIONS_FLAG).cast(),
     )?;
     let mut preshutdown = SERVICE_PRESHUTDOWN_INFO {
         dwPreshutdownTimeout: PRODUCTION_SIGNER_PRESHUTDOWN_TIMEOUT_MS,
@@ -383,7 +387,7 @@ fn configure_service(service: &ServiceHandle) -> Result<(), ProductionSignerHost
     change_config(
         service,
         SERVICE_CONFIG_PRESHUTDOWN_INFO,
-        (&mut preshutdown).cast(),
+        (&mut preshutdown as *mut SERVICE_PRESHUTDOWN_INFO).cast(),
     )?;
     Ok(())
 }

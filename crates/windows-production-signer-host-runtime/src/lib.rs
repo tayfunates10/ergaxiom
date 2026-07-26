@@ -19,6 +19,8 @@ use ergaxiom_windows_production_signer_runtime::{
     ProductionKeyPolicy, ProductionSignerError, SignerRequestBinding, validate_identifier,
     validate_sha256,
 };
+#[cfg(windows)]
+use ergaxiom_windows_production_signer_service_runtime::ProductionSignerService;
 use ergaxiom_windows_production_signer_service_runtime::{
     HardwareSignerBackend, HardwareSignerBackendError, ProductionSignerServiceError,
 };
