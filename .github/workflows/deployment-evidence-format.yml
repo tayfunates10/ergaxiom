@@ -1,10 +1,8 @@
-name: Format deployment evidence sources
+name: Fix deployment evidence registry status
 
 on:
   pull_request:
     paths:
-      - "apps/windows-production-signer-service/**"
-      - "crates/windows-production-deployment-evidence-runtime/**"
       - "crates/windows-production-installation-evidence-runtime/**"
       - ".github/workflows/deployment-evidence-format.yml"
 
@@ -21,17 +19,35 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt
-      - run: cargo fmt --all
-      - name: Commit formatting
+      - name: Apply exact Windows error-code conversion
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          source = Path("crates/windows-production-installation-evidence-runtime/src/lib.rs")
+          text = source.read_text()
+          old = "std::io::Error::from_raw_os_error(status),"
+          count = text.count(old)
+          if count != 2:
+              raise SystemExit(f"expected two registry status sites, found {count}")
+          source.write_text(text.replace(old, "std::io::Error::from_raw_os_error(status as i32),"))
+
+          wrapper = Path("crates/windows-production-installation-evidence-runtime/src/lib_wrapper.rs")
+          wrapper.write_text('''#[cfg_attr(not(windows), allow(unused_imports))]
+#[path = "lib.rs"]
+mod implementation;
+
+pub use implementation::*;
+''')
+          PY
+          cargo fmt --all
+      - name: Commit exact fix
         shell: bash
         run: |
           set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add apps/windows-production-signer-service crates/windows-production-deployment-evidence-runtime crates/windows-production-installation-evidence-runtime
-          if git diff --cached --quiet; then
-            echo "No formatting changes"
-          else
-            git commit -m "Format production deployment evidence"
-            git push origin HEAD:agent/tpm-cng-signer-service-v1
-          fi
+          git add crates/windows-production-installation-evidence-runtime/src/lib.rs crates/windows-production-installation-evidence-runtime/src/lib_wrapper.rs
+          git commit -m "Fix Windows registry status conversion"
+          git push origin HEAD:agent/tpm-cng-signer-service-v1
