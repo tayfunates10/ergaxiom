@@ -1,0 +1,42 @@
+name: Canonicalize deployment evidence tests
+
+on:
+  pull_request:
+    paths:
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "crates/windows-production-deployment-evidence-runtime/**"
+      - "crates/windows-production-installation-evidence-runtime/**"
+      - "crates/windows-sys-registry-shim/**"
+      - ".github/workflows/deployment-evidence-canonicalize-tests.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  canonicalize:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/tpm-cng-signer-service-v1
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+      - name: Canonicalize sources and lockfile
+        run: |
+          cargo fmt --all
+          cargo generate-lockfile
+      - name: Commit canonical test sources
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Cargo.lock crates/windows-production-deployment-evidence-runtime crates/windows-production-installation-evidence-runtime crates/windows-sys-registry-shim
+          if git diff --cached --quiet; then
+            echo "No canonical changes"
+          else
+            git commit -m "Canonicalize deployment evidence attacks"
+            git push origin HEAD:agent/tpm-cng-signer-service-v1
+          fi
