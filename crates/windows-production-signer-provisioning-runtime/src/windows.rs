@@ -3,9 +3,9 @@ use std::ptr::null_mut;
 
 use windows_sys::Win32::Foundation::{CloseHandle, HANDLE};
 use windows_sys::Win32::Security::{
-    GetTokenInformation, OpenProcessToken, TOKEN_ELEVATION, TOKEN_QUERY, TokenElevation,
+    GetTokenInformation, TOKEN_ELEVATION, TOKEN_QUERY, TokenElevation,
 };
-use windows_sys::Win32::System::Threading::GetCurrentProcess;
+use windows_sys::Win32::System::Threading::{GetCurrentProcess, OpenProcessToken};
 
 use crate::ProvisioningError;
 
@@ -21,7 +21,7 @@ pub fn require_elevated_administrator() -> Result<(), ProvisioningError> {
         ));
     }
     let token = OwnedHandle { raw: token };
-    let mut elevation = TOKEN_ELEVATION::default();
+    let mut elevation = TOKEN_ELEVATION { TokenIsElevated: 0 };
     let mut written = 0_u32;
     // SAFETY: token is a live process token, elevation points to writable aligned
     // TOKEN_ELEVATION storage, and written points to writable size storage.
