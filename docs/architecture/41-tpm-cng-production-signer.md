@@ -2,7 +2,7 @@
 
 ## Status
 
-This document defines the bounded TPM/CNG production signer foundation implemented under Issue #60. The code provides a hardware-only Windows CNG provider contract, a P-256 signer protocol, caller and signer-service identity binding, an authenticated local named-pipe transport and a fail-closed signer-service authority.
+This document defines the bounded TPM/CNG production signer foundation implemented under Issue #60. The code provides a hardware-only Windows CNG provider contract, a P-256 signer protocol, caller and signer-service identity binding, an authenticated local named-pipe transport, a fail-closed signer-service authority and purpose-locked Capability Token and Acceptance Certificate issuance runtimes.
 
 The repository does **not** claim that GitHub-hosted Windows runners prove a physical TPM. Keys observed without an independently accepted hardware gate remain `UNPROVEN` and cannot become production-eligible.
 
@@ -69,6 +69,18 @@ The production protocol is separate from the existing DPAPI/Ed25519 protocol. It
 
 Independent verification rejects provider, algorithm, public-key, export-policy, caller, signer-instance, request, envelope and signature substitutions.
 
+## Public trust snapshot
+
+A verifier does not need private process handles to validate a returned production package. A public trust snapshot pins:
+
+- the fixed production identity,
+- the expected public-key digest,
+- allowlist revision and digest,
+- authenticated caller identity digest, and
+- signer-service instance identity digest.
+
+The authorization receipt is independently canonical-hash verified before these values are compared. Altering its authorization time, caller, allowlist or service fields without recomputing the sealed receipt therefore fails even when the remaining package is unchanged.
+
 ## Caller identity
 
 The signer derives caller identity from the connected named-pipe client rather than accepting identity fields from the request. The Windows boundary measures:
@@ -113,6 +125,34 @@ The production transport uses one fixed local message-mode named pipe with:
 
 After connection, the server derives the caller identity from the pipe handle before decoding or authorizing the signing request.
 
+## Purpose-locked Capability Token issuance
+
+The production Capability authority accepts only an unsigned domain draft. It internally:
+
+1. validates token identifiers, bindings, time bounds, usage and nonce,
+2. fixes the Capability issuer and key identity,
+3. builds the canonical Capability Token payload,
+4. derives the request ID from the canonical payload digest,
+5. invokes the production signer transport,
+6. validates the public trust snapshot and sealed caller authorization receipt, and
+7. returns a separate P-256 production-bound token type.
+
+The existing direct-Ed25519 and DPAPI signer-bound token types and verification APIs remain unchanged. Production token authorization independently rechecks the P-256 package before applying contract, plan, executor, device, grant and usage constraints.
+
+## Purpose-locked Acceptance Certificate issuance
+
+The production Attestation authority retains the existing Evidence Runtime gate. Before any signer invocation it:
+
+1. reassesses the exact Evidence Bundle,
+2. requires `ACCEPTED` with zero failed or unknown mandatory obligations,
+3. rebuilds and seals the Replay Manifest,
+4. fixes the Attestation issuer and key identity,
+5. derives the request ID from the canonical certificate-payload digest,
+6. invokes and verifies the production signer package, and
+7. returns a separate P-256 production-bound Acceptance Certificate package.
+
+Independent production verification rechecks the signer trust snapshot, certificate payload, Replay Manifest and—when supplied—the complete Evidence Bundle and recomputed manifest. Existing Ed25519 certificate packages remain backward compatible.
+
 ## Provisioning receipt
 
 The public-only provisioning model binds:
@@ -129,16 +169,20 @@ Secret-shaped fields are rejected. Production key creation is not exposed as an 
 
 ## Validation
 
-Permanent Linux and Windows CI covers:
+Permanent Linux and Windows CI is configured to cover:
 
 - formatting and Clippy with warnings denied,
 - fixed identity and policy substitution attacks,
 - provider/software fallback and export-policy attacks,
 - deterministic key naming and CNG handle-only signing contracts,
 - P-256 prehash verification,
-- caller, service-instance and replay substitution attacks,
-- named-pipe ACL construction and bounded message transport, and
-- a real local Windows named-pipe round trip that derives the connected process identity.
+- caller, service-instance, receipt-seal and replay substitution attacks,
+- named-pipe ACL construction and bounded message transport,
+- a real local Windows named-pipe round trip that derives the connected process identity,
+- purpose-locked production Capability Token issuance and authorization, and
+- purpose-locked production Acceptance Certificate issuance, Evidence Bundle reassessment and independent manifest verification.
+
+GitHub may require a maintainer to approve workflow execution for this draft branch. Until that approval occurs, the configured test matrix must not be described as executed or green.
 
 ## Remaining boundary before Issue #60 can close
 
@@ -146,9 +190,8 @@ The following remain open:
 
 - independently trusted physical-TPM evidence that can promote a key from `UNPROVEN` to `PROVEN_HARDWARE_BACKED`,
 - a separately deployed administrator provisioning executable and signed provisioning evidence,
-- production CNG transport integration into purpose-locked Capability Token issuance,
-- production CNG transport integration into Acceptance Certificate issuance,
-- algorithm-agile governed key rotation and revocation for P-256 keys, and
-- full desktop/backend orchestration using the production signer service.
+- algorithm-agile governed key rotation and revocation for P-256 keys,
+- deployment of the authenticated production signer as a hardened Windows service, and
+- full desktop/backend orchestration and persisted trust-snapshot lifecycle.
 
 Authenticode, trusted timestamps, commercial certificate chains and signed installer upgrade/rollback provenance remain explicitly outside Issue #60 and belong to the following release-provenance gate.
