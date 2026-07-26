@@ -23,8 +23,8 @@ use ergaxiom_windows_production_signer_transport_runtime::{
 };
 use ergaxiom_windows_signer_client_runtime::{SignerClientError, SignerProcessClient};
 use ergaxiom_windows_signer_protocol_runtime::{
-    SignerProtocolError, SignerRequest, SignerResponse, SignerSuccess, decode_hex_32,
-    validate_identifier, validate_sha256,
+    SignerEnvelope, SignerProtocolError, SignerRequest, SignerResponse, SignerSuccess,
+    decode_hex_32, validate_identifier, validate_sha256,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -281,7 +281,7 @@ fn prepare_attestation(
 }
 
 fn validate_ed25519_envelope(
-    envelope: &ergaxiom_windows_signer_protocol_runtime::SignedDigestEnvelope,
+    envelope: &SignerEnvelope,
     prepared: &PreparedAttestation,
 ) -> Result<(), AttestationIssuanceError> {
     if envelope.request_id != prepared.request_id {
