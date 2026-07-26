@@ -10,73 +10,45 @@ on:
       - ".github/workflows/windows-production-signer.yml"
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  fix-service-host:
-    name: Finalize platform-neutral production signer service host
-    runs-on: ubuntu-24.04
+  diagnose-windows-service-host:
+    name: Diagnose Windows production signer service host
+    runs-on: windows-2025
     steps:
-      - name: Check out pull request branch
+      - name: Check out repository
         uses: actions/checkout@v4
-        with:
-          ref: agent/tpm-cng-signer-service-v1
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
 
-      - name: Box deployed success package
-        shell: bash
-        run: |
-          python - <<'PY'
-          from pathlib import Path
-          path = Path("crates/windows-production-signer-host-runtime/src/lib.rs")
-          text = path.read_text()
-          old = "        package: DeployedAuthorizedProductionSignerPackage,"
-          new = "        package: Box<DeployedAuthorizedProductionSignerPackage>,"
-          if old not in text:
-              raise SystemExit("success package field marker missing")
-          text = text.replace(old, new, 1)
-          old = "            package,\n            response_digest: String::new(),"
-          new = "            package: Box::new(package),\n            response_digest: String::new(),"
-          if old not in text:
-              raise SystemExit("success package constructor marker missing")
-          text = text.replace(old, new, 1)
-          path.write_text(text)
-          PY
-
-      - name: Materialize canonical formatting
-        run: cargo fmt --all
-
-      - name: Commit boxed service response
-        shell: bash
-        run: |
-          set -euo pipefail
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add crates/windows-production-signer-host-runtime/src/lib.rs
-          if git diff --cached --quiet; then
-            echo "No source changes"
-          else
-            git commit -m "Box production signer host success package"
-            git push origin HEAD:agent/tpm-cng-signer-service-v1
-          fi
-
       - name: Check workspace formatting
         run: cargo fmt --all -- --check
 
-      - name: Lint platform-neutral service host
+      - name: Capture Windows service host Clippy diagnostics
+        shell: pwsh
         run: |
-          cargo clippy \
-            -p ergaxiom-windows-production-signer-host-runtime \
-            -p ergaxiom-windows-production-signer-service \
-            --all-targets --all-features -- -D warnings
+          cargo clippy `
+            -p ergaxiom-windows-production-signer-host-runtime `
+            -p ergaxiom-windows-production-signer-service `
+            --all-targets --all-features -- -D warnings `
+            *> windows-service-host-clippy.txt
+          $code = $LASTEXITCODE
+          Set-Content windows-service-host-clippy.exit $code
+          exit 0
 
-      - name: Run platform-neutral service host tests
+      - name: Upload Windows service host diagnostics
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-service-host-clippy-diagnostics
+          path: |
+            windows-service-host-clippy.txt
+            windows-service-host-clippy.exit
+
+      - name: Fail on Windows service host lint mismatch
+        shell: pwsh
         run: |
-          cargo test \
-            -p ergaxiom-windows-production-signer-host-runtime \
-            -p ergaxiom-windows-production-signer-service \
-            --all-features -- --nocapture
+          if ((Get-Content windows-service-host-clippy.exit) -ne "0") { exit 1 }
