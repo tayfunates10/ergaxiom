@@ -14,28 +14,61 @@ on:
       - ".github/workflows/windows-production-signer.yml"
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
-  governed-generation-diagnostics:
-    name: Diagnose governed P-256 generations
+  canonicalize-governed-generation-fixes:
+    name: Canonicalize governed generation fixes
     runs-on: ubuntu-24.04
     steps:
-      - name: Check out repository
+      - name: Check out pull request branch
         uses: actions/checkout@v4
+        with:
+          ref: agent/tpm-cng-signer-service-v1
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
 
+      - name: Remove stale test import
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          path = Path("crates/windows-production-governed-issuance-runtime/tests/capability.rs")
+          text = path.read_text()
+          old = "    ProductionKeyPolicy, SEC1_UNCOMPRESSED_P256, SIGNER_SERVICE_IDENTITY_SCHEMA,\n"
+          new = "    ProductionKeyPolicy, SIGNER_SERVICE_IDENTITY_SCHEMA,\n"
+          if text.count(old) != 1:
+              raise SystemExit("expected one stale import")
+          path.write_text(text.replace(old, new, 1))
+          PY
+
+      - name: Materialize canonical formatting and lockfile
+        run: |
+          cargo fmt --all
+          cargo generate-lockfile
+
+      - name: Commit governed generation fixes
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Cargo.lock crates/windows-production-governed-issuance-runtime
+          if git diff --cached --quiet; then
+            echo "No canonical source changes"
+          else
+            git commit -m "Fix governed issuance test dependencies"
+            git push origin HEAD:agent/tpm-cng-signer-service-v1
+          fi
+
       - name: Check workspace formatting
         run: cargo fmt --all -- --check
 
-      - name: Capture governed generation Clippy diagnostics
-        shell: bash
+      - name: Lint governed generation boundary
         run: |
-          set +e
           cargo clippy \
             -p ergaxiom-windows-production-signer-provisioner \
             -p ergaxiom-windows-cng-key-provider-runtime \
@@ -43,30 +76,10 @@ jobs:
             -p ergaxiom-windows-production-governed-issuance-runtime \
             -p ergaxiom-windows-production-key-governance-runtime \
             -p ergaxiom-windows-production-signer-service-runtime \
-            --all-targets --all-features -- -D warnings \
-            2>&1 | tee "$RUNNER_TEMP/governed-generation-clippy.log"
-          status=${PIPESTATUS[0]}
-          printf '%s\n' "$status" > "$RUNNER_TEMP/governed-generation-clippy.status"
-          exit 0
+            --all-targets --all-features -- -D warnings
 
-      - name: Upload governed generation Clippy diagnostics
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: governed-generation-clippy-diagnostics
-          path: ${{ runner.temp }}/governed-generation-clippy.*
-          if-no-files-found: error
-          retention-days: 3
-
-      - name: Fail on governed generation lint mismatch
-        shell: bash
-        run: test "$(cat "$RUNNER_TEMP/governed-generation-clippy.status")" = "0"
-
-      - name: Capture governed generation tests
-        if: success()
-        shell: bash
+      - name: Run governed generation tests
         run: |
-          set +e
           cargo test \
             -p ergaxiom-windows-production-signer-provisioner \
             -p ergaxiom-windows-cng-key-provider-runtime \
@@ -74,22 +87,4 @@ jobs:
             -p ergaxiom-windows-production-governed-issuance-runtime \
             -p ergaxiom-windows-production-key-governance-runtime \
             -p ergaxiom-windows-production-signer-service-runtime \
-            --all-features \
-            2>&1 | tee "$RUNNER_TEMP/governed-generation-tests.log"
-          status=${PIPESTATUS[0]}
-          printf '%s\n' "$status" > "$RUNNER_TEMP/governed-generation-tests.status"
-          exit 0
-
-      - name: Upload governed generation test diagnostics
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: governed-generation-test-diagnostics
-          path: ${{ runner.temp }}/governed-generation-tests.*
-          if-no-files-found: ignore
-          retention-days: 3
-
-      - name: Fail on governed generation test mismatch
-        if: success()
-        shell: bash
-        run: test "$(cat "$RUNNER_TEMP/governed-generation-tests.status")" = "0"
+            --all-features
