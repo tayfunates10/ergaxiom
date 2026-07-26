@@ -1,0 +1,29 @@
+[package]
+name = "ergaxiom-windows-production-deployment-evidence-runtime"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+publish = false
+
+[dependencies]
+base64.workspace = true
+ed25519-dalek.workspace = true
+ergaxiom-proof-kernel = { path = "../proof-kernel" }
+ergaxiom-windows-production-signer-host-runtime = { path = "../windows-production-signer-host-runtime" }
+ergaxiom-windows-production-signer-runtime = { path = "../windows-production-signer-runtime" }
+ergaxiom-windows-production-trust-state-runtime = { path = "../windows-production-trust-state-runtime" }
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+rand_core.workspace = true
+
+[lints.rust]
+unsafe_code = "forbid"
+
+[lints.clippy]
+unwrap_used = "deny"
+expect_used = "deny"
