@@ -21,7 +21,7 @@ use ergaxiom_contract_runtime::CompiledContract;
 use ergaxiom_operator_plan_runtime::CompiledPlan;
 use ergaxiom_proof_kernel::AssuranceLevel;
 use ergaxiom_windows_production_key_governance_runtime::{
-    ProductionKeyGovernanceError, ProductionKeyRegistry,
+    ProductionKeyGovernanceError, ProductionKeyRegistry, ProductionKeyStatus,
 };
 use ergaxiom_windows_production_signer_runtime::ProductionKeyPolicy;
 use ergaxiom_windows_production_signer_service_runtime::{
@@ -59,6 +59,12 @@ where
         draft: CapabilityTokenDraft,
     ) -> Result<ProductionSignerBoundCapabilityToken, GovernedProductionIssuanceError> {
         let issued_at_epoch_s = draft.issued_at_epoch_s;
+        validate_active_signing_trust(
+            &self.trust,
+            &self.registry,
+            &ProductionKeyPolicy::capability(),
+            issued_at_epoch_s,
+        )?;
         let token = self.inner.issue(draft)?;
         token
             .signer_package
@@ -169,6 +175,12 @@ where
         draft: AttestationCertificateDraft,
     ) -> Result<ProductionSignerBoundAttestationPackage, GovernedProductionIssuanceError> {
         let issued_at_epoch_s = draft.issued_at_epoch_s;
+        validate_active_signing_trust(
+            &self.trust,
+            &self.registry,
+            &ProductionKeyPolicy::attestation(),
+            issued_at_epoch_s,
+        )?;
         let package = self.inner.issue(
             compiled_contract,
             compiled_plan,
@@ -236,6 +248,20 @@ pub fn verify_governed_production_attestation_against_bundle(
     )?)
 }
 
+fn validate_active_signing_trust(
+    trust: &GovernedProductionSignerTrustSnapshot,
+    registry: &ProductionKeyRegistry,
+    policy: &ProductionKeyPolicy,
+    issued_at_epoch_s: u64,
+) -> Result<(), GovernedProductionIssuanceError> {
+    validate_trust_contract(trust, registry, policy)?;
+    let record = registry.verify_binding(&trust.key, issued_at_epoch_s)?;
+    if record.status != ProductionKeyStatus::Active {
+        return Err(GovernedProductionIssuanceError::SigningKeyNotActive);
+    }
+    Ok(())
+}
+
 fn validate_trust_contract(
     trust: &GovernedProductionSignerTrustSnapshot,
     registry: &ProductionKeyRegistry,
@@ -261,6 +287,8 @@ fn validate_trust_contract(
 pub enum GovernedProductionIssuanceError {
     #[error("governed production trust does not match the supplied registry snapshot")]
     TrustRegistryMismatch,
+    #[error("governed production signing key is not active")]
+    SigningKeyNotActive,
     #[error("failed to decode governed production artifact: {0}")]
     Json(#[from] serde_json::Error),
     #[error(transparent)]
