@@ -54,6 +54,7 @@ members = [
   "crates/windows-signer-client-runtime",
   "crates/windows-signer-protocol-runtime",
   "crates/windows-signer-service-identity-runtime",
+  "crates/windows-sys-registry-shim",
   "crates/windows-uia-client-runtime"
 ]
 resolver = "2"
