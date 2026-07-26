@@ -24,6 +24,15 @@ impl ProvisioningBackend for FakeProvisioningBackend {
         policy: &ProductionKeyPolicy,
         expected_public_key_digest: Option<&str>,
     ) -> Result<CngProvisioningResult, ProvisioningError> {
+        self.provision_generation(policy, 1, expected_public_key_digest)
+    }
+
+    fn provision_generation(
+        &self,
+        policy: &ProductionKeyPolicy,
+        generation: u64,
+        expected_public_key_digest: Option<&str>,
+    ) -> Result<CngProvisioningResult, ProvisioningError> {
         let point = self.signing_key.verifying_key().to_encoded_point(false);
         let public_key = point.as_bytes();
         let public_key_digest = encode_hex(&Sha256::digest(public_key));
@@ -32,8 +41,9 @@ impl ProvisioningBackend for FakeProvisioningBackend {
         }
         Ok(CngProvisioningResult {
             key_name:
-                ergaxiom_windows_cng_key_provider_runtime::CngPlatformKeyProvider::key_name_for(
+                ergaxiom_windows_cng_key_provider_runtime::CngPlatformKeyProvider::key_name_for_generation(
                     policy,
+                    generation,
                 )?,
             created: self.created,
             descriptor: HardwareKeyDescriptor {
@@ -90,6 +100,8 @@ fn sealed_key_possession_evidence_verifies_without_promoting_hardware()
     let evidence = authority(true)?.provision(&policy, None, 1_800_000_000)?;
     let verified = evidence.verify_contract(&policy)?;
     assert!(verified.created);
+    assert_eq!(verified.generation, 1);
+    assert_eq!(evidence.statement.generation, Some(1));
     assert_eq!(verified.assurance, HardwareAssurance::Unproven);
     assert_eq!(
         verified.public_key_digest,
@@ -107,11 +119,47 @@ fn sealed_key_possession_evidence_verifies_without_promoting_hardware()
 }
 
 #[test]
+fn generation_two_is_bound_to_key_name_statement_and_possession_signature()
+-> Result<(), Box<dyn std::error::Error>> {
+    let policy = ProductionKeyPolicy::capability();
+    let evidence = authority(true)?.provision_generation(&policy, 2, None, 1_800_000_000)?;
+    let verified = evidence.verify_contract(&policy)?;
+    assert_eq!(verified.generation, 2);
+    assert_eq!(evidence.statement.generation, Some(2));
+
+    let mut altered = evidence;
+    altered.statement.generation = Some(3);
+    assert!(matches!(
+        altered.verify_contract(&policy),
+        Err(ProvisioningError::KeyNameDigestMismatch)
+            | Err(ProvisioningError::SignatureBindingMismatch)
+            | Err(ProvisioningError::EvidenceDigestMismatch)
+    ));
+    Ok(())
+}
+
+#[test]
+fn zero_generation_is_rejected_before_backend_invocation()
+-> Result<(), Box<dyn std::error::Error>> {
+    assert!(matches!(
+        authority(true)?.provision_generation(
+            &ProductionKeyPolicy::capability(),
+            0,
+            None,
+            1_800_000_000,
+        ),
+        Err(ProvisioningError::InvalidKeyGeneration)
+    ));
+    Ok(())
+}
+
+#[test]
 fn existing_key_receipt_preserves_created_false() -> Result<(), Box<dyn std::error::Error>> {
     let policy = ProductionKeyPolicy::attestation();
     let evidence = authority(false)?.provision(&policy, None, 1_800_000_100)?;
     let verified = evidence.verify_contract(&policy)?;
     assert!(!verified.created);
+    assert_eq!(verified.generation, 1);
     Ok(())
 }
 
@@ -121,14 +169,15 @@ fn receipt_statement_signature_and_evidence_substitution_fail_closed()
     let policy = ProductionKeyPolicy::capability();
     let evidence = authority(true)?.provision(&policy, None, 1_800_000_000)?;
 
-    for mutation in 0..5 {
+    for mutation in 0..6 {
         let mut altered = evidence.clone();
         match mutation {
             0 => altered.receipt.provisioned_at_epoch_s += 1,
-            1 => altered.statement.key_name_digest = OTHER_DIGEST.to_owned(),
-            2 => altered.key_possession.digest = OTHER_DIGEST.to_owned(),
-            3 => altered.key_possession.signature_base64url = URL_SAFE_NO_PAD.encode([0_u8; 64]),
-            4 => altered.evidence_digest = OTHER_DIGEST.to_owned(),
+            1 => altered.statement.generation = Some(2),
+            2 => altered.statement.key_name_digest = OTHER_DIGEST.to_owned(),
+            3 => altered.key_possession.digest = OTHER_DIGEST.to_owned(),
+            4 => altered.key_possession.signature_base64url = URL_SAFE_NO_PAD.encode([0_u8; 64]),
+            5 => altered.evidence_digest = OTHER_DIGEST.to_owned(),
             _ => return Err("unexpected mutation".into()),
         }
         assert!(altered.verify_contract(&policy).is_err());
