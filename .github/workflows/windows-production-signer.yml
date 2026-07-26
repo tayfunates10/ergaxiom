@@ -10,44 +10,83 @@ on:
       - ".github/workflows/windows-production-signer.yml"
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
-  diagnose-service-host:
-    name: Diagnose production signer service host
+  fix-service-host:
+    name: Fix platform-neutral production signer service host
     runs-on: ubuntu-24.04
     steps:
-      - name: Check out repository
+      - name: Check out pull request branch
         uses: actions/checkout@v4
+        with:
+          ref: agent/tpm-cng-signer-service-v1
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
 
+      - name: Apply exact Clippy diagnostics
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          path = Path("crates/windows-production-signer-host-runtime/src/lib.rs")
+          text = path.read_text()
+          text = text.replace(
+              "use ergaxiom_windows_production_signer_protocol_runtime::ProductionSignerRequest;\n",
+              "",
+              1,
+          )
+          text = text.replace(
+              "    ProductionKeyPolicy, ProductionSignerError, SignerRequestBinding, SignerServiceIdentity,\n",
+              "    ProductionKeyPolicy, ProductionSignerError, SignerRequestBinding,\n",
+              1,
+          )
+          text = text.replace(
+              "    HardwareSignerBackend, HardwareSignerBackendError, ProductionSignerService,\n",
+              "    HardwareSignerBackend, HardwareSignerBackendError,\n",
+              1,
+          )
+          old = "    file.take(max_bytes.saturating_add(1))\n        .read_to_end(&mut bytes)?;"
+          new = "    (&mut file)\n        .take(max_bytes.saturating_add(1))\n        .read_to_end(&mut bytes)?;"
+          if old not in text:
+              raise SystemExit("bounded file read marker missing")
+          text = text.replace(old, new, 1)
+          path.write_text(text)
+          PY
+
+      - name: Materialize canonical formatting
+        run: cargo fmt --all
+
+      - name: Commit service host fixes
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add crates/windows-production-signer-host-runtime/src/lib.rs
+          if git diff --cached --quiet; then
+            echo "No source changes"
+          else
+            git commit -m "Fix production signer host bounded reads"
+            git push origin HEAD:agent/tpm-cng-signer-service-v1
+          fi
+
       - name: Check workspace formatting
         run: cargo fmt --all -- --check
 
-      - name: Capture service host Clippy diagnostics
-        shell: bash
+      - name: Lint platform-neutral service host
         run: |
-          set +e
           cargo clippy \
             -p ergaxiom-windows-production-signer-host-runtime \
             -p ergaxiom-windows-production-signer-service \
-            --all-targets --all-features -- -D warnings \
-            > service-host-clippy.txt 2>&1
-          echo $? > service-host-clippy.exit
-          exit 0
+            --all-targets --all-features -- -D warnings
 
-      - name: Upload service host diagnostics
-        uses: actions/upload-artifact@v4
-        with:
-          name: service-host-clippy-diagnostics
-          path: |
-            service-host-clippy.txt
-            service-host-clippy.exit
-
-      - name: Fail on service host lint mismatch
-        shell: bash
-        run: test "$(cat service-host-clippy.exit)" = "0"
+      - name: Run platform-neutral service host tests
+        run: |
+          cargo test \
+            -p ergaxiom-windows-production-signer-host-runtime \
+            -p ergaxiom-windows-production-signer-service \
+            --all-features -- --nocapture
