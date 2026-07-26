@@ -33,6 +33,17 @@ pub struct CngProvisioningResult {
     pub descriptor: HardwareKeyDescriptor,
 }
 
+#[cfg(feature = "provisioning")]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CngKeyPossessionSignature {
+    pub digest_algorithm: String,
+    pub digest: String,
+    pub signature_encoding: String,
+    pub signature_base64url: String,
+    pub public_key_digest: String,
+    pub key_policy_digest: String,
+}
+
 #[derive(Debug, Clone, Copy, Default)]
 pub struct CngPlatformKeyProvider;
 
@@ -52,39 +63,29 @@ impl CngPlatformKeyProvider {
         platform::probe()
     }
 
-    pub fn describe_or_provision_unverified(
+    pub fn describe_existing_unverified(
         &self,
         policy: &ProductionKeyPolicy,
         expected_public_key_digest: Option<&str>,
     ) -> Result<CngProvisioningResult, CngProviderError> {
         policy.validate()?;
-        if let Some(expected) = expected_public_key_digest {
-            validate_sha256(expected)?;
-        }
+        validate_expected_digest(expected_public_key_digest)?;
         let key_name = Self::key_name_for(policy)?;
-        let native = platform::describe_or_provision(&key_name)?;
-        let public_key = parse_p256_public_blob(&native.public_blob)?;
-        let public_key_digest = lowercase_sha256(&public_key);
-        if expected_public_key_digest.is_some_and(|expected| expected != public_key_digest) {
-            return Err(CngProviderError::ExistingPublicKeyMismatch);
-        }
-        Ok(CngProvisioningResult {
-            key_name,
-            created: native.created,
-            descriptor: HardwareKeyDescriptor {
-                identity: policy.identity.clone(),
-                provider: MICROSOFT_PLATFORM_CRYPTO_PROVIDER.to_owned(),
-                algorithm: ECDSA_P256_SHA256.to_owned(),
-                public_key_encoding: SEC1_UNCOMPRESSED_P256.to_owned(),
-                public_key_base64url: URL_SAFE_NO_PAD.encode(public_key),
-                public_key_digest,
-                signature_encoding: P1363_FIXED_64.to_owned(),
-                export_policy: NON_EXPORTABLE_POLICY.to_owned(),
-                provider_implementation_flags: native.provider_implementation_flags,
-                assurance: HardwareAssurance::Unproven,
-                policy_digest: policy.digest()?,
-            },
-        })
+        let native = platform::describe_existing(&key_name)?;
+        build_result(policy, key_name, native, expected_public_key_digest)
+    }
+
+    #[cfg(feature = "provisioning")]
+    pub fn provision_unverified(
+        &self,
+        policy: &ProductionKeyPolicy,
+        expected_public_key_digest: Option<&str>,
+    ) -> Result<CngProvisioningResult, CngProviderError> {
+        policy.validate()?;
+        validate_expected_digest(expected_public_key_digest)?;
+        let key_name = Self::key_name_for(policy)?;
+        let native = platform::provision(&key_name)?;
+        build_result(policy, key_name, native, expected_public_key_digest)
     }
 
     pub fn sign_sha256_digest_unverified(
@@ -97,22 +98,10 @@ impl CngPlatformKeyProvider {
         policy.validate()?;
         binding.validate()?;
         validate_sha256(digest)?;
-        if provisioning.key_name != Self::key_name_for(policy)?
-            || provisioning.descriptor.identity != policy.identity
-            || provisioning.descriptor.provider != MICROSOFT_PLATFORM_CRYPTO_PROVIDER
-            || provisioning.descriptor.algorithm != ECDSA_P256_SHA256
-            || provisioning.descriptor.public_key_encoding != SEC1_UNCOMPRESSED_P256
-            || provisioning.descriptor.signature_encoding != P1363_FIXED_64
-            || provisioning.descriptor.export_policy != NON_EXPORTABLE_POLICY
-            || provisioning.descriptor.policy_digest != policy.digest()?
-        {
-            return Err(CngProviderError::ProvisioningBindingMismatch);
-        }
+        validate_key_binding(policy, provisioning)?;
         let digest_bytes = decode_sha256(digest)?;
         let signature = platform::sign(&provisioning.key_name, &digest_bytes)?;
-        if signature.len() != P256_SIGNATURE_BYTES {
-            return Err(CngProviderError::InvalidSignatureLength(signature.len()));
-        }
+        validate_signature_length(&signature)?;
         Ok(HardwareSignature {
             identity: policy.identity.clone(),
             algorithm: ECDSA_P256_SHA256.to_owned(),
@@ -125,6 +114,29 @@ impl CngPlatformKeyProvider {
             request_binding_digest: binding.digest()?,
         })
     }
+
+    #[cfg(feature = "provisioning")]
+    pub fn sign_key_possession_sha256_digest_unverified(
+        &self,
+        policy: &ProductionKeyPolicy,
+        provisioning: &CngProvisioningResult,
+        digest: &str,
+    ) -> Result<CngKeyPossessionSignature, CngProviderError> {
+        policy.validate()?;
+        validate_sha256(digest)?;
+        validate_key_binding(policy, provisioning)?;
+        let digest_bytes = decode_sha256(digest)?;
+        let signature = platform::sign(&provisioning.key_name, &digest_bytes)?;
+        validate_signature_length(&signature)?;
+        Ok(CngKeyPossessionSignature {
+            digest_algorithm: "sha256".to_owned(),
+            digest: digest.to_owned(),
+            signature_encoding: P1363_FIXED_64.to_owned(),
+            signature_base64url: URL_SAFE_NO_PAD.encode(signature),
+            public_key_digest: provisioning.descriptor.public_key_digest.clone(),
+            key_policy_digest: provisioning.descriptor.policy_digest.clone(),
+        })
+    }
 }
 
 #[derive(Debug)]
@@ -132,6 +144,68 @@ pub(crate) struct NativeProvisioning {
     pub created: bool,
     pub provider_implementation_flags: u32,
     pub public_blob: Vec<u8>,
+}
+
+fn build_result(
+    policy: &ProductionKeyPolicy,
+    key_name: String,
+    native: NativeProvisioning,
+    expected_public_key_digest: Option<&str>,
+) -> Result<CngProvisioningResult, CngProviderError> {
+    let public_key = parse_p256_public_blob(&native.public_blob)?;
+    let public_key_digest = lowercase_sha256(&public_key);
+    if expected_public_key_digest.is_some_and(|expected| expected != public_key_digest) {
+        return Err(CngProviderError::ExistingPublicKeyMismatch);
+    }
+    Ok(CngProvisioningResult {
+        key_name,
+        created: native.created,
+        descriptor: HardwareKeyDescriptor {
+            identity: policy.identity.clone(),
+            provider: MICROSOFT_PLATFORM_CRYPTO_PROVIDER.to_owned(),
+            algorithm: ECDSA_P256_SHA256.to_owned(),
+            public_key_encoding: SEC1_UNCOMPRESSED_P256.to_owned(),
+            public_key_base64url: URL_SAFE_NO_PAD.encode(public_key),
+            public_key_digest,
+            signature_encoding: P1363_FIXED_64.to_owned(),
+            export_policy: NON_EXPORTABLE_POLICY.to_owned(),
+            provider_implementation_flags: native.provider_implementation_flags,
+            assurance: HardwareAssurance::Unproven,
+            policy_digest: policy.digest()?,
+        },
+    })
+}
+
+fn validate_expected_digest(expected: Option<&str>) -> Result<(), CngProviderError> {
+    if let Some(expected) = expected {
+        validate_sha256(expected)?;
+    }
+    Ok(())
+}
+
+fn validate_key_binding(
+    policy: &ProductionKeyPolicy,
+    provisioning: &CngProvisioningResult,
+) -> Result<(), CngProviderError> {
+    if provisioning.key_name != CngPlatformKeyProvider::key_name_for(policy)?
+        || provisioning.descriptor.identity != policy.identity
+        || provisioning.descriptor.provider != MICROSOFT_PLATFORM_CRYPTO_PROVIDER
+        || provisioning.descriptor.algorithm != ECDSA_P256_SHA256
+        || provisioning.descriptor.public_key_encoding != SEC1_UNCOMPRESSED_P256
+        || provisioning.descriptor.signature_encoding != P1363_FIXED_64
+        || provisioning.descriptor.export_policy != NON_EXPORTABLE_POLICY
+        || provisioning.descriptor.policy_digest != policy.digest()?
+    {
+        return Err(CngProviderError::ProvisioningBindingMismatch);
+    }
+    Ok(())
+}
+
+fn validate_signature_length(signature: &[u8]) -> Result<(), CngProviderError> {
+    if signature.len() != P256_SIGNATURE_BYTES {
+        return Err(CngProviderError::InvalidSignatureLength(signature.len()));
+    }
+    Ok(())
 }
 
 fn parse_p256_public_blob(blob: &[u8]) -> Result<[u8; P256_PUBLIC_KEY_BYTES], CngProviderError> {
@@ -192,7 +266,9 @@ fn encode_hex(bytes: &[u8]) -> String {
 
 #[cfg(windows)]
 mod platform {
-    pub use crate::windows::{describe_or_provision, ecdsa_p256_public_magic, probe, sign};
+    pub use crate::windows::{describe_existing, ecdsa_p256_public_magic, probe, sign};
+    #[cfg(feature = "provisioning")]
+    pub use crate::windows::provision;
 }
 
 #[cfg(not(windows))]
@@ -203,7 +279,12 @@ mod platform {
         Err(CngProviderError::UnsupportedPlatform)
     }
 
-    pub fn describe_or_provision(_key_name: &str) -> Result<NativeProvisioning, CngProviderError> {
+    pub fn describe_existing(_key_name: &str) -> Result<NativeProvisioning, CngProviderError> {
+        Err(CngProviderError::UnsupportedPlatform)
+    }
+
+    #[cfg(feature = "provisioning")]
+    pub fn provision(_key_name: &str) -> Result<NativeProvisioning, CngProviderError> {
         Err(CngProviderError::UnsupportedPlatform)
     }
 
