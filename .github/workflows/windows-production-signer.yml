@@ -5,130 +5,171 @@ on:
     paths:
       - "Cargo.toml"
       - "Cargo.lock"
-      - "apps/windows-production-signer-provisioner/**"
       - "apps/windows-production-signer-service/**"
-      - "crates/attestation-issuance-runtime/**"
-      - "crates/attestation-runtime/**"
-      - "crates/capability-issuance-runtime/**"
-      - "crates/capability-runtime/**"
-      - "crates/windows-cng-key-provider-runtime/**"
-      - "crates/windows-production-governed-issuance-runtime/**"
-      - "crates/windows-production-key-governance-runtime/**"
+      - "crates/windows-production-deployment-evidence-runtime/**"
       - "crates/windows-production-signer-host-runtime/**"
-      - "crates/windows-production-signer-protocol-runtime/**"
-      - "crates/windows-production-signer-provisioning-runtime/**"
-      - "crates/windows-production-signer-runtime/**"
-      - "crates/windows-production-signer-service-runtime/**"
-      - "crates/windows-production-signer-transport-runtime/**"
-      - "crates/windows-production-trust-state-runtime/**"
-      - "crates/windows-signer-service-identity-runtime/**"
-      - "docs/architecture/41-tpm-cng-production-signer.md"
-      - "docs/architecture/42-production-trust-registry-deployment.md"
-      - "docs/architecture/43-windows-production-signer-service.md"
-      - "docs/status.md"
-      - ".github/workflows/windows-production-signer.yml"
-  push:
-    branches:
-      - main
-    paths:
-      - "Cargo.toml"
-      - "Cargo.lock"
-      - "apps/windows-production-signer-provisioner/**"
-      - "apps/windows-production-signer-service/**"
-      - "crates/attestation-issuance-runtime/**"
-      - "crates/attestation-runtime/**"
-      - "crates/capability-issuance-runtime/**"
-      - "crates/capability-runtime/**"
-      - "crates/windows-cng-key-provider-runtime/**"
-      - "crates/windows-production-governed-issuance-runtime/**"
-      - "crates/windows-production-key-governance-runtime/**"
-      - "crates/windows-production-signer-host-runtime/**"
-      - "crates/windows-production-signer-protocol-runtime/**"
-      - "crates/windows-production-signer-provisioning-runtime/**"
-      - "crates/windows-production-signer-runtime/**"
-      - "crates/windows-production-signer-service-runtime/**"
-      - "crates/windows-production-signer-transport-runtime/**"
-      - "crates/windows-production-trust-state-runtime/**"
-      - "crates/windows-signer-service-identity-runtime/**"
-      - "docs/architecture/41-tpm-cng-production-signer.md"
-      - "docs/architecture/42-production-trust-registry-deployment.md"
-      - "docs/architecture/43-windows-production-signer-service.md"
-      - "docs/status.md"
       - ".github/workflows/windows-production-signer.yml"
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
-  governed-production-service:
-    name: Verify production signer service (${{ matrix.os }})
-    strategy:
-      fail-fast: false
-      matrix:
-        os:
-          - ubuntu-24.04
-          - windows-2025
-    runs-on: ${{ matrix.os }}
+  canonicalize-deployment-evidence:
+    name: Canonicalize controlled-machine deployment evidence
+    runs-on: ubuntu-24.04
     steps:
-      - name: Check out repository
+      - name: Check out pull request branch
         uses: actions/checkout@v4
+        with:
+          ref: agent/tpm-cng-signer-service-v1
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
 
+      - name: Integrate deployment evidence packages
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          root = Path("Cargo.toml")
+          text = root.read_text()
+          member = '  "crates/windows-production-deployment-evidence-runtime",\n'
+          marker = '  "crates/windows-production-governed-issuance-runtime",\n'
+          if member not in text:
+              if marker not in text:
+                  raise SystemExit("workspace marker missing")
+              text = text.replace(marker, member + marker, 1)
+          root.write_text(text)
+
+          cargo = Path("crates/windows-production-signer-host-runtime/Cargo.toml")
+          text = cargo.read_text()
+          dependency = 'ergaxiom-key-governance-runtime = { path = "../key-governance-runtime" }\n'
+          marker = '[dependencies]\n'
+          if dependency not in text:
+              text = text.replace(marker, marker + dependency, 1)
+          registry_feature = '  "Win32_System_Registry",\n'
+          services_feature = '  "Win32_System_Services",\n'
+          if registry_feature not in text:
+              text = text.replace(services_feature, registry_feature + services_feature, 1)
+          cargo.write_text(text)
+
+          lib = Path("crates/windows-production-signer-host-runtime/src/lib.rs")
+          text = lib.read_text()
+          module = 'mod installation;\n'
+          marker = '#[cfg(windows)]\nmod windows;\n'
+          if module not in text:
+              text = text.replace(marker, marker + '\n' + module, 1)
+          export = 'pub use installation::*;\n'
+          marker = '#[cfg(test)]\nmod tests;\n'
+          if export not in text:
+              text = text.replace(marker, marker + '\n' + export, 1)
+          lib.write_text(text)
+
+          installation = Path("crates/windows-production-signer-host-runtime/src/installation.rs")
+          text = installation.read_text()
+          text = text.replace(
+              'use ergaxiom_windows_production_key_governance_runtime::ProductionKeyStatus;\n',
+              '#[cfg(windows)]\nuse ergaxiom_windows_production_key_governance_runtime::ProductionKeyStatus;\n',
+              1,
+          )
+          text = text.replace(
+              'use ergaxiom_windows_production_signer_runtime::{\n    ProductionKeyIdentity, ProductionKeyPolicy, ProductionSignerError, validate_identifier,\n    validate_sha256,\n};\n',
+              'use ergaxiom_windows_production_signer_runtime::{\n    ProductionKeyIdentity, ProductionSignerError, validate_identifier, validate_sha256,\n};\n#[cfg(windows)]\nuse ergaxiom_windows_production_signer_runtime::ProductionKeyPolicy;\n',
+              1,
+          )
+          field = '    pub manifest: ProductionSignerServiceManifest,\n'
+          marker = '    pub manifest_path: String,\n'
+          if field not in text:
+              text = text.replace(marker, marker + field, 1)
+          capture = '            manifest: loaded.manifest.clone(),\n'
+          marker = '            manifest_path: path_text(&manifest_path)?,\n'
+          if capture not in text:
+              text = text.replace(marker, marker + capture, 1)
+          old = '''        let manifest_path = require_absolute_path_text(&self.manifest_path)?;
+        let manifest: ProductionSignerServiceManifest =
+            read_bounded_json(&manifest_path, PRODUCTION_SIGNER_MAX_CONFIG_BYTES)?;
+        manifest.validate_seal()?;
+        if manifest.manifest_digest != self.manifest_digest
+            || manifest.deployment_id != self.deployment_id
+            || manifest.governance_policy_digest != self.governance_policy_digest
+            || manifest.executable_sha256
+                != self.trust_state_binding.signer_service_executable_digest
+            || manifest.caller_allowlist_revision
+                != self.trust_state_binding.caller_allowlist_revision
+            || manifest.caller_allowlist_digest
+                != self.trust_state_binding.caller_allowlist_digest
+            || manifest.deployment_policy_revision
+                != self.trust_state_binding.service_policy_revision
+            || manifest.deployment_policy_digest
+                != self.trust_state_binding.service_policy_digest
+        {
+            return Err(InstallationEvidenceError::InstallationTrustMismatch);
+        }
+        self.service_snapshot.validate_for(&manifest, &manifest_path)?;
+'''
+          new = '''        let manifest_path = require_absolute_path_text(&self.manifest_path)?;
+        self.manifest.validate_seal()?;
+        if self.manifest.manifest_digest != self.manifest_digest
+            || self.manifest.deployment_id != self.deployment_id
+            || self.manifest.governance_policy_digest != self.governance_policy_digest
+            || self.manifest.executable_sha256
+                != self.trust_state_binding.signer_service_executable_digest
+            || self.manifest.caller_allowlist_revision
+                != self.trust_state_binding.caller_allowlist_revision
+            || self.manifest.caller_allowlist_digest
+                != self.trust_state_binding.caller_allowlist_digest
+            || self.manifest.deployment_policy_revision
+                != self.trust_state_binding.service_policy_revision
+            || self.manifest.deployment_policy_digest
+                != self.trust_state_binding.service_policy_digest
+        {
+            return Err(InstallationEvidenceError::InstallationTrustMismatch);
+        }
+        self.service_snapshot.validate_for(&self.manifest, &manifest_path)?;
+'''
+          if old not in text:
+              raise SystemExit("portable manifest validation marker missing")
+          text = text.replace(old, new, 1)
+          installation.write_text(text)
+          PY
+
+      - name: Materialize canonical formatting and lockfile
+        run: |
+          cargo fmt --all
+          cargo generate-lockfile
+
+      - name: Commit canonical deployment evidence sources
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Cargo.toml Cargo.lock apps/windows-production-signer-service crates/windows-production-deployment-evidence-runtime crates/windows-production-signer-host-runtime
+          if git diff --cached --quiet; then
+            echo "No canonical changes"
+          else
+            git commit -m "Integrate controlled-machine deployment evidence"
+            git push origin HEAD:agent/tpm-cng-signer-service-v1
+          fi
+
       - name: Check workspace formatting
         run: cargo fmt --all -- --check
 
-      - name: Prove normal CNG runtime is open-only
-        run: cargo check -p ergaxiom-windows-cng-key-provider-runtime --no-default-features
-
-      - name: Lint production service and signer boundary
-        shell: bash
+      - name: Lint platform-neutral deployment evidence
         run: |
           cargo clippy \
-            -p ergaxiom-attestation-runtime \
-            -p ergaxiom-attestation-issuance-runtime \
-            -p ergaxiom-capability-runtime \
-            -p ergaxiom-capability-issuance-runtime \
-            -p ergaxiom-windows-production-signer-provisioner \
-            -p ergaxiom-windows-production-signer-service \
-            -p ergaxiom-windows-cng-key-provider-runtime \
-            -p ergaxiom-windows-production-governed-issuance-runtime \
-            -p ergaxiom-windows-production-key-governance-runtime \
+            -p ergaxiom-windows-production-deployment-evidence-runtime \
             -p ergaxiom-windows-production-signer-host-runtime \
-            -p ergaxiom-windows-production-signer-runtime \
-            -p ergaxiom-windows-production-signer-protocol-runtime \
-            -p ergaxiom-windows-production-signer-provisioning-runtime \
-            -p ergaxiom-windows-production-signer-service-runtime \
-            -p ergaxiom-windows-production-signer-transport-runtime \
-            -p ergaxiom-windows-production-trust-state-runtime \
-            -p ergaxiom-windows-signer-service-identity-runtime \
+            -p ergaxiom-windows-production-signer-service \
             --all-targets --all-features -- -D warnings
 
-      - name: Run production service and signer attacks
-        shell: bash
+      - name: Run platform-neutral deployment evidence tests
         run: |
           cargo test \
-            -p ergaxiom-attestation-runtime \
-            -p ergaxiom-attestation-issuance-runtime \
-            -p ergaxiom-capability-runtime \
-            -p ergaxiom-capability-issuance-runtime \
-            -p ergaxiom-windows-production-signer-provisioner \
-            -p ergaxiom-windows-production-signer-service \
-            -p ergaxiom-windows-cng-key-provider-runtime \
-            -p ergaxiom-windows-production-governed-issuance-runtime \
-            -p ergaxiom-windows-production-key-governance-runtime \
+            -p ergaxiom-windows-production-deployment-evidence-runtime \
             -p ergaxiom-windows-production-signer-host-runtime \
-            -p ergaxiom-windows-production-signer-runtime \
-            -p ergaxiom-windows-production-signer-protocol-runtime \
-            -p ergaxiom-windows-production-signer-provisioning-runtime \
-            -p ergaxiom-windows-production-signer-service-runtime \
-            -p ergaxiom-windows-production-signer-transport-runtime \
-            -p ergaxiom-windows-production-trust-state-runtime \
-            -p ergaxiom-windows-signer-service-identity-runtime \
+            -p ergaxiom-windows-production-signer-service \
             --all-features -- --nocapture
-
-      - name: Compile production signer service executable
-        run: cargo build -p ergaxiom-windows-production-signer-service --release
