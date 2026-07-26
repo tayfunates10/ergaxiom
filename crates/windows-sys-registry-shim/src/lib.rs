@@ -20,6 +20,14 @@ pub mod Win32 {
                 HKEY_LOCAL_MACHINE, RRF_RT_REG_SZ,
             };
 
+            /// Calls the native Win32 registry query while normalizing its status code.
+            ///
+            /// # Safety
+            ///
+            /// `hkey` must be a valid registry handle. Every non-null pointer must satisfy
+            /// the native `RegGetValueW` lifetime, alignment, readability and writability
+            /// requirements for the requested operation. `data_size` must point to writable
+            /// storage and any provided output buffer must remain valid for the full call.
             #[allow(clippy::too_many_arguments)]
             pub unsafe fn RegGetValueW(
                 hkey: *mut core::ffi::c_void,
