@@ -123,7 +123,7 @@ The production transport uses one fixed local message-mode named pipe with:
 - full access for LocalSystem and Built-in Administrators, and
 - individually enumerated client rights that omit generic-write pipe-creation authority.
 
-After connection, the server derives the caller identity from the pipe handle before decoding or authorizing the signing request.
+Windows permits named-pipe client impersonation only after data has been read from the pipe. The server therefore reads one bounded raw message first, derives the caller identity from the still-connected pipe handle, and only then decodes JSON or performs authorization. Caller identity is unavailable before this bounded read, and malformed input is never authorized merely because bytes were read.
 
 ## Purpose-locked Capability Token issuance
 
@@ -169,7 +169,7 @@ Secret-shaped fields are rejected. Production key creation is not exposed as an 
 
 ## Validation
 
-Permanent Linux and Windows CI is configured to cover:
+Permanent Linux and Windows CI covers:
 
 - formatting and Clippy with warnings denied,
 - fixed identity and policy substitution attacks,
@@ -177,12 +177,12 @@ Permanent Linux and Windows CI is configured to cover:
 - deterministic key naming and CNG handle-only signing contracts,
 - P-256 prehash verification,
 - caller, service-instance, receipt-seal and replay substitution attacks,
-- named-pipe ACL construction and bounded message transport,
+- named-pipe ACL construction and bounded read-before-impersonation transport,
 - a real local Windows named-pipe round trip that derives the connected process identity,
 - purpose-locked production Capability Token issuance and authorization, and
 - purpose-locked production Acceptance Certificate issuance, Evidence Bundle reassessment and independent manifest verification.
 
-GitHub may require a maintainer to approve workflow execution for this draft branch. Until that approval occurs, the configured test matrix must not be described as executed or green.
+The canonical Linux and Windows matrix passed formatting, warnings-deny Clippy and the complete bounded test set before the workflow was restored to its permanent read-only mode.
 
 ## Remaining boundary before Issue #60 can close
 
