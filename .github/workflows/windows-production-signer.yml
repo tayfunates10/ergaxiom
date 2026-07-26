@@ -14,8 +14,8 @@ permissions:
   contents: write
 
 jobs:
-  canonicalize-production-trust-state:
-    name: Canonicalize and verify production trust-state lifecycle
+  canonicalize-production-trust-state-fixes:
+    name: Canonicalize production trust-state fixes
     runs-on: ubuntu-24.04
     steps:
       - name: Check out pull request branch
@@ -28,340 +28,31 @@ jobs:
         with:
           components: rustfmt, clippy
 
-      - name: Add sealed registry snapshots and generation-aware service calls
+      - name: Apply exact Clippy fixes
         shell: bash
         run: |
           python - <<'PY'
           from pathlib import Path
 
-          def replace_once(text: str, old: str, new: str, label: str) -> str:
-              count = text.count(old)
-              if count != 1:
-                  raise SystemExit(f"{label}: expected one match, found {count}")
-              return text.replace(old, new, 1)
+          model = Path("crates/windows-production-trust-state-runtime/src/model.rs")
+          text = model.read_text()
+          old = '''use ergaxiom_windows_production_signer_runtime::{
+              ProductionKeyIdentity, ProductionSignerError, validate_identifier, validate_sha256,
+          };'''
+          new = '''use ergaxiom_windows_production_signer_runtime::{
+              ProductionSignerError, validate_identifier, validate_sha256,
+          };'''
+          if text.count(old) != 1:
+              raise SystemExit("expected one unused ProductionKeyIdentity import")
+          model.write_text(text.replace(old, new, 1))
 
-          registry_path = Path("crates/windows-production-key-governance-runtime/src/lib.rs")
-          registry = registry_path.read_text()
-          registry = replace_once(
-              registry,
-              "use std::collections::BTreeMap;",
-              "use std::collections::{BTreeMap, BTreeSet};",
-              "registry collections",
-          )
-          registry = replace_once(
-              registry,
-              '''#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-          struct RegistrySnapshot {
-              schema_version: String,
-              revision: u64,
-              records: Vec<ProductionKeyRecord>,
-          }''',
-              '''#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-          pub struct ProductionKeyRegistrySnapshot {
-              pub schema_version: String,
-              pub revision: u64,
-              pub records: Vec<ProductionKeyRecord>,
-          }
-
-          impl ProductionKeyRegistrySnapshot {
-              pub fn validate_seal(&self) -> Result<(), ProductionKeyGovernanceError> {
-                  if self.schema_version != PRODUCTION_KEY_REGISTRY_SCHEMA {
-                      return Err(ProductionKeyGovernanceError::UnsupportedRegistrySchema);
-                  }
-                  if self.revision == 0 && !self.records.is_empty() {
-                      return Err(ProductionKeyGovernanceError::InvalidRegistrySnapshot);
-                  }
-                  let mut identities = BTreeSet::new();
-                  let mut public_keys = BTreeSet::new();
-                  let mut previous = None;
-                  for record in &self.records {
-                      record.validate_seal()?;
-                      let key = (
-                          record.identity.role,
-                          record.identity.issuer_id.clone(),
-                          record.identity.key_id.clone(),
-                          record.generation,
-                      );
-                      if previous.as_ref().is_some_and(|candidate| candidate >= &key) {
-                          return Err(ProductionKeyGovernanceError::RegistrySnapshotNotCanonical);
-                      }
-                      previous = Some(key.clone());
-                      if !identities.insert(key) {
-                          return Err(ProductionKeyGovernanceError::DuplicateRegistryRecord);
-                      }
-                      if !public_keys.insert(record.public_key_digest.clone()) {
-                          return Err(ProductionKeyGovernanceError::PublicKeyReuse);
-                      }
-                  }
-                  Ok(())
-              }
-
-              pub fn validate_active_generations(
-                  &self,
-                  at_epoch_s: u64,
-              ) -> Result<(), ProductionKeyGovernanceError> {
-                  self.validate_seal()?;
-                  let mut active = BTreeSet::new();
-                  for record in &self.records {
-                      if record.status == ProductionKeyStatus::Active
-                          && at_epoch_s >= record.not_before_epoch_s
-                          && at_epoch_s < record.not_after_epoch_s
-                      {
-                          let identity = (
-                              record.identity.role,
-                              record.identity.issuer_id.clone(),
-                              record.identity.key_id.clone(),
-                          );
-                          if !active.insert(identity) {
-                              return Err(ProductionKeyGovernanceError::ActiveGenerationAmbiguity);
-                          }
-                      }
-                  }
-                  Ok(())
-              }
-
-              pub fn digest(&self) -> Result<String, ProductionKeyGovernanceError> {
-                  self.validate_seal()?;
-                  Ok(canonical_json_sha256(&serde_json::to_value(self)?)?)
-              }
-          }''',
-              "public registry snapshot",
-          )
-          registry = replace_once(
-              registry,
-              '''    pub fn registry_digest(&self) -> Result<String, ProductionKeyGovernanceError> {
-                  let value = serde_json::to_value(self.snapshot())?;
-                  Ok(canonical_json_sha256(&value)?)
-              }''',
-              '''    pub fn registry_digest(&self) -> Result<String, ProductionKeyGovernanceError> {
-                  self.snapshot().digest()
-              }
-
-              pub fn from_snapshot(
-                  snapshot: ProductionKeyRegistrySnapshot,
-              ) -> Result<Self, ProductionKeyGovernanceError> {
-                  snapshot.validate_seal()?;
-                  let mut records = BTreeMap::new();
-                  for record in snapshot.records.iter().cloned() {
-                      let key = RecordKey::from_identity(&record.identity, record.generation);
-                      if records.insert(key, record).is_some() {
-                          return Err(ProductionKeyGovernanceError::DuplicateRegistryRecord);
-                      }
-                  }
-                  let registry = Self {
-                      revision: snapshot.revision,
-                      records,
-                  };
-                  if registry.snapshot() != snapshot {
-                      return Err(ProductionKeyGovernanceError::RegistrySnapshotNotCanonical);
-                  }
-                  Ok(registry)
-              }
-
-              pub fn active_record(
-                  &self,
-                  identity: &ProductionKeyIdentity,
-                  at_epoch_s: u64,
-              ) -> Result<&ProductionKeyRecord, ProductionKeyGovernanceError> {
-                  identity.validate()?;
-                  let mut active = None;
-                  for record in self.records.values().filter(|record| {
-                      record.identity == *identity
-                          && record.status == ProductionKeyStatus::Active
-                          && at_epoch_s >= record.not_before_epoch_s
-                          && at_epoch_s < record.not_after_epoch_s
-                  }) {
-                      record.validate_seal()?;
-                      if active.is_some() {
-                          return Err(ProductionKeyGovernanceError::ActiveGenerationAmbiguity);
-                      }
-                      active = Some(record);
-                  }
-                  active.ok_or(ProductionKeyGovernanceError::NoActiveGeneration)
-              }''',
-              "registry reconstruction API",
-          )
-          registry = replace_once(
-              registry,
-              '''    fn snapshot(&self) -> RegistrySnapshot {
-                  RegistrySnapshot {
-                      schema_version: PRODUCTION_KEY_REGISTRY_SCHEMA.to_owned(),
-                      revision: self.revision,
-                      records: self.records.values().cloned().collect(),
-                  }
-              }''',
-              '''    pub fn snapshot(&self) -> ProductionKeyRegistrySnapshot {
-                  ProductionKeyRegistrySnapshot {
-                      schema_version: PRODUCTION_KEY_REGISTRY_SCHEMA.to_owned(),
-                      revision: self.revision,
-                      records: self.records.values().cloned().collect(),
-                  }
-              }''',
-              "public snapshot method",
-          )
-          registry = replace_once(
-              registry,
-              '''pub enum ProductionKeyGovernanceError {
-              #[error("production key record schema is unsupported")]
-              UnsupportedRecordSchema,''',
-              '''pub enum ProductionKeyGovernanceError {
-              #[error("production key registry schema is unsupported")]
-              UnsupportedRegistrySchema,
-              #[error("production key registry snapshot is invalid")]
-              InvalidRegistrySnapshot,
-              #[error("production key registry snapshot is not canonical")]
-              RegistrySnapshotNotCanonical,
-              #[error("production key registry contains a duplicate record")]
-              DuplicateRegistryRecord,
-              #[error("production key registry contains multiple active generations")]
-              ActiveGenerationAmbiguity,
-              #[error("production key registry has no active generation for the identity")]
-              NoActiveGeneration,
-              #[error("production key record schema is unsupported")]
-              UnsupportedRecordSchema,''',
-              "registry snapshot errors",
-          )
-          registry_path.write_text(registry)
-
-          service_path = Path("crates/windows-production-signer-service-runtime/src/lib.rs")
-          service = service_path.read_text()
-          trait_start = service.index("pub trait HardwareSignerBackend {")
-          trait_end = service.index("\n}\n\n#[derive(Debug)]\npub struct ProductionSignerService", trait_start) + 2
-          service = service[:trait_start] + '''pub trait HardwareSignerBackend {
-              fn descriptor(
-                  &self,
-                  policy: &ProductionKeyPolicy,
-              ) -> Result<HardwareKeyDescriptor, HardwareSignerBackendError>;
-
-              fn descriptor_for_generation(
-                  &self,
-                  policy: &ProductionKeyPolicy,
-                  generation: u64,
-              ) -> Result<HardwareKeyDescriptor, HardwareSignerBackendError> {
-                  if generation == 1 {
-                      self.descriptor(policy)
-                  } else {
-                      Err(HardwareSignerBackendError::new("KEY_GENERATION_UNSUPPORTED"))
-                  }
-              }
-
-              fn sign_sha256_digest(
-                  &self,
-                  policy: &ProductionKeyPolicy,
-                  descriptor: &HardwareKeyDescriptor,
-                  binding: &SignerRequestBinding,
-                  digest: &str,
-              ) -> Result<HardwareSignature, HardwareSignerBackendError>;
-
-              fn sign_sha256_digest_for_generation(
-                  &self,
-                  policy: &ProductionKeyPolicy,
-                  generation: u64,
-                  descriptor: &HardwareKeyDescriptor,
-                  binding: &SignerRequestBinding,
-                  digest: &str,
-              ) -> Result<HardwareSignature, HardwareSignerBackendError> {
-                  if generation == 1 {
-                      self.sign_sha256_digest(policy, descriptor, binding, digest)
-                  } else {
-                      Err(HardwareSignerBackendError::new("KEY_GENERATION_UNSUPPORTED"))
-                  }
-              }
-          }''' + service[trait_end:]
-
-          method_start = service.index("    pub fn handle_authenticated(\n", service.index("impl<B> ProductionSignerService"))
-          method_end = service.index("\n    #[must_use]\n    pub const fn service_identity", method_start)
-          service = service[:method_start] + '''    pub fn handle_authenticated(
-                  &mut self,
-                  request: &ProductionSignerRequest,
-                  caller: &AuthenticatedCallerIdentity,
-                  trusted_now_epoch_s: u64,
-              ) -> Result<AuthorizedProductionSignerPackage, ProductionSignerServiceError> {
-                  self.handle_authenticated_generation(request, caller, trusted_now_epoch_s, 1)
-              }
-
-              pub fn handle_authenticated_generation(
-                  &mut self,
-                  request: &ProductionSignerRequest,
-                  caller: &AuthenticatedCallerIdentity,
-                  trusted_now_epoch_s: u64,
-                  generation: u64,
-              ) -> Result<AuthorizedProductionSignerPackage, ProductionSignerServiceError> {
-                  if generation == 0 {
-                      return Err(ProductionSignerServiceError::InvalidKeyGeneration);
-                  }
-                  let policy = policy_for_identity(&request.identity)?;
-                  request.validate_for(&policy)?;
-                  let request_digest = request.digest_for(&policy)?;
-
-                  // Consume caller authorization and replay state before any backend operation.
-                  // A backend failure must not make the same request replayable.
-                  let caller_authorization = self.identity_authorizer.authorize(
-                      caller,
-                      &self.service_identity,
-                      &self.allowlist,
-                      &request_digest,
-                      trusted_now_epoch_s,
-                  )?;
-
-                  let binding =
-                      SignerRequestBinding::build(request_digest, caller, &self.service_identity, &policy)?;
-                  let envelope = request.envelope(&policy, binding.clone())?;
-                  let envelope_digest = envelope.digest_for(&policy)?;
-
-                  let descriptor = self.backend.descriptor_for_generation(&policy, generation)?;
-                  descriptor.validate_for(&policy)?;
-                  let signature = self.backend.sign_sha256_digest_for_generation(
-                      &policy,
-                      generation,
-                      &descriptor,
-                      &binding,
-                      &envelope_digest,
-                  )?;
-                  signature.validate_for(&descriptor, &binding)?;
-
-                  let signer_response = ProductionSignerResponse::success(
-                      request.request_id.clone(),
-                      ProductionSignerSuccess {
-                          descriptor,
-                          envelope,
-                          envelope_digest,
-                          signature,
-                      },
-                  );
-                  signer_response.verify_production_eligible(&policy)?;
-                  let package = AuthorizedProductionSignerPackage {
-                      caller_authorization,
-                      signer_response,
-                  };
-                  package.verify(caller, &self.service_identity, &self.allowlist)?;
-                  Ok(package)
-              }
-
-              pub fn validate_backend_generation(
-                  &self,
-                  identity: &ProductionKeyIdentity,
-                  generation: u64,
-              ) -> Result<HardwareKeyDescriptor, ProductionSignerServiceError> {
-                  if generation == 0 {
-                      return Err(ProductionSignerServiceError::InvalidKeyGeneration);
-                  }
-                  let policy = policy_for_identity(identity)?;
-                  let descriptor = self.backend.descriptor_for_generation(&policy, generation)?;
-                  descriptor.validate_for(&policy)?;
-                  Ok(descriptor)
-              }''' + service[method_end:]
-          service = replace_once(
-              service,
-              '''    #[error("production signer identity is not supported by the service")]
-              UnsupportedIdentity,''',
-              '''    #[error("production signer identity is not supported by the service")]
-              UnsupportedIdentity,
-              #[error("production signer key generation must be greater than zero")]
-              InvalidKeyGeneration,''',
-              "service generation error",
-          )
-          service_path.write_text(service)
+          store = Path("crates/windows-production-trust-state-runtime/src/store.rs")
+          text = store.read_text()
+          old = "    let mut file = File::open(path)?;"
+          new = "    let file = File::open(path)?;"
+          if text.count(old) != 1:
+              raise SystemExit("expected one unnecessary mutable File")
+          store.write_text(text.replace(old, new, 1))
           PY
 
       - name: Materialize canonical formatting and lockfile
@@ -369,52 +60,32 @@ jobs:
           cargo fmt --all
           cargo generate-lockfile
 
-      - name: Commit canonical trust-state sources
+      - name: Commit exact trust-state fixes
         shell: bash
         run: |
           set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add Cargo.toml Cargo.lock \
-            crates/windows-production-key-governance-runtime \
-            crates/windows-production-signer-service-runtime \
-            crates/windows-production-trust-state-runtime
+          git add Cargo.lock crates/windows-production-trust-state-runtime
           if git diff --cached --quiet; then
-            echo "No canonical source changes"
+            echo "No source changes"
           else
-            git commit -m "Implement signed production trust-state lifecycle"
+            git commit -m "Fix production trust-state lint diagnostics"
             git push origin HEAD:agent/tpm-cng-signer-service-v1
           fi
 
-      - name: Capture trust-state Clippy diagnostics
-        shell: bash
+      - name: Check workspace formatting
+        run: cargo fmt --all -- --check
+
+      - name: Lint production trust-state lifecycle
         run: |
-          set +e
           cargo clippy \
             -p ergaxiom-windows-production-key-governance-runtime \
             -p ergaxiom-windows-production-signer-service-runtime \
             -p ergaxiom-windows-production-trust-state-runtime \
-            --all-targets --all-features -- -D warnings \
-            2>&1 | tee "$RUNNER_TEMP/trust-state-clippy.log"
-          status=${PIPESTATUS[0]}
-          printf '%s\n' "$status" > "$RUNNER_TEMP/trust-state-clippy.status"
-          exit 0
-
-      - name: Upload trust-state Clippy diagnostics
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: trust-state-clippy-diagnostics
-          path: ${{ runner.temp }}/trust-state-clippy.*
-          if-no-files-found: error
-          retention-days: 3
-
-      - name: Fail on trust-state lint mismatch
-        shell: bash
-        run: test "$(cat "$RUNNER_TEMP/trust-state-clippy.status")" = "0"
+            --all-targets --all-features -- -D warnings
 
       - name: Run production trust-state attacks
-        if: success()
         run: |
           cargo test \
             -p ergaxiom-windows-production-key-governance-runtime \
