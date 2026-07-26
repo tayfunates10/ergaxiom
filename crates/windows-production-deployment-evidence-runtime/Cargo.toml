@@ -10,7 +10,7 @@ publish = false
 base64.workspace = true
 ed25519-dalek.workspace = true
 ergaxiom-proof-kernel = { path = "../proof-kernel" }
-ergaxiom-windows-production-signer-host-runtime = { path = "../windows-production-signer-host-runtime" }
+ergaxiom-windows-production-signer-host-runtime = { package = "ergaxiom-windows-production-installation-evidence-runtime", path = "../windows-production-installation-evidence-runtime" }
 ergaxiom-windows-production-signer-runtime = { path = "../windows-production-signer-runtime" }
 ergaxiom-windows-production-trust-state-runtime = { path = "../windows-production-trust-state-runtime" }
 serde.workspace = true
