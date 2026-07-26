@@ -28,7 +28,8 @@ A capability is marked **certified path** only when the repository has an automa
 | Governed capability and attestation verification | Implemented | Direct and DPAPI signer-bound Capability Tokens plus Acceptance Certificates pass through the current Ed25519 governed registry. Production P-256 packages use fixed public trust snapshots but are not yet routed through an algorithm-agile governed registry. |
 | Deterministic release evidence | Implemented | SPDX 2.3 dependency inventory, source/toolchain/artifact manifest and sorted SHA-256 checksums reproduce from identical inputs. Permanent Windows CI compiles an unsigned candidate and proves it remains explicitly ineligible without signing and installer-provenance evidence. |
 | Windows DPAPI isolated signer | Implemented | A separate one-request signer process protects persisted Ed25519 seeds with DPAPI CurrentUser and identity-specific entropy, accepts only role-bound lowercase SHA-256 digests, persists replay markers and returns public material only. This is a development/backward-compatibility signer, not TPM non-exportability or protection from arbitrary malicious same-user code. |
-| Windows TPM/CNG issuer signer foundation | Implemented | Fixed Capability and Attestation identities use a Microsoft Platform Crypto Provider, ECDSA P-256/SHA-256, non-exportable signing-only key policy, public-only descriptors and handle-only signing contracts. Hosted runners keep assurance `UNPROVEN`; no software-provider or DPAPI fallback can claim production eligibility. |
+| Windows TPM/CNG issuer signer foundation | Implemented | Fixed Capability and Attestation identities use a Microsoft Platform Crypto Provider, ECDSA P-256/SHA-256, non-exportable signing-only key policy, public-only descriptors and handle-only signing contracts. The normal CNG runtime compiles with no provisioning feature and can only open existing keys. Hosted runners keep assurance `UNPROVEN`; no software-provider or DPAPI fallback can claim production eligibility. |
+| Windows TPM/CNG administrator provisioning | Implemented | A separate feature-gated elevated administrator executable can create or reopen fixed production keys and emit sealed public-only provisioning evidence with a P-256 key-possession signature. Linux and Windows CI verify the open-only split, provisioner build and evidence attacks. Hosted CI does not run a real UAC ceremony or prove physical TPM assurance. |
 | Authenticated local production signer service | Implemented | A revisioned caller allowlist, PID creation-time guard, SID/session/path/image-digest binding, service-instance binding, replay-before-backend ordering, sealed public trust snapshot and explicit local message-mode named-pipe ACL are implemented and Windows-tested. Purpose-locked Capability and Attestation runtimes are wired to the transport. Hardened Windows-service deployment and persisted trust rotation remain open. |
 | Windows production release signing | Planned | Authenticode, trusted timestamps, certificate-chain verification and signed installer upgrade/rollback provenance are not implemented. The CNG issuer-signer foundation does not make unsigned Windows artifacts release-eligible. |
 | Windows Bridge protocol | Implemented | Signed pre-state, action-boundary state, post-state and TOCTOU checks. |
@@ -70,7 +71,7 @@ A capability is marked **certified path** only when the repository has an automa
 
 ### Phase 3 — Windows execution bridge
 
-**Status: demonstrated, not closed.** A genuine WPF UI Automation action is signed and independently verified. A bounded DPAPI signer, purpose-locked Ed25519 issuance, backend issuance authorization, a CNG/P-256 issuer-signer foundation, authenticated local signer-service boundary and production Capability/Attestation issuance runtimes now exist and pass the permanent Linux/Windows matrix. The phase remains open because physical-TPM assurance is unproven, hardened service deployment, persistent trust lifecycle, broader UI patterns, recovery, code signing and real-user deployment hardening are incomplete.
+**Status: demonstrated, not closed.** A genuine WPF UI Automation action is signed and independently verified. A bounded DPAPI signer, purpose-locked Ed25519 issuance, backend issuance authorization, a CNG/P-256 issuer-signer foundation, compile-time separated administrator provisioner, authenticated local signer-service boundary and production Capability/Attestation issuance runtimes now exist and pass the permanent Linux/Windows matrix. The phase remains open because physical-TPM assurance is unproven, an operational controlled-hardware ceremony is not recorded, hardened service deployment, persistent trust lifecycle, broader UI patterns, recovery, code signing and real-user deployment hardening are incomplete.
 
 ### Phase 4 — Graphic Designer Alpha
 
@@ -80,7 +81,7 @@ This does not claim unrestricted design automation, general commercial-print cer
 
 ### Windows Product Alpha control gate
 
-**Status: implemented for one bounded fixture, product gate remains open.** The desktop application can review and submit the exact snapshot, contract, plan and permission tuple; Rust issues an expiring approval and owns execution, cancellation, rollback and audit receipts. Public Ed25519 verification-key roles, rotation, revocation, deterministic unsigned release evidence, a separate DPAPI signer, purpose-locked issuance, one-shot backend authorization, a CNG/P-256 key-provider contract, authenticated local signer-service boundary and P-256 Capability/Attestation issuance runtimes are implemented and CI-verified. The renderer exposes no issuance command. Persistent user-selected jobs, real Evidence Bundle loading, deployed internal CNG service orchestration, independently proven physical-TPM keys, P-256 governance, Authenticode, signed installer provenance and all four profession paths in one user-driven desktop flow remain open.
+**Status: implemented for one bounded fixture, product gate remains open.** The desktop application can review and submit the exact snapshot, contract, plan and permission tuple; Rust issues an expiring approval and owns execution, cancellation, rollback and audit receipts. Public Ed25519 verification-key roles, rotation, revocation, deterministic unsigned release evidence, a separate DPAPI signer, purpose-locked issuance, one-shot backend authorization, a CNG/P-256 open-only signer contract, separate administrator provisioner, authenticated local signer-service boundary and P-256 Capability/Attestation issuance runtimes are implemented and CI-verified. The renderer exposes no issuance command. Persistent user-selected jobs, real Evidence Bundle loading, deployed internal CNG service orchestration, independently proven physical-TPM keys, P-256 governance, Authenticode, signed installer provenance and all four profession paths in one user-driven desktop flow remain open.
 
 ### Phase 5 — Profession learning laboratory
 
@@ -116,16 +117,18 @@ This does not claim unrestricted design automation, general commercial-print cer
 15. One-shot backend authorization for purpose-locked Capability Token and Acceptance Certificate issuance, bound to exact approval, command receipt, snapshot, contract, plan, permission, Evidence Bundle and Replay Manifest material.
 16. TPM/CNG issuer-signer foundation with fixed Capability and Attestation identities, non-exportable signing-only P-256 key policy, handle-only CNG signing, P-256 protocol verification, authenticated caller and service-instance binding, replay-before-backend ordering and explicit local named-pipe security.
 17. Purpose-locked P-256 Capability Token and Acceptance Certificate issuance with sealed public trust snapshots, independent receipt sealing, backward-compatible artifact types, Evidence Bundle/Replay Manifest reassessment and permanent Linux/Windows CI.
+18. Compile-time separated elevated administrator provisioning with open-only normal signer builds, deterministic key naming, sealed public-only receipts, P-256 key-possession proof and fail-closed assurance that does not promote hosted keys to hardware-backed production status.
 
 ## Next gates
 
-1. Add an independently trusted physical-TPM evidence gate, separate administrator provisioning executable and algorithm-agile P-256 key governance.
-2. Deploy the authenticated signer as a hardened Windows service and persist/rotate signed trust snapshots.
-3. Add Authenticode, trusted timestamps, certificate-chain verification and signed installer upgrade/rollback provenance.
-4. Replace the bounded desktop fixture with persistent user-selected immutable inputs, load real Evidence Bundles and internally route all four certified Graphic Designer job types through the deployed backend issuance policy.
-5. Expand the Windows Bridge across real application patterns and recovery cases.
-6. Build the Profession Learning Laboratory in a cryptographically separate environment.
-7. Add cross-platform bridges and additional profession capsules only after the Windows Product Alpha gates hold.
+1. Add independently trusted physical-TPM evidence and execute a controlled elevated provisioning ceremony whose evidence is retained and reviewed.
+2. Add algorithm-agile P-256 key rotation, revocation and signed trust-snapshot governance.
+3. Deploy the authenticated signer as a hardened Windows service and persist/rotate governed trust snapshots.
+4. Add Authenticode, trusted timestamps, certificate-chain verification and signed installer upgrade/rollback provenance.
+5. Replace the bounded desktop fixture with persistent user-selected immutable inputs, load real Evidence Bundles and internally route all four certified Graphic Designer job types through the deployed backend issuance policy.
+6. Expand the Windows Bridge across real application patterns and recovery cases.
+7. Build the Profession Learning Laboratory in a cryptographically separate environment.
+8. Add cross-platform bridges and additional profession capsules only after the Windows Product Alpha gates hold.
 
 ## Non-negotiable rule
 
