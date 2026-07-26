@@ -404,6 +404,11 @@ fn digest_with_blank_field<T: Serialize>(
     Ok(canonical_json_sha256(&value)?)
 }
 
+#[cfg(windows)]
+mod platform {
+    pub use crate::windows::{atomic_replace, harden_directory, sync_directory};
+}
+
 #[cfg(not(windows))]
 mod platform {
     use std::fs;
