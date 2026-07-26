@@ -72,9 +72,7 @@ impl CngPlatformKeyProvider {
         if generation == 1 {
             Ok(base)
         } else {
-            Ok(format!(
-                "{base}{GENERATION_SEPARATOR}{generation:0GENERATION_WIDTH$}"
-            ))
+            Ok(format!("{base}{GENERATION_SEPARATOR}{generation:020}"))
         }
     }
 

@@ -40,14 +40,16 @@ fn run(arguments: impl IntoIterator<Item = OsString>) -> Result<(), ProvisionerE
         return Err(ProvisionerError::SystemClockBeforeEpoch);
     }
     let authority = ProvisioningAuthority::new(CngPlatformKeyProvider::production());
-    let evidence = authority.provision(
+    let evidence = authority.provision_generation(
         &policy,
+        command.generation,
         command.expected_public_key_digest.as_deref(),
         provisioned_at_epoch_s,
     )?;
     evidence.verify_contract(&policy)?;
     write_new_json(&command.output, &evidence)?;
     println!("role={:?}", command.role);
+    println!("generation={}", command.generation);
     println!("created={}", evidence.statement.created);
     println!("public_key_digest={}", evidence.receipt.public_key_digest);
     println!("receipt_digest={}", evidence.receipt.receipt_digest);
@@ -58,6 +60,7 @@ fn run(arguments: impl IntoIterator<Item = OsString>) -> Result<(), ProvisionerE
 #[derive(Debug)]
 struct Command {
     role: IssuerRole,
+    generation: u64,
     output: PathBuf,
     expected_public_key_digest: Option<String>,
 }
@@ -66,6 +69,7 @@ impl Command {
     fn parse(arguments: impl IntoIterator<Item = OsString>) -> Result<Self, ProvisionerError> {
         let mut arguments = arguments.into_iter();
         let mut role = None;
+        let mut generation = 1_u64;
         let mut output = None;
         let mut expected_public_key_digest = None;
         while let Some(argument) = arguments.next() {
@@ -80,6 +84,14 @@ impl Command {
                         "attestation" => IssuerRole::Attestation,
                         _ => return Err(ProvisionerError::UnsupportedRole),
                     });
+                }
+                "--generation" => {
+                    generation = next_utf8(&mut arguments, "--generation")?
+                        .parse::<u64>()
+                        .map_err(|_| ProvisionerError::InvalidGeneration)?;
+                    if generation == 0 {
+                        return Err(ProvisionerError::InvalidGeneration);
+                    }
                 }
                 "--output" => {
                     output = Some(PathBuf::from(next_utf8(&mut arguments, "--output")?));
@@ -97,6 +109,7 @@ impl Command {
         validate_output_path(&output)?;
         Ok(Self {
             role,
+            generation,
             output,
             expected_public_key_digest,
         })
@@ -174,7 +187,7 @@ fn write_new_json<T: serde::Serialize>(path: &Path, value: &T) -> Result<(), Pro
 #[derive(Debug, Error)]
 enum ProvisionerError {
     #[error(
-        "usage: ergaxiom-windows-production-signer-provisioner --role capability|attestation --output <new-json-path> [--expected-public-key-digest <sha256>]"
+        "usage: ergaxiom-windows-production-signer-provisioner --role capability|attestation [--generation <positive-u64>] --output <new-json-path> [--expected-public-key-digest <sha256>]"
     )]
     Usage,
     #[error("command-line argument is not valid UTF-8")]
@@ -185,6 +198,8 @@ enum ProvisionerError {
     UnknownArgument(String),
     #[error("only capability and attestation provisioning roles are supported")]
     UnsupportedRole,
+    #[error("key generation must be a positive integer")]
+    InvalidGeneration,
     #[error("provisioning output path is invalid")]
     InvalidOutputPath,
     #[error("provisioning output already exists")]

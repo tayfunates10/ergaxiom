@@ -29,6 +29,8 @@ pub struct ProvisioningStatement {
     pub schema_version: String,
     pub domain: String,
     pub identity: ProductionKeyIdentity,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub generation: Option<u64>,
     pub receipt_digest: String,
     pub key_name_digest: String,
     pub public_key_digest: String,
@@ -62,7 +64,11 @@ impl ProvisioningStatement {
         {
             return Err(ProvisioningError::StatementReceiptBindingMismatch);
         }
-        let key_name = CngPlatformKeyProvider::key_name_for(policy)?;
+        let generation = self.generation.unwrap_or(1);
+        if generation == 0 {
+            return Err(ProvisioningError::InvalidKeyGeneration);
+        }
+        let key_name = CngPlatformKeyProvider::key_name_for_generation(policy, generation)?;
         if self.key_name_digest != lowercase_sha256(key_name.as_bytes()) {
             return Err(ProvisioningError::KeyNameDigestMismatch);
         }
@@ -128,6 +134,7 @@ impl ProvisioningEvidence {
         }
         Ok(VerifiedProvisioningEvidence {
             identity: self.receipt.identity.clone(),
+            generation: self.statement.generation.unwrap_or(1),
             public_key_digest: self.receipt.public_key_digest.clone(),
             policy_digest: self.receipt.policy_digest.clone(),
             receipt_digest: self.receipt.receipt_digest.clone(),
@@ -159,6 +166,7 @@ impl ProvisioningEvidence {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct VerifiedProvisioningEvidence {
     pub identity: ProductionKeyIdentity,
+    pub generation: u64,
     pub public_key_digest: String,
     pub policy_digest: String,
     pub receipt_digest: String,
@@ -173,6 +181,19 @@ pub trait ProvisioningBackend {
         policy: &ProductionKeyPolicy,
         expected_public_key_digest: Option<&str>,
     ) -> Result<CngProvisioningResult, ProvisioningError>;
+
+    fn provision_generation(
+        &self,
+        policy: &ProductionKeyPolicy,
+        generation: u64,
+        expected_public_key_digest: Option<&str>,
+    ) -> Result<CngProvisioningResult, ProvisioningError> {
+        if generation == 1 {
+            self.provision(policy, expected_public_key_digest)
+        } else {
+            Err(ProvisioningError::UnsupportedKeyGeneration(generation))
+        }
+    }
 
     fn sign_key_possession(
         &self,
@@ -189,6 +210,15 @@ impl ProvisioningBackend for CngPlatformKeyProvider {
         expected_public_key_digest: Option<&str>,
     ) -> Result<CngProvisioningResult, ProvisioningError> {
         Ok(self.provision_unverified(policy, expected_public_key_digest)?)
+    }
+
+    fn provision_generation(
+        &self,
+        policy: &ProductionKeyPolicy,
+        generation: u64,
+        expected_public_key_digest: Option<&str>,
+    ) -> Result<CngProvisioningResult, ProvisioningError> {
+        Ok(self.provision_generation_unverified(policy, generation, expected_public_key_digest)?)
     }
 
     fn sign_key_possession(
@@ -223,11 +253,31 @@ where
         expected_public_key_digest: Option<&str>,
         provisioned_at_epoch_s: u64,
     ) -> Result<ProvisioningEvidence, ProvisioningError> {
+        self.provision_generation(
+            policy,
+            1,
+            expected_public_key_digest,
+            provisioned_at_epoch_s,
+        )
+    }
+
+    pub fn provision_generation(
+        &self,
+        policy: &ProductionKeyPolicy,
+        generation: u64,
+        expected_public_key_digest: Option<&str>,
+        provisioned_at_epoch_s: u64,
+    ) -> Result<ProvisioningEvidence, ProvisioningError> {
         policy.validate()?;
+        if generation == 0 {
+            return Err(ProvisioningError::InvalidKeyGeneration);
+        }
         if provisioned_at_epoch_s == 0 {
             return Err(ProvisioningError::InvalidProvisioningTime);
         }
-        let provisioning = self.backend.provision(policy, expected_public_key_digest)?;
+        let provisioning =
+            self.backend
+                .provision_generation(policy, generation, expected_public_key_digest)?;
         validate_descriptor_contract(&provisioning, policy)?;
         let receipt = ProvisioningReceipt::from_descriptor(
             provisioning.descriptor.clone(),
@@ -238,6 +288,7 @@ where
             schema_version: PROVISIONING_STATEMENT_SCHEMA.to_owned(),
             domain: PROVISIONING_DOMAIN.to_owned(),
             identity: policy.identity.clone(),
+            generation: Some(generation),
             receipt_digest: receipt.receipt_digest.clone(),
             key_name_digest,
             public_key_digest: receipt.public_key_digest.clone(),
@@ -465,6 +516,10 @@ pub enum ProvisioningError {
     UnsupportedReceiptSchema,
     #[error("production signer provisioning domain is invalid")]
     InvalidProvisioningDomain,
+    #[error("production signer key generation must be greater than zero")]
+    InvalidKeyGeneration,
+    #[error("provisioning backend does not support key generation {0}")]
+    UnsupportedKeyGeneration(u64),
     #[error("production signer provisioning identity binding does not match")]
     IdentityBindingMismatch,
     #[error("production signer descriptor contract does not match")]
