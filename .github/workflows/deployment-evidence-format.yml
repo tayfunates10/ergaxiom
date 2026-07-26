@@ -1,9 +1,11 @@
-name: Format deployment evidence wrapper
+name: Format deployment evidence sources
 
 on:
   pull_request:
     paths:
-      - "crates/windows-production-installation-evidence-runtime/src/lib_wrapper.rs"
+      - "apps/windows-production-signer-service/**"
+      - "crates/windows-production-deployment-evidence-runtime/**"
+      - "crates/windows-production-installation-evidence-runtime/**"
       - ".github/workflows/deployment-evidence-format.yml"
 
 permissions:
@@ -26,10 +28,10 @@ jobs:
           set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add crates/windows-production-installation-evidence-runtime/src/lib_wrapper.rs
+          git add apps/windows-production-signer-service crates/windows-production-deployment-evidence-runtime crates/windows-production-installation-evidence-runtime
           if git diff --cached --quiet; then
             echo "No formatting changes"
           else
-            git commit -m "Format deployment evidence registry shim"
+            git commit -m "Format production deployment evidence"
             git push origin HEAD:agent/tpm-cng-signer-service-v1
           fi
