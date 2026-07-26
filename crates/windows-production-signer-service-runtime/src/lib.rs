@@ -1,6 +1,7 @@
 #![forbid(unsafe_code)]
 
 use ergaxiom_key_governance_runtime::IssuerRole;
+use ergaxiom_proof_kernel::{HashingError, canonical_json_sha256};
 use ergaxiom_windows_production_signer_protocol_runtime::{
     ProductionSignerEnvelope, ProductionSignerProtocolError, ProductionSignerRequest,
     ProductionSignerResponse, ProductionSignerSuccess,
@@ -8,11 +9,11 @@ use ergaxiom_windows_production_signer_protocol_runtime::{
 use ergaxiom_windows_production_signer_runtime::{
     AuthenticatedCallerIdentity, HardwareKeyDescriptor, HardwareSignature, ProductionKeyIdentity,
     ProductionKeyPolicy, ProductionSignerError, SignerRequestBinding, SignerServiceIdentity,
-    validate_sha256,
+    validate_identifier, validate_sha256,
 };
 use ergaxiom_windows_signer_service_identity_runtime::{
-    CallerAuthorizationReceipt, SignerCallerAllowlist, SignerIdentityAuthorizer,
-    SignerIdentityError,
+    CALLER_AUTHORIZATION_RECEIPT_SCHEMA, CallerAuthorizationReceipt, SignerCallerAllowlist,
+    SignerIdentityAuthorizer, SignerIdentityError,
 };
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
@@ -76,6 +77,7 @@ impl AuthorizedProductionSignerPackage {
         let identity = response_identity(&self.signer_response)?;
         let policy = policy_for_identity(identity)?;
         trust.validate_for(&policy)?;
+        validate_authorization_receipt_seal(&self.caller_authorization)?;
         if identity != &trust.identity {
             return Err(ProductionSignerServiceError::TrustIdentityMismatch);
         }
@@ -237,6 +239,44 @@ pub fn policy_for_identity(
     }
 }
 
+fn validate_authorization_receipt_seal(
+    authorization: &CallerAuthorizationReceipt,
+) -> Result<(), ProductionSignerServiceError> {
+    if authorization.schema_version != CALLER_AUTHORIZATION_RECEIPT_SCHEMA {
+        return Err(ProductionSignerServiceError::Identity(
+            SignerIdentityError::UnsupportedReceiptSchema,
+        ));
+    }
+    validate_identifier("caller_id", &authorization.caller_id)?;
+    validate_sha256(&authorization.request_digest)?;
+    validate_sha256(&authorization.caller_identity_digest)?;
+    validate_sha256(&authorization.signer_service_identity_digest)?;
+    validate_sha256(&authorization.allowlist_digest)?;
+    validate_sha256(&authorization.receipt_digest)?;
+    if authorization.allowlist_revision == 0 {
+        return Err(ProductionSignerServiceError::InvalidTrustAllowlistRevision);
+    }
+    if authorization.authorized_at_epoch_s == 0 {
+        return Err(ProductionSignerServiceError::Identity(
+            SignerIdentityError::InvalidAuthorizationTime,
+        ));
+    }
+    let mut value = serde_json::to_value(authorization)?;
+    let object = value
+        .as_object_mut()
+        .ok_or(ProductionSignerServiceError::InvalidCanonicalObject)?;
+    object.insert(
+        "receipt_digest".to_owned(),
+        serde_json::Value::String(String::new()),
+    );
+    if authorization.receipt_digest != canonical_json_sha256(&value)? {
+        return Err(ProductionSignerServiceError::Identity(
+            SignerIdentityError::AuthorizationReceiptDigestMismatch,
+        ));
+    }
+    Ok(())
+}
+
 fn validate_authorization_response_binding(
     authorization: &CallerAuthorizationReceipt,
     envelope: &ProductionSignerEnvelope,
@@ -289,6 +329,12 @@ pub enum ProductionSignerServiceError {
     TrustCallerIdentityMismatch,
     #[error("production signer trusted service identity does not match")]
     TrustServiceIdentityMismatch,
+    #[error("production signer canonical object is invalid")]
+    InvalidCanonicalObject,
+    #[error("production signer JSON serialization failed: {0}")]
+    Json(#[from] serde_json::Error),
+    #[error(transparent)]
+    Hashing(#[from] HashingError),
     #[error(transparent)]
     Backend(#[from] HardwareSignerBackendError),
     #[error(transparent)]
