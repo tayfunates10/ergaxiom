@@ -37,13 +37,7 @@ mod windows_sys {
                     // only normalizes the unsigned WIN32_ERROR result to std::io's i32.
                     unsafe {
                         crate::windows_sys_external::Win32::System::Registry::RegGetValueW(
-                            hkey,
-                            sub_key,
-                            value,
-                            flags,
-                            value_type,
-                            data,
-                            data_size,
+                            hkey, sub_key, value, flags, value_type, data, data_size,
                         ) as i32
                     }
                 }
