@@ -1,10 +1,10 @@
-# TPM/CNG Production Signer and Authenticated Local Service
+# TPM/CNG Production Signer, Administrator Provisioning and Authenticated Local Service
 
 ## Status
 
-This document defines the bounded TPM/CNG production signer foundation implemented under Issue #60. The code provides a hardware-only Windows CNG provider contract, a P-256 signer protocol, caller and signer-service identity binding, an authenticated local named-pipe transport, a fail-closed signer-service authority and purpose-locked Capability Token and Acceptance Certificate issuance runtimes.
+This document defines the bounded TPM/CNG production signer foundation implemented under Issue #60. The code provides a Windows CNG provider contract, a compile-time separated administrator provisioning surface, sealed public-only provisioning evidence, a P-256 signer protocol, caller and signer-service identity binding, an authenticated local named-pipe transport, a fail-closed signer-service authority and purpose-locked Capability Token and Acceptance Certificate issuance runtimes.
 
-The repository does **not** claim that GitHub-hosted Windows runners prove a physical TPM. Keys observed without an independently accepted hardware gate remain `UNPROVEN` and cannot become production-eligible.
+The repository does **not** claim that GitHub-hosted Windows runners prove a physical TPM or execute an elevated provisioning ceremony. Keys and receipts without an independently accepted hardware gate remain `UNPROVEN` and cannot become production-eligible.
 
 ## Fixed production identities
 
@@ -29,19 +29,58 @@ An eligible production key must match all of the following:
 
 The provider probe requires the CNG hardware implementation flag and rejects a reported software implementation. There is no software-provider or DPAPI fallback in the production provider.
 
+## Compile-time provisioning separation
+
+The normal CNG runtime has no default features. In its normal signer build it can only:
+
+1. derive the deterministic persisted-key name,
+2. open an already provisioned key,
+3. validate the non-exportable and signing-only properties,
+4. export the public ECC blob, and
+5. sign an exact 32-byte SHA-256 digest through the live CNG handle.
+
+Key creation, property mutation and finalization compile only when the explicit `provisioning` feature is enabled. The normal workflow separately runs `cargo check --no-default-features` on Linux and Windows to prove that the open-only surface builds without provisioning code.
+
+The existing DPAPI/Ed25519 signer remains available only for development, tests and backward verification of previously issued artifacts. It is not a fallback for the P-256 production path.
+
+## Elevated administrator provisioner
+
+`ergaxiom-windows-production-signer-provisioner` is a separate executable and links the CNG runtime with the `provisioning` feature. It:
+
+- accepts only the Capability or Attestation role,
+- requires an elevated Windows process token before accessing CNG provisioning,
+- optionally pins an expected public-key digest for idempotent reprovisioning checks,
+- refuses to overwrite an existing evidence file,
+- writes evidence through a create-new temporary file and same-directory atomic rename, and
+- prints only public identifiers and digests.
+
+The command surface does not accept a provider, algorithm, key name, export policy, signature encoding, private material or arbitrary payload. Those values are fixed by the production policy.
+
+Hosted CI compiles and lints this executable on Windows but does not claim to run an elevated UAC ceremony or create a physical TPM key.
+
 ## CNG private-key boundary
 
-The Windows CNG provider:
+The provisioner may create or reopen an ECDSA P-256 persisted key through the Microsoft Platform Crypto Provider. New keys receive a zero export policy and signing-only usage before finalization. A newly created handle is deleted if provisioning fails before finalization.
 
-1. derives a deterministic persisted-key name from the fixed issuer identity,
-2. opens the Microsoft Platform Crypto Provider,
-3. creates or opens an ECDSA P-256 persisted key,
-4. sets a zero export policy and signing-only usage before finalization,
-5. exports only the public ECC blob,
-6. signs a 32-byte SHA-256 digest through `NCryptSignHash`, and
-7. releases CNG handles without copying private-key bytes into Ergaxiom-owned storage.
+The normal signer reopens the key through the deterministic name and signs via `NCryptSignHash`. Ergaxiom-owned memory receives only the public ECC blob and the signature. No private-key byte buffer, seed, protected seed or exportable key material is produced by these runtimes.
 
-The existing DPAPI/Ed25519 signer remains available only for development, tests and backward verification of previously issued artifacts.
+## Provisioning statement and evidence
+
+A successful provisioning ceremony produces a public-only evidence package containing:
+
+- a canonical provisioning receipt,
+- the fixed issuer role and identity,
+- provider, algorithm and encoding metadata,
+- public key and public-key digest,
+- export policy and provider implementation flags,
+- policy digest and deterministic persisted-key-name digest,
+- provisioning time and whether the key was newly created,
+- a P-256 key-possession signature over the sealed provisioning statement, and
+- a canonical evidence digest.
+
+Independent verification checks the receipt seal, statement-to-receipt bindings, deterministic key-name digest, public-key digest, policy digest, evidence seal and P-256 key-possession signature. Receipt, statement, signature and evidence substitutions fail closed. Secret-shaped fields are rejected.
+
+A valid key-possession signature proves control of the persisted private key corresponding to the public key. It does **not** independently prove that the key is protected by a trustworthy physical TPM. Therefore `verify_contract` may validate an `UNPROVEN` receipt, while `verify_production_eligible` still rejects it until independent hardware evidence promotes the assurance state.
 
 ## Hardware assurance
 
@@ -51,7 +90,7 @@ The descriptor distinguishes:
 - `UNPROVEN`
 - `REJECTED`
 
-Cryptographic P-256 verification can exercise an `UNPROVEN` descriptor, but production eligibility additionally requires `PROVEN_HARDWARE_BACKED`. Provider availability, successful key creation or a valid signature alone cannot upgrade assurance.
+Cryptographic P-256 verification, provisioning evidence and key-possession proof can exercise an `UNPROVEN` descriptor, but production eligibility additionally requires `PROVEN_HARDWARE_BACKED`. Provider availability, successful key creation or a valid signature alone cannot upgrade assurance.
 
 A dedicated physical-machine gate may run the opt-in CNG integration test with `ERGAXIOM_TPM_HARDWARE_TEST=1`; hosted CI does not set this variable and cannot silently promote hardware assurance.
 
@@ -153,28 +192,18 @@ The production Attestation authority retains the existing Evidence Runtime gate.
 
 Independent production verification rechecks the signer trust snapshot, certificate payload, Replay Manifest and—when supplied—the complete Evidence Bundle and recomputed manifest. Existing Ed25519 certificate packages remain backward compatible.
 
-## Provisioning receipt
-
-The public-only provisioning model binds:
-
-- issuer role and identity,
-- provider and algorithm,
-- public key and public-key digest,
-- export policy and implementation flags,
-- hardware-assurance state,
-- production-policy digest, and
-- provisioning time.
-
-Secret-shaped fields are rejected. Production key creation is not exposed as an operation in the normal production signing request protocol.
-
 ## Validation
 
 Permanent Linux and Windows CI covers:
 
-- formatting and Clippy with warnings denied,
+- formatting and warnings-deny Clippy,
+- open-only CNG builds with provisioning disabled,
+- compilation and linting of the feature-gated administrator provisioner,
 - fixed identity and policy substitution attacks,
 - provider/software fallback and export-policy attacks,
 - deterministic key naming and CNG handle-only signing contracts,
+- provisioning receipt, statement, key-possession signature and evidence substitution attacks,
+- the rule that valid `UNPROVEN` provisioning evidence cannot become production-eligible,
 - P-256 prehash verification,
 - caller, service-instance, receipt-seal and replay substitution attacks,
 - named-pipe ACL construction and bounded read-before-impersonation transport,
@@ -182,14 +211,14 @@ Permanent Linux and Windows CI covers:
 - purpose-locked production Capability Token issuance and authorization, and
 - purpose-locked production Acceptance Certificate issuance, Evidence Bundle reassessment and independent manifest verification.
 
-The canonical Linux and Windows matrix passed formatting, warnings-deny Clippy and the complete bounded test set before the workflow was restored to its permanent read-only mode.
+The canonical Linux and Windows provisioning matrix passed formatting, open-only build checks, warnings-deny Clippy and the complete bounded test set. The workflow remains in permanent read-only mode.
 
 ## Remaining boundary before Issue #60 can close
 
 The following remain open:
 
 - independently trusted physical-TPM evidence that can promote a key from `UNPROVEN` to `PROVEN_HARDWARE_BACKED`,
-- a separately deployed administrator provisioning executable and signed provisioning evidence,
+- an operational elevated provisioning ceremony on controlled hardware and custody of its evidence,
 - algorithm-agile governed key rotation and revocation for P-256 keys,
 - deployment of the authenticated production signer as a hardened Windows service, and
 - full desktop/backend orchestration and persisted trust-snapshot lifecycle.
