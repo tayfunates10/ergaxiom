@@ -29,15 +29,18 @@ pub fn production_pipe_sddl(
 pub struct AuthenticatedPipeConnection {
     #[cfg(windows)]
     inner: windows::PipeConnection,
-    caller: AuthenticatedCallerIdentity,
+    caller: Option<AuthenticatedCallerIdentity>,
     max_request_bytes: u32,
     max_response_bytes: u32,
 }
 
 impl AuthenticatedPipeConnection {
-    #[must_use]
-    pub const fn caller(&self) -> &AuthenticatedCallerIdentity {
-        &self.caller
+    pub fn caller(
+        &self,
+    ) -> Result<&AuthenticatedCallerIdentity, ProductionSignerTransportError> {
+        self.caller
+            .as_ref()
+            .ok_or(ProductionSignerTransportError::CallerIdentityUnavailable)
     }
 
     pub fn read_request(
@@ -60,6 +63,9 @@ impl AuthenticatedPipeConnection {
         #[cfg(windows)]
         {
             let bytes = self.inner.read_message(max_bytes)?;
+            if self.caller.is_none() {
+                self.caller = Some(self.inner.derive_authenticated_caller()?);
+            }
             serde_json::from_slice(&bytes).map_err(ProductionSignerTransportError::Json)
         }
         #[cfg(not(windows))]
@@ -119,10 +125,10 @@ impl ProductionSignerPipeServer {
     ) -> Result<AuthenticatedPipeConnection, ProductionSignerTransportError> {
         #[cfg(windows)]
         {
-            let (inner, caller) = self.inner.accept()?;
+            let inner = self.inner.accept()?;
             Ok(AuthenticatedPipeConnection {
                 inner,
-                caller,
+                caller: None,
                 max_request_bytes: self.contract.max_request_bytes,
                 max_response_bytes: self.contract.max_response_bytes,
             })
@@ -181,6 +187,8 @@ impl ProductionSignerPipeClient {
 pub enum ProductionSignerTransportError {
     #[error("production signer named-pipe transport is unavailable on this platform")]
     UnsupportedPlatform,
+    #[error("production signer caller identity is unavailable before the bounded request is read")]
+    CallerIdentityUnavailable,
     #[error("production signer named-pipe message size is invalid")]
     MessageSizeInvalid,
     #[error("production signer named-pipe SDDL conversion failed: {0}")]
