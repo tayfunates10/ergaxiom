@@ -29,10 +29,11 @@ jobs:
         with:
           components: rustfmt, clippy
 
-      - name: Add signed trust-state request binding
+      - name: Apply signed trust-state request binding
         shell: bash
         run: |
-          python - <<'PY'
+          set +e
+          python - <<'PY' 2>&1 | tee "$RUNNER_TEMP/trust-binding-patch.log"
           from pathlib import Path
 
           runtime_path = Path("crates/windows-production-signer-runtime/src/lib.rs")
@@ -41,9 +42,12 @@ jobs:
           binding_end = runtime.index("\n}\n\nimpl SignerRequestBinding", binding_start)
           binding_struct = runtime[binding_start:binding_end]
           if "trust_state_binding_digest" not in binding_struct:
+              field = "    pub key_policy_digest: String,"
+              if field not in binding_struct:
+                  raise RuntimeError("SignerRequestBinding key policy field missing")
               binding_struct = binding_struct.replace(
-                  "    pub key_policy_digest: String,",
-                  "    pub key_policy_digest: String,\n    #[serde(default, skip_serializing_if = \"Option::is_none\")]\n    pub trust_state_binding_digest: Option<String>,",
+                  field,
+                  field + "\n    #[serde(default, skip_serializing_if = \"Option::is_none\")]\n    pub trust_state_binding_digest: Option<String>,",
                   1,
               )
               runtime = runtime[:binding_start] + binding_struct + runtime[binding_end:]
@@ -52,13 +56,16 @@ jobs:
           impl_end = runtime.index("\n}\n\n#[derive", impl_start)
           binding_impl = runtime[impl_start:impl_end]
           if "trust_state_binding_digest: None" not in binding_impl:
+              field = "            key_policy_digest: policy.digest()?,"
+              if field not in binding_impl:
+                  raise RuntimeError("SignerRequestBinding constructor field missing")
               binding_impl = binding_impl.replace(
-                  "            key_policy_digest: policy.digest()?,",
-                  "            key_policy_digest: policy.digest()?,\n            trust_state_binding_digest: None,",
+                  field,
+                  field + "\n            trust_state_binding_digest: None,",
                   1,
               )
           if "pub fn build_with_trust_state(" not in binding_impl:
-              marker = "\n    pub fn validate(&self) -> Result<(), ProductionSignerError> {"
+              validate_marker = binding_impl.index("\n    pub fn validate(&self)")
               method = '''
 
               pub fn build_with_trust_state(
@@ -73,22 +80,22 @@ jobs:
                   binding.validate()?;
                   Ok(binding)
               }'''
-              if marker not in binding_impl:
-                  raise SystemExit("SignerRequestBinding validate marker not found")
-              binding_impl = binding_impl.replace(marker, method + marker, 1)
+              binding_impl = binding_impl[:validate_marker] + method + binding_impl[validate_marker:]
           if "if let Some(trust_state_binding_digest)" not in binding_impl:
-              needle = "        validate_sha256(&self.signer_service_identity_digest)?;\n        validate_sha256(&self.key_policy_digest)"
+              tail_start = binding_impl.index(
+                  "        validate_sha256(&self.signer_service_identity_digest)?;"
+              )
+              tail_end = binding_impl.index("\n    }", tail_start)
               replacement = '''        validate_sha256(&self.signer_service_identity_digest)?;
               validate_sha256(&self.key_policy_digest)?;
               if let Some(trust_state_binding_digest) = &self.trust_state_binding_digest {
                   validate_sha256(trust_state_binding_digest)?;
               }
               Ok(())'''
-              if needle not in binding_impl:
-                  raise SystemExit("SignerRequestBinding validation tail not found")
-              binding_impl = binding_impl.replace(needle, replacement, 1)
+              binding_impl = binding_impl[:tail_start] + replacement + binding_impl[tail_end:]
           runtime = runtime[:impl_start] + binding_impl + runtime[impl_end:]
           runtime_path.write_text(runtime)
+          print("patched signer request binding")
 
           service_path = Path("crates/windows-production-signer-service-runtime/src/lib.rs")
           service = service_path.read_text()
@@ -128,8 +135,6 @@ jobs:
                   request.validate_for(&policy)?;
                   let request_digest = request.digest_for(&policy)?;
 
-                  // Consume caller authorization and replay state before any backend operation.
-                  // A backend failure must not make the same request replayable.
                   let caller_authorization = self.identity_authorizer.authorize(
                       caller,
                       &self.service_identity,
@@ -190,29 +195,28 @@ jobs:
           '''
               service = service[:method_start] + method_block + service[method_end:]
           service_path.write_text(service)
+          print("patched signer service")
 
           deployed_path = Path("crates/windows-production-trust-state-runtime/src/service.rs")
           deployed = deployed_path.read_text()
           if "SignedTrustStateBindingMismatch" not in deployed:
-              verification_marker = '''        if envelope.request.identity != governed_trust.key.identity {
-                  return Err(DeployedProductionSignerError::KeyGenerationMismatch);
-              }
-          '''
-              verification_insert = verification_marker + '''        if envelope.binding.trust_state_binding_digest.as_deref()
+              verify_start = deployed.index("        let envelope = self.signer_package.verify_governed(")
+              package_digest_marker = deployed.index(
+                  "        if self.package_digest != self.expected_digest()?",
+                  verify_start,
+              )
+              verification = '''        if envelope.binding.trust_state_binding_digest.as_deref()
                   != Some(accepted.binding().binding_digest.as_str())
               {
                   return Err(DeployedProductionSignerError::SignedTrustStateBindingMismatch);
               }
           '''
-              if verification_marker not in deployed:
-                  raise SystemExit("deployed verification marker not found")
-              deployed = deployed.replace(verification_marker, verification_insert, 1)
-              old_call = '''        let signer_package = self.inner.handle_authenticated_generation(
-                  request,
-                  caller,
-                  trusted_now_epoch_s,
-                  record.generation,
-              )?;'''
+              deployed = deployed[:package_digest_marker] + verification + deployed[package_digest_marker:]
+
+              call_start = deployed.index(
+                  "        let signer_package = self.inner.handle_authenticated_generation("
+              )
+              call_end = deployed.index("        )?;", call_start) + len("        )?;")
               new_call = '''        let signer_package = self.inner.handle_authenticated_generation_with_trust_state(
                   request,
                   caller,
@@ -220,19 +224,33 @@ jobs:
                   record.generation,
                   Some(&self.accepted.binding().binding_digest),
               )?;'''
-              if old_call not in deployed:
-                  raise SystemExit("deployed signer call marker not found")
-              deployed = deployed.replace(old_call, new_call, 1)
-              error_marker = '''    #[error("production signer key generation does not match governed trust")]
-              KeyGenerationMismatch,'''
-              error_insert = error_marker + '''
+              deployed = deployed[:call_start] + new_call + deployed[call_end:]
+
+              variant = "    KeyGenerationMismatch,"
+              variant_index = deployed.index(variant) + len(variant)
+              error = '''
               #[error("hardware-signed request does not bind the accepted production trust state")]
               SignedTrustStateBindingMismatch,'''
-              if error_marker not in deployed:
-                  raise SystemExit("deployed error marker not found")
-              deployed = deployed.replace(error_marker, error_insert, 1)
+              deployed = deployed[:variant_index] + error + deployed[variant_index:]
           deployed_path.write_text(deployed)
+          print("patched deployed trust-bound signer")
           PY
+          status=${PIPESTATUS[0]}
+          printf '%s\n' "$status" > "$RUNNER_TEMP/trust-binding-patch.status"
+          exit 0
+
+      - name: Upload trust-binding patch diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: trust-binding-patch-diagnostics
+          path: ${{ runner.temp }}/trust-binding-patch.*
+          if-no-files-found: error
+          retention-days: 3
+
+      - name: Fail on trust-binding patch mismatch
+        shell: bash
+        run: test "$(cat "$RUNNER_TEMP/trust-binding-patch.status")" = "0"
 
       - name: Materialize canonical formatting and lockfile
         run: |
