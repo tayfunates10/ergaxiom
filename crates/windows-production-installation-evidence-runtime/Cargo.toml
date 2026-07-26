@@ -24,14 +24,7 @@ sha2.workspace = true
 thiserror.workspace = true
 
 [target.'cfg(windows)'.dependencies]
-windows-sys-external = { package = "windows-sys", version = ">=0.59, <=0.61", features = [
-  "Win32_Foundation",
-  "Win32_Security",
-  "Win32_Security_Authorization",
-  "Win32_System_Registry",
-  "Win32_System_Services",
-  "Win32_System_Threading"
-] }
+windows-sys = { package = "ergaxiom-windows-sys-registry-shim", path = "../windows-sys-registry-shim" }
 
 [lints.rust]
 unsafe_code = "allow"
