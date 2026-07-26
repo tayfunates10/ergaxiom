@@ -6,6 +6,9 @@ rust-version.workspace = true
 repository.workspace = true
 publish = false
 
+[lib]
+path = "src/lib_wrapper.rs"
+
 [dependencies]
 ergaxiom-key-governance-runtime = { path = "../key-governance-runtime" }
 ergaxiom-proof-kernel = { path = "../proof-kernel" }
