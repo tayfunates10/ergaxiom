@@ -6,6 +6,9 @@ use ergaxiom_contract_runtime::{CompiledContract, ContractPermission};
 use ergaxiom_key_governance_runtime::IssuerRole;
 use ergaxiom_operator_plan_runtime::{CompiledPlan, PlanStep};
 use ergaxiom_proof_kernel::{HashingError, canonical_json_bytes, canonical_json_sha256};
+use ergaxiom_windows_production_signer_service_runtime::{
+    ProductionSignerServiceError, ProductionSignerTrustSnapshot,
+};
 use ergaxiom_windows_signer_protocol_runtime::{
     SignerProtocolError, SignerResponse, SignerSuccess, decode_hex_32,
 };
@@ -13,8 +16,8 @@ use serde_json::Value;
 use thiserror::Error;
 
 use crate::model::{
-    AuthorizationReceipt, CapabilityGrant, CapabilityTokenPayload, SignedCapabilityToken,
-    SignerBoundCapabilityToken,
+    AuthorizationReceipt, CapabilityGrant, CapabilityTokenPayload,
+    ProductionSignerBoundCapabilityToken, SignedCapabilityToken, SignerBoundCapabilityToken,
 };
 
 const SUPPORTED_TOKEN_SCHEMA: &str = "0.1.0";
@@ -27,6 +30,8 @@ pub enum CapabilityError {
     Hashing(#[from] HashingError),
     #[error(transparent)]
     SignerProtocol(#[from] SignerProtocolError),
+    #[error(transparent)]
+    ProductionSigner(#[from] ProductionSignerServiceError),
     #[error("unsupported capability-token schema {actual}; expected {expected}")]
     UnsupportedSchemaVersion {
         actual: String,
@@ -184,6 +189,32 @@ impl CapabilityAuthorizer {
         )
     }
 
+    #[allow(clippy::too_many_arguments)]
+    pub fn authorize_production_signer_bound(
+        &mut self,
+        token_value: &Value,
+        trust: &ProductionSignerTrustSnapshot,
+        compiled_contract: &CompiledContract,
+        compiled_plan: &CompiledPlan,
+        trusted_now_epoch_s: u64,
+        expected_executor_id: &str,
+        expected_device_id: Option<&str>,
+    ) -> Result<AuthorizationReceipt, CapabilityError> {
+        let token: ProductionSignerBoundCapabilityToken =
+            serde_json::from_value(token_value.clone()).map_err(CapabilityError::TokenDecode)?;
+        validate_payload_shape(&token.payload)?;
+        self.verify_production_signer_bound_signature(&token, trust)?;
+        self.authorize_verified_payload(
+            token_value,
+            token.payload,
+            compiled_contract,
+            compiled_plan,
+            trusted_now_epoch_s,
+            expected_executor_id,
+            expected_device_id,
+        )
+    }
+
     pub fn verify_signer_bound_signature(
         &self,
         token: &SignerBoundCapabilityToken,
@@ -227,6 +258,29 @@ impl CapabilityAuthorizer {
         };
         if response_public_key != key.to_bytes() {
             return Err(CapabilityError::SignerPublicKeyMismatch);
+        }
+        Ok(())
+    }
+
+    pub fn verify_production_signer_bound_signature(
+        &self,
+        token: &ProductionSignerBoundCapabilityToken,
+        trust: &ProductionSignerTrustSnapshot,
+    ) -> Result<(), CapabilityError> {
+        let envelope = token.signer_package.verify_trusted(trust)?;
+        if envelope.request.identity.role != IssuerRole::Capability {
+            return Err(CapabilityError::SignerRoleMismatch);
+        }
+        if envelope.request.identity.issuer_id != token.payload.issuer_id {
+            return Err(CapabilityError::SignerIssuerMismatch);
+        }
+        if envelope.request.identity.key_id != token.payload.key_id {
+            return Err(CapabilityError::SignerKeyMismatch);
+        }
+        let payload_value =
+            serde_json::to_value(&token.payload).map_err(CapabilityError::TokenDecode)?;
+        if envelope.request.digest != canonical_json_sha256(&payload_value)? {
+            return Err(CapabilityError::SignerDigestMismatch);
         }
         Ok(())
     }
