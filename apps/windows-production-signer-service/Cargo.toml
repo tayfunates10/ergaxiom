@@ -8,6 +8,7 @@ publish = false
 
 [dependencies]
 ergaxiom-windows-production-deployment-evidence-runtime = { path = "../../crates/windows-production-deployment-evidence-runtime" }
+ergaxiom-windows-production-installation-evidence-runtime = { path = "../../crates/windows-production-installation-evidence-runtime" }
 ergaxiom-windows-production-signer-host-runtime = { path = "../../crates/windows-production-signer-host-runtime" }
 serde = { workspace = true }
 serde_json = { workspace = true }
