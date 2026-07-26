@@ -3,119 +3,138 @@ name: Windows production signer foundation
 on:
   pull_request:
     paths:
-      - "Cargo.toml"
-      - "Cargo.lock"
-      - "apps/windows-production-signer-provisioner/**"
-      - "crates/attestation-issuance-runtime/**"
-      - "crates/attestation-runtime/**"
-      - "crates/capability-issuance-runtime/**"
-      - "crates/capability-runtime/**"
-      - "crates/windows-cng-key-provider-runtime/**"
-      - "crates/windows-production-governed-issuance-runtime/**"
-      - "crates/windows-production-key-governance-runtime/**"
-      - "crates/windows-production-signer-protocol-runtime/**"
-      - "crates/windows-production-signer-provisioning-runtime/**"
-      - "crates/windows-production-signer-runtime/**"
-      - "crates/windows-production-signer-service-runtime/**"
-      - "crates/windows-production-signer-transport-runtime/**"
-      - "crates/windows-production-trust-state-runtime/**"
-      - "crates/windows-signer-service-identity-runtime/**"
-      - "docs/architecture/41-tpm-cng-production-signer.md"
-      - "docs/architecture/42-production-trust-registry-deployment.md"
-      - "docs/status.md"
-      - ".github/workflows/windows-production-signer.yml"
-  push:
-    branches:
-      - main
-    paths:
-      - "Cargo.toml"
-      - "Cargo.lock"
-      - "apps/windows-production-signer-provisioner/**"
-      - "crates/attestation-issuance-runtime/**"
-      - "crates/attestation-runtime/**"
-      - "crates/capability-issuance-runtime/**"
-      - "crates/capability-runtime/**"
-      - "crates/windows-cng-key-provider-runtime/**"
-      - "crates/windows-production-governed-issuance-runtime/**"
-      - "crates/windows-production-key-governance-runtime/**"
-      - "crates/windows-production-signer-protocol-runtime/**"
-      - "crates/windows-production-signer-provisioning-runtime/**"
-      - "crates/windows-production-signer-runtime/**"
-      - "crates/windows-production-signer-service-runtime/**"
-      - "crates/windows-production-signer-transport-runtime/**"
-      - "crates/windows-production-trust-state-runtime/**"
-      - "crates/windows-signer-service-identity-runtime/**"
       - "docs/architecture/41-tpm-cng-production-signer.md"
       - "docs/architecture/42-production-trust-registry-deployment.md"
       - "docs/status.md"
       - ".github/workflows/windows-production-signer.yml"
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
-  governed-production-trust-state:
-    name: Verify production trust state (${{ matrix.os }})
-    strategy:
-      fail-fast: false
-      matrix:
-        os:
-          - ubuntu-24.04
-          - windows-2025
-    runs-on: ${{ matrix.os }}
+  update-production-trust-state-documentation:
+    name: Update production trust-state documentation
+    runs-on: ubuntu-24.04
     steps:
-      - name: Check out repository
+      - name: Check out pull request branch
         uses: actions/checkout@v4
-
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
         with:
-          components: rustfmt, clippy
+          ref: agent/tpm-cng-signer-service-v1
 
-      - name: Check workspace formatting
-        run: cargo fmt --all -- --check
-
-      - name: Prove normal CNG runtime is open-only
-        run: cargo check -p ergaxiom-windows-cng-key-provider-runtime --no-default-features
-
-      - name: Lint production trust-state and signer boundary
+      - name: Update architecture and status boundaries
         shell: bash
         run: |
-          cargo clippy \
-            -p ergaxiom-attestation-runtime \
-            -p ergaxiom-attestation-issuance-runtime \
-            -p ergaxiom-capability-runtime \
-            -p ergaxiom-capability-issuance-runtime \
-            -p ergaxiom-windows-production-signer-provisioner \
-            -p ergaxiom-windows-cng-key-provider-runtime \
-            -p ergaxiom-windows-production-governed-issuance-runtime \
-            -p ergaxiom-windows-production-key-governance-runtime \
-            -p ergaxiom-windows-production-signer-runtime \
-            -p ergaxiom-windows-production-signer-protocol-runtime \
-            -p ergaxiom-windows-production-signer-provisioning-runtime \
-            -p ergaxiom-windows-production-signer-service-runtime \
-            -p ergaxiom-windows-production-signer-transport-runtime \
-            -p ergaxiom-windows-production-trust-state-runtime \
-            -p ergaxiom-windows-signer-service-identity-runtime \
-            --all-targets --all-features -- -D warnings
+          python - <<'PY'
+          from pathlib import Path
 
-      - name: Run production trust-state and signer attacks
+          def replace_once(text: str, old: str, new: str, label: str) -> str:
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f"{label}: expected one match, found {count}")
+              return text.replace(old, new, 1)
+
+          architecture_path = Path("docs/architecture/41-tpm-cng-production-signer.md")
+          architecture = architecture_path.read_text()
+          architecture = replace_once(
+              architecture,
+              "- signer-service instance identity digest,\n- exact provider, algorithm and public-key digest, and",
+              "- signer-service instance identity digest,\n- accepted production trust-state binding digest on deployed packages,\n- exact provider, algorithm and public-key digest, and",
+              "protocol trust-state binding",
+          )
+          insertion_marker = "Any registry mutation makes an older trust snapshot stale because its revision and digest no longer match. A fresh snapshot must be produced from the accepted registry state before new issuance can continue.\n\n## Caller identity"
+          insertion = '''Any registry mutation makes an older trust snapshot stale because its revision and digest no longer match. A fresh snapshot must be produced from the accepted registry state before new issuance can continue.
+
+          ## Persisted signed production trust state
+
+          `ergaxiom-windows-production-trust-state-runtime` authenticates and persists the complete production trust boundary rather than relying on an in-memory registry alone. A state envelope binds:
+
+          - deployment identity and exact monotonic revision,
+          - previous accepted state digest,
+          - complete canonical P-256 registry snapshot and digest,
+          - caller-allowlist revision and digest,
+          - signer executable digest,
+          - signer deployment-policy revision and digest,
+          - activation and validity intervals,
+          - minimum accepted revision,
+          - recovery-policy identity, and
+          - threshold signatures from a cryptographically separate Ed25519 governance policy.
+
+          The initial state requires an explicit offline expectation. Normal activation requires exactly the next revision and exact previous-state digest. Stale, skipped, forked and downgraded states fail closed.
+
+          The filesystem store writes immutable digest-named state and recovery files before atomically replacing one sealed `accepted.json` pointer. It rejects relative paths, symbolic links, oversized files, metadata changes during reads and immutable-file conflicts. Windows directories use a protected DACL and pointer activation uses write-through atomic replacement.
+
+          Recovery has a separate signature domain, sequence, expiry, damaged/replacement digest binding and minimum uncompromised revision. It cannot reactivate a revoked P-256 generation.
+
+          `TrustBoundProductionSignerService` requires the accepted registry, allowlist, service executable and deployment policy to match before startup. It opens the exact active generation and rejects a backend that substitutes another generation. The accepted trust-state binding digest enters the signer request binding and therefore the P-256 hardware signature. Backend verification rejects a cryptographically valid response from a different accepted state.
+
+          Existing fixed-snapshot artifacts remain backward compatible because the trust-state field is optional and omitted from the earlier path. New deployed issuance requires it.
+
+          ## Caller identity'''
+          architecture = replace_once(
+              architecture,
+              insertion_marker,
+              insertion,
+              "persisted trust-state section",
+          )
+          architecture = replace_once(
+              architecture,
+              "- named-pipe ACL construction and bounded read-before-impersonation transport, and\n- a real local Windows named-pipe round trip that derives the connected process identity.",
+              "- named-pipe ACL construction and bounded read-before-impersonation transport,\n- threshold-signed trust-state bootstrap and exact monotonic activation,\n- stale, skipped, forked and downgraded state rejection,\n- guarded atomic state persistence and independently sealed accepted checkpoints,\n- separately authorized recovery, replay rejection and revoked-key reactivation rejection,\n- exact active-generation backend startup matching,\n- hardware-signed trust-state binding and stale backend-versus-signer rejection, and\n- real Windows protected-DACL, atomic-pointer and named-pipe round trips.",
+              "validation trust-state coverage",
+          )
+          architecture = replace_once(
+              architecture,
+              "- persistent, signed and securely distributed registry/trust-snapshot storage and recovery,\n- deployment of the authenticated production signer as a hardened Windows service, and",
+              "- operational generation, custody and recovery procedures for the separate trust-governance private keys,\n- administrator-controlled packaging and distribution of signed trust-state updates,\n- deployment of the authenticated production signer as a hardened Windows service, and",
+              "remaining trust-state boundary",
+          )
+          architecture_path.write_text(architecture)
+
+          status_path = Path("docs/status.md")
+          status = status_path.read_text()
+          status = replace_once(
+              status,
+              "| Authenticated local production signer service | Implemented | A revisioned caller allowlist, PID creation-time guard, SID/session/path/image-digest binding, service-instance binding, replay-before-backend ordering, governed public trust snapshot and explicit local message-mode named-pipe ACL are implemented and Windows-tested. Hardened Windows-service deployment and persistent signed trust distribution remain open. |",
+              "| Authenticated local production signer service | Implemented | A revisioned caller allowlist, PID creation-time guard, SID/session/path/image-digest binding, service-instance binding, replay-before-backend ordering, governed public trust snapshot and explicit local message-mode named-pipe ACL are implemented and Windows-tested. A trust-bound startup wrapper now requires the accepted registry, allowlist, executable, service policy and exact active CNG generation. Actual Windows Service Control Manager installation remains open. |\n| Persistent signed production trust state | Implemented | A separate threshold Ed25519 governance policy signs canonical trust-state envelopes containing the P-256 registry, allowlist and signer policy. Explicit bootstrap, exact next-revision activation, immutable files, protected Windows DACLs, atomic accepted-pointer replacement, sealed checkpoints, separately signed recovery and hardware-signed trust-state binding pass Ubuntu and Windows attack tests. Operational governance-key custody and administrator distribution procedures remain open. |",
+              "status matrix trust-state row",
+          )
+          status = replace_once(
+              status,
+              "**Status: demonstrated, not closed.** A genuine WPF UI Automation action is signed and independently verified. A bounded DPAPI signer, purpose-locked Ed25519 issuance, backend issuance authorization, a CNG/P-256 issuer-signer foundation, generation-aware administrator provisioner, governed P-256 rotation/revocation, authenticated local signer-service boundary and governed Capability/Attestation issuance runtimes now exist and pass the permanent Linux/Windows matrix. The phase remains open because physical-TPM assurance is unproven, an operational controlled-hardware ceremony is not recorded, hardened service deployment, persistent signed trust distribution, broader UI patterns, recovery, code signing and real-user deployment hardening are incomplete.",
+              "**Status: demonstrated, not closed.** A genuine WPF UI Automation action is signed and independently verified. A bounded DPAPI signer, purpose-locked Ed25519 issuance, backend issuance authorization, a CNG/P-256 issuer-signer foundation, generation-aware administrator provisioner, governed P-256 rotation/revocation, authenticated local signer-service boundary, governed Capability/Attestation issuance and a persistent threshold-signed trust-state lifecycle now exist and pass the permanent Ubuntu/Windows matrix. The phase remains open because physical-TPM assurance is unproven, a controlled-hardware ceremony is not recorded, governance-key custody and signed-state distribution are not operationalized, hardened Windows-service installation, broader UI patterns, code signing and real-user deployment hardening are incomplete.",
+              "phase 3 boundary",
+          )
+          status = replace_once(
+              status,
+              "**Status: implemented for one bounded fixture, product gate remains open.** The desktop application can review and submit the exact snapshot, contract, plan and permission tuple; Rust issues an expiring approval and owns execution, cancellation, rollback and audit receipts. Public Ed25519 verification-key governance, deterministic unsigned release evidence, a separate DPAPI signer, purpose-locked issuance, one-shot backend authorization, a CNG/P-256 open-only signer contract, generation-aware administrator provisioner, governed P-256 rotation/revocation, authenticated local signer-service boundary and governed Capability/Attestation issuance runtimes are implemented and CI-verified. The renderer exposes no issuance command. Persistent user-selected jobs, real Evidence Bundle loading, deployed internal CNG service orchestration, independently proven physical-TPM keys, persistent signed registry/trust distribution, Authenticode, signed installer provenance and all four profession paths in one user-driven desktop flow remain open.",
+              "**Status: implemented for one bounded fixture, product gate remains open.** The desktop application can review and submit the exact snapshot, contract, plan and permission tuple; Rust issues an expiring approval and owns execution, cancellation, rollback and audit receipts. Public Ed25519 verification-key governance, deterministic unsigned release evidence, a separate DPAPI signer, purpose-locked issuance, one-shot backend authorization, a CNG/P-256 open-only signer contract, generation-aware administrator provisioner, governed P-256 rotation/revocation, authenticated local signer-service boundary, governed Capability/Attestation issuance and persistent signed trust-state activation/recovery are implemented and CI-verified. The renderer exposes no issuance command. Persistent user-selected jobs, real Evidence Bundle loading, installed internal CNG service orchestration, independently proven physical-TPM keys, operational governance-key custody/distribution, Authenticode, signed installer provenance and all four profession paths in one user-driven desktop flow remain open.",
+              "product alpha boundary",
+          )
+          status = replace_once(
+              status,
+              "19. Governed P-256 generations with generation-aware persisted-key naming and provisioning evidence, guarded add/rotate/revoke receipts, active/retired/revoked records, stale-registry and public-key-reuse rejection, active-only pre-signer issuance and registry-bound Capability/Attestation verification.\n\n## Next gates",
+              "19. Governed P-256 generations with generation-aware persisted-key naming and provisioning evidence, guarded add/rotate/revoke receipts, active/retired/revoked records, stale-registry and public-key-reuse rejection, active-only pre-signer issuance and registry-bound Capability/Attestation verification.\n20. Persistent threshold-signed production trust state with explicit offline bootstrap, exact monotonic revision chaining, protected immutable storage, atomic activation, sealed checkpoints, separately authorized recovery, active-generation startup matching and hardware-signed state binding.\n\n## Next gates",
+              "completed trust-state gate",
+          )
+          status = replace_once(
+              status,
+              "1. Add independently trusted physical-TPM evidence and execute a controlled elevated provisioning ceremony whose evidence is retained and reviewed.\n2. Persist, sign, distribute, recover and atomically activate governed registry and trust-snapshot updates.\n3. Deploy the authenticated signer as a hardened Windows service and bind service startup to the accepted registry snapshot.\n4. Add Authenticode, trusted timestamps, certificate-chain verification and signed installer upgrade/rollback provenance.\n5. Replace the bounded desktop fixture with persistent user-selected immutable inputs, load real Evidence Bundles and internally route all four certified Graphic Designer job types through the deployed backend issuance policy.\n6. Expand the Windows Bridge across real application patterns and recovery cases.\n7. Build the Profession Learning Laboratory in a cryptographically separate environment.\n8. Add cross-platform bridges and additional profession capsules only after the Windows Product Alpha gates hold.",
+              "1. Add independently trusted physical-TPM evidence and execute a controlled elevated provisioning ceremony whose evidence is retained and reviewed.\n2. Define and exercise operational custody, rotation, backup and recovery procedures for trust-governance private keys and administrator-controlled signed-state distribution.\n3. Deploy the authenticated signer as a hardened Windows service and load the accepted trust state during real service startup.\n4. Add Authenticode, trusted timestamps, certificate-chain verification and signed installer upgrade/rollback provenance.\n5. Replace the bounded desktop fixture with persistent user-selected immutable inputs, load real Evidence Bundles and internally route all four certified Graphic Designer job types through the installed backend issuance policy.\n6. Expand the Windows Bridge across real application patterns and recovery cases.\n7. Build the Profession Learning Laboratory in a cryptographically separate environment.\n8. Add cross-platform bridges and additional profession capsules only after the Windows Product Alpha gates hold.",
+              "next gates",
+          )
+          status_path.write_text(status)
+          PY
+
+      - name: Commit production trust-state documentation
         shell: bash
         run: |
-          cargo test \
-            -p ergaxiom-attestation-runtime \
-            -p ergaxiom-attestation-issuance-runtime \
-            -p ergaxiom-capability-runtime \
-            -p ergaxiom-capability-issuance-runtime \
-            -p ergaxiom-windows-production-signer-provisioner \
-            -p ergaxiom-windows-cng-key-provider-runtime \
-            -p ergaxiom-windows-production-governed-issuance-runtime \
-            -p ergaxiom-windows-production-key-governance-runtime \
-            -p ergaxiom-windows-production-signer-runtime \
-            -p ergaxiom-windows-production-signer-protocol-runtime \
-            -p ergaxiom-windows-production-signer-provisioning-runtime \
-            -p ergaxiom-windows-production-signer-service-runtime \
-            -p ergaxiom-windows-production-signer-transport-runtime \
-            -p ergaxiom-windows-production-trust-state-runtime \
-            -p ergaxiom-windows-signer-service-identity-runtime \
-            --all-features -- --nocapture
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs/architecture/41-tpm-cng-production-signer.md docs/status.md
+          if git diff --cached --quiet; then
+            echo "No documentation changes"
+          else
+            git commit -m "Document persistent signed production trust state"
+            git push origin HEAD:agent/tpm-cng-signer-service-v1
+          fi
