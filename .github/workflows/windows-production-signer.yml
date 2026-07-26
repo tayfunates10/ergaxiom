@@ -5,8 +5,11 @@ on:
     paths:
       - "Cargo.toml"
       - "Cargo.lock"
+      - "apps/windows-production-signer-provisioner/**"
+      - "crates/windows-cng-key-provider-runtime/**"
       - "crates/windows-production-governed-issuance-runtime/**"
       - "crates/windows-production-key-governance-runtime/**"
+      - "crates/windows-production-signer-provisioning-runtime/**"
       - "crates/windows-production-signer-service-runtime/**"
       - ".github/workflows/windows-production-signer.yml"
 
@@ -28,25 +31,275 @@ jobs:
         with:
           components: rustfmt, clippy
 
+      - name: Apply generation-aware provisioning patch
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          def replace_once(text: str, old: str, new: str, label: str) -> str:
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f"{label}: expected one match, found {count}")
+              return text.replace(old, new, 1)
+
+          provider_path = Path("crates/windows-cng-key-provider-runtime/src/lib.rs")
+          provider = provider_path.read_text()
+          provider = replace_once(
+              provider,
+              '"{base}{GENERATION_SEPARATOR}{generation:0GENERATION_WIDTH$}"',
+              '"{base}{GENERATION_SEPARATOR}{generation:020}"',
+              "provider generation format",
+          )
+          provider_path.write_text(provider)
+
+          path = Path("crates/windows-production-signer-provisioning-runtime/src/lib.rs")
+          text = path.read_text()
+          text = replace_once(
+              text,
+              "    pub identity: ProductionKeyIdentity,\n    pub receipt_digest: String,",
+              "    pub identity: ProductionKeyIdentity,\n    #[serde(default, skip_serializing_if = \"Option::is_none\")]\n    pub generation: Option<u64>,\n    pub receipt_digest: String,",
+              "statement generation field",
+          )
+          text = replace_once(
+              text,
+              "        let key_name = CngPlatformKeyProvider::key_name_for(policy)?;\n        if self.key_name_digest != lowercase_sha256(key_name.as_bytes()) {",
+              "        let generation = self.generation.unwrap_or(1);\n        if generation == 0 {\n            return Err(ProvisioningError::InvalidKeyGeneration);\n        }\n        let key_name = CngPlatformKeyProvider::key_name_for_generation(policy, generation)?;\n        if self.key_name_digest != lowercase_sha256(key_name.as_bytes()) {",
+              "statement generation validation",
+          )
+          text = replace_once(
+              text,
+              "            identity: self.receipt.identity.clone(),\n            public_key_digest: self.receipt.public_key_digest.clone(),",
+              "            identity: self.receipt.identity.clone(),\n            generation: self.statement.generation.unwrap_or(1),\n            public_key_digest: self.receipt.public_key_digest.clone(),",
+              "verified evidence generation",
+          )
+          text = replace_once(
+              text,
+              "pub struct VerifiedProvisioningEvidence {\n    pub identity: ProductionKeyIdentity,\n    pub public_key_digest: String,",
+              "pub struct VerifiedProvisioningEvidence {\n    pub identity: ProductionKeyIdentity,\n    pub generation: u64,\n    pub public_key_digest: String,",
+              "verified evidence field",
+          )
+
+          trait_start = text.index("pub trait ProvisioningBackend {")
+          trait_end = text.index("\n}\n\nimpl ProvisioningBackend for CngPlatformKeyProvider", trait_start) + 2
+          text = text[:trait_start] + '''pub trait ProvisioningBackend {
+              fn provision(
+                  &self,
+                  policy: &ProductionKeyPolicy,
+                  expected_public_key_digest: Option<&str>,
+              ) -> Result<CngProvisioningResult, ProvisioningError>;
+
+              fn provision_generation(
+                  &self,
+                  policy: &ProductionKeyPolicy,
+                  generation: u64,
+                  expected_public_key_digest: Option<&str>,
+              ) -> Result<CngProvisioningResult, ProvisioningError> {
+                  if generation == 1 {
+                      self.provision(policy, expected_public_key_digest)
+                  } else {
+                      Err(ProvisioningError::UnsupportedKeyGeneration(generation))
+                  }
+              }
+
+              fn sign_key_possession(
+                  &self,
+                  policy: &ProductionKeyPolicy,
+                  provisioning: &CngProvisioningResult,
+                  digest: &str,
+              ) -> Result<KeyPossessionSignature, ProvisioningError>;
+          }''' + text[trait_end:]
+
+          impl_start = text.index("impl ProvisioningBackend for CngPlatformKeyProvider {")
+          impl_end = text.index("\n}\n\n#[derive(Debug, Clone)]", impl_start) + 2
+          text = text[:impl_start] + '''impl ProvisioningBackend for CngPlatformKeyProvider {
+              fn provision(
+                  &self,
+                  policy: &ProductionKeyPolicy,
+                  expected_public_key_digest: Option<&str>,
+              ) -> Result<CngProvisioningResult, ProvisioningError> {
+                  Ok(self.provision_unverified(policy, expected_public_key_digest)?)
+              }
+
+              fn provision_generation(
+                  &self,
+                  policy: &ProductionKeyPolicy,
+                  generation: u64,
+                  expected_public_key_digest: Option<&str>,
+              ) -> Result<CngProvisioningResult, ProvisioningError> {
+                  Ok(self.provision_generation_unverified(
+                      policy,
+                      generation,
+                      expected_public_key_digest,
+                  )?)
+              }
+
+              fn sign_key_possession(
+                  &self,
+                  policy: &ProductionKeyPolicy,
+                  provisioning: &CngProvisioningResult,
+                  digest: &str,
+              ) -> Result<KeyPossessionSignature, ProvisioningError> {
+                  Ok(self
+                      .sign_key_possession_sha256_digest_unverified(policy, provisioning, digest)?
+                      .into())
+              }
+          }''' + text[impl_end:]
+
+          authority_start = text.index("    pub fn provision(\n", text.index("impl<B> ProvisioningAuthority"))
+          authority_end = text.index("\n}\n\npub fn require_elevated_administrator", authority_start)
+          text = text[:authority_start] + '''    pub fn provision(
+                  &self,
+                  policy: &ProductionKeyPolicy,
+                  expected_public_key_digest: Option<&str>,
+                  provisioned_at_epoch_s: u64,
+              ) -> Result<ProvisioningEvidence, ProvisioningError> {
+                  self.provision_generation(
+                      policy,
+                      1,
+                      expected_public_key_digest,
+                      provisioned_at_epoch_s,
+                  )
+              }
+
+              pub fn provision_generation(
+                  &self,
+                  policy: &ProductionKeyPolicy,
+                  generation: u64,
+                  expected_public_key_digest: Option<&str>,
+                  provisioned_at_epoch_s: u64,
+              ) -> Result<ProvisioningEvidence, ProvisioningError> {
+                  policy.validate()?;
+                  if generation == 0 {
+                      return Err(ProvisioningError::InvalidKeyGeneration);
+                  }
+                  if provisioned_at_epoch_s == 0 {
+                      return Err(ProvisioningError::InvalidProvisioningTime);
+                  }
+                  let provisioning = self.backend.provision_generation(
+                      policy,
+                      generation,
+                      expected_public_key_digest,
+                  )?;
+                  validate_descriptor_contract(&provisioning, policy)?;
+                  let receipt = ProvisioningReceipt::from_descriptor(
+                      provisioning.descriptor.clone(),
+                      provisioned_at_epoch_s,
+                  )?;
+                  let key_name_digest = lowercase_sha256(provisioning.key_name.as_bytes());
+                  let statement = ProvisioningStatement {
+                      schema_version: PROVISIONING_STATEMENT_SCHEMA.to_owned(),
+                      domain: PROVISIONING_DOMAIN.to_owned(),
+                      identity: policy.identity.clone(),
+                      generation: Some(generation),
+                      receipt_digest: receipt.receipt_digest.clone(),
+                      key_name_digest,
+                      public_key_digest: receipt.public_key_digest.clone(),
+                      policy_digest: receipt.policy_digest.clone(),
+                      created: provisioning.created,
+                  };
+                  statement.validate_for(policy, &receipt)?;
+                  let statement_digest = statement.digest()?;
+                  let key_possession = self.backend.sign_key_possession(
+                      policy,
+                      &provisioning,
+                      &statement_digest,
+                  )?;
+                  let mut evidence = ProvisioningEvidence {
+                      schema_version: PROVISIONING_EVIDENCE_SCHEMA.to_owned(),
+                      statement,
+                      receipt,
+                      key_possession,
+                      evidence_digest: String::new(),
+                  };
+                  evidence.evidence_digest = evidence.expected_digest()?;
+                  evidence.verify_contract(policy)?;
+                  Ok(evidence)
+              }''' + text[authority_end:]
+
+          text = replace_once(
+              text,
+              "    #[error(\"production signer provisioning domain is invalid\")]\n    InvalidProvisioningDomain,",
+              "    #[error(\"production signer provisioning domain is invalid\")]\n    InvalidProvisioningDomain,\n    #[error(\"production signer key generation must be greater than zero\")]\n    InvalidKeyGeneration,\n    #[error(\"provisioning backend does not support key generation {0}\")]\n    UnsupportedKeyGeneration(u64),",
+              "provisioning generation errors",
+          )
+          path.write_text(text)
+
+          app_path = Path("apps/windows-production-signer-provisioner/src/main.rs")
+          app = app_path.read_text()
+          app = replace_once(
+              app,
+              "    let evidence = authority.provision(\n        &policy,\n        command.expected_public_key_digest.as_deref(),\n        provisioned_at_epoch_s,\n    )?;",
+              "    let evidence = authority.provision_generation(\n        &policy,\n        command.generation,\n        command.expected_public_key_digest.as_deref(),\n        provisioned_at_epoch_s,\n    )?;",
+              "provisioner authority call",
+          )
+          app = replace_once(
+              app,
+              '    println!("role={:?}", command.role);\n    println!("created={}", evidence.statement.created);',
+              '    println!("role={:?}", command.role);\n    println!("generation={}", command.generation);\n    println!("created={}", evidence.statement.created);',
+              "provisioner generation output",
+          )
+          app = replace_once(
+              app,
+              "    role: IssuerRole,\n    output: PathBuf,",
+              "    role: IssuerRole,\n    generation: u64,\n    output: PathBuf,",
+              "command generation field",
+          )
+          app = replace_once(
+              app,
+              "        let mut role = None;\n        let mut output = None;",
+              "        let mut role = None;\n        let mut generation = 1_u64;\n        let mut output = None;",
+              "generation parser default",
+          )
+          app = replace_once(
+              app,
+              "                \"--output\" => {\n                    output = Some(PathBuf::from(next_utf8(&mut arguments, \"--output\")?));\n                }",
+              "                \"--generation\" => {\n                    generation = next_utf8(&mut arguments, \"--generation\")?\n                        .parse::<u64>()\n                        .map_err(|_| ProvisionerError::InvalidGeneration)?;\n                    if generation == 0 {\n                        return Err(ProvisionerError::InvalidGeneration);\n                    }\n                }\n                \"--output\" => {\n                    output = Some(PathBuf::from(next_utf8(&mut arguments, \"--output\")?));\n                }",
+              "generation parser case",
+          )
+          app = replace_once(
+              app,
+              "        Ok(Self {\n            role,\n            output,",
+              "        Ok(Self {\n            role,\n            generation,\n            output,",
+              "command generation return",
+          )
+          app = replace_once(
+              app,
+              "usage: ergaxiom-windows-production-signer-provisioner --role capability|attestation --output <new-json-path> [--expected-public-key-digest <sha256>]",
+              "usage: ergaxiom-windows-production-signer-provisioner --role capability|attestation [--generation <positive-u64>] --output <new-json-path> [--expected-public-key-digest <sha256>]",
+              "usage generation",
+          )
+          app = replace_once(
+              app,
+              "    #[error(\"only capability and attestation provisioning roles are supported\")]\n    UnsupportedRole,",
+              "    #[error(\"only capability and attestation provisioning roles are supported\")]\n    UnsupportedRole,\n    #[error(\"key generation must be a positive integer\")]\n    InvalidGeneration,",
+              "provisioner generation error",
+          )
+          app_path.write_text(app)
+          PY
+
       - name: Materialize canonical formatting and lockfile
         run: |
           cargo fmt --all
           cargo generate-lockfile
 
-      - name: Commit canonical governed issuance source when needed
+      - name: Commit generation-aware governed issuance source
         shell: bash
         run: |
           set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add Cargo.toml Cargo.lock \
+            apps/windows-production-signer-provisioner \
+            crates/windows-cng-key-provider-runtime \
             crates/windows-production-governed-issuance-runtime \
             crates/windows-production-key-governance-runtime \
+            crates/windows-production-signer-provisioning-runtime \
             crates/windows-production-signer-service-runtime
           if git diff --cached --quiet; then
             echo "No canonical source changes"
           else
-            git commit -m "Canonicalize governed P-256 issuance"
+            git commit -m "Bind governed P-256 generations to provisioning"
             git push origin HEAD:agent/tpm-cng-signer-service-v1
           fi
 
@@ -56,6 +309,9 @@ jobs:
       - name: Lint governed issuance boundary
         run: |
           cargo clippy \
+            -p ergaxiom-windows-production-signer-provisioner \
+            -p ergaxiom-windows-cng-key-provider-runtime \
+            -p ergaxiom-windows-production-signer-provisioning-runtime \
             -p ergaxiom-windows-production-governed-issuance-runtime \
             -p ergaxiom-windows-production-key-governance-runtime \
             -p ergaxiom-windows-production-signer-service-runtime \
@@ -64,6 +320,9 @@ jobs:
       - name: Run governed issuance attacks
         run: |
           cargo test \
+            -p ergaxiom-windows-production-signer-provisioner \
+            -p ergaxiom-windows-cng-key-provider-runtime \
+            -p ergaxiom-windows-production-signer-provisioning-runtime \
             -p ergaxiom-windows-production-governed-issuance-runtime \
             -p ergaxiom-windows-production-key-governance-runtime \
             -p ergaxiom-windows-production-signer-service-runtime \
