@@ -1028,8 +1028,11 @@ dependencies = [
  "ed25519-dalek",
  "ergaxiom-proof-kernel",
  "ergaxiom-windows-production-installation-evidence-runtime",
+ "ergaxiom-windows-production-key-governance-runtime",
+ "ergaxiom-windows-production-signer-host-runtime",
  "ergaxiom-windows-production-signer-runtime",
  "ergaxiom-windows-production-trust-state-runtime",
+ "p256",
  "rand_core 0.6.4",
  "serde",
  "serde_json",
@@ -1075,11 +1078,11 @@ dependencies = [
  "ergaxiom-windows-production-signer-runtime",
  "ergaxiom-windows-production-signer-transport-runtime",
  "ergaxiom-windows-production-trust-state-runtime",
+ "ergaxiom-windows-sys-registry-shim",
  "serde",
  "serde_json",
  "sha2",
  "thiserror",
- "windows-sys",
 ]
 
 [[package]]
@@ -1299,6 +1302,13 @@ dependencies = [
  "serde_json",
  "sha2",
  "thiserror",
+ "windows-sys",
+]
+
+[[package]]
+name = "ergaxiom-windows-sys-registry-shim"
+version = "0.1.0"
+dependencies = [
  "windows-sys",
 ]
 

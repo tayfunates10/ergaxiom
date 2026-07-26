@@ -12,8 +12,7 @@ use ergaxiom_windows_production_service_host_runtime::{
     PRODUCTION_SIGNER_RESTART_DELAYS_MS, PRODUCTION_SIGNER_SERVICE_ACCOUNT,
     PRODUCTION_SIGNER_SERVICE_DISPLAY_NAME, PRODUCTION_SIGNER_SERVICE_MANIFEST_SCHEMA,
     PRODUCTION_SIGNER_SERVICE_NAME, PRODUCTION_SIGNER_SERVICE_SID_TYPE,
-    PRODUCTION_SIGNER_SERVICE_TYPE, PRODUCTION_SIGNER_START_MODE,
-    ProductionSignerServiceManifest,
+    PRODUCTION_SIGNER_SERVICE_TYPE, PRODUCTION_SIGNER_START_MODE, ProductionSignerServiceManifest,
 };
 use ergaxiom_windows_production_signer_host_runtime::{
     EXPECTED_FAILURE_RESET_PERIOD_SECONDS, EXPECTED_SERVICE_DACL_SDDL,
@@ -169,10 +168,7 @@ fn reviewer_authority_cannot_reuse_trust_governance_or_issuer_keys() {
         ))],
     ));
     assert!(matches!(
-        issuer_policy.validate_cryptographic_separation(
-            &fixture.trust_policy,
-            &fixture.accepted,
-        ),
+        issuer_policy.validate_cryptographic_separation(&fixture.trust_policy, &fixture.accepted,),
         Err(DeploymentEvidenceError::AuthorityKeyReuse)
     ));
 }
@@ -214,16 +210,18 @@ fn policy_rejects_duplicate_public_keys_and_invalid_thresholds() {
         Err(DeploymentEvidenceError::PublicKeyReuse)
     ));
     assert!(matches!(
-        DeploymentEvidencePolicy::new(1, 2, vec![must(
-            DeploymentEvidenceKeyRecord::new_active(
+        DeploymentEvidencePolicy::new(
+            1,
+            2,
+            vec![must(DeploymentEvidenceKeyRecord::new_active(
                 "reviewer-c",
                 Ed25519SigningKey::from_bytes(&[92_u8; 32])
                     .verifying_key()
                     .to_bytes(),
                 NOW - 100,
                 NOW + 1_000,
-            )
-        )]),
+            ))]
+        ),
         Err(DeploymentEvidenceError::InvalidPolicy)
     ));
 }
@@ -398,9 +396,7 @@ fn signed_recovery(
     ))
 }
 
-fn installation_receipt(
-    fixture: &Fixture,
-) -> ProductionSignerInstallationValidationReceipt {
+fn installation_receipt(fixture: &Fixture) -> ProductionSignerInstallationValidationReceipt {
     let binding = fixture.accepted.binding().clone();
     let mut manifest = ProductionSignerServiceManifest {
         schema_version: PRODUCTION_SIGNER_SERVICE_MANIFEST_SCHEMA.to_owned(),
