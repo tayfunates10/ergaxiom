@@ -35,194 +35,202 @@ jobs:
           python - <<'PY'
           from pathlib import Path
 
-          def replace_once(text: str, old: str, new: str, label: str) -> str:
-              if new in text:
-                  return text
-              count = text.count(old)
-              if count != 1:
-                  raise SystemExit(f"{label}: expected one match, found {count}")
-              return text.replace(old, new, 1)
-
           runtime_path = Path("crates/windows-production-signer-runtime/src/lib.rs")
           runtime = runtime_path.read_text()
-          runtime = replace_once(
-              runtime,
-              '''pub struct SignerRequestBinding {
-              pub schema_version: String,
-              pub request_digest: String,
-              pub caller_identity_digest: String,
-              pub signer_service_identity_digest: String,
-              pub key_policy_digest: String,
-          }''',
-              '''pub struct SignerRequestBinding {
-              pub schema_version: String,
-              pub request_digest: String,
-              pub caller_identity_digest: String,
-              pub signer_service_identity_digest: String,
-              pub key_policy_digest: String,
-              #[serde(default, skip_serializing_if = "Option::is_none")]
-              pub trust_state_binding_digest: Option<String>,
-          }''',
-              "binding field",
-          )
-          runtime = replace_once(
-              runtime,
-              '''            signer_service_identity_digest: service.digest()?,
-              key_policy_digest: policy.digest()?,
-          };''',
-              '''            signer_service_identity_digest: service.digest()?,
-              key_policy_digest: policy.digest()?,
-              trust_state_binding_digest: None,
-          };''',
-              "default binding value",
-          )
-          runtime = replace_once(
-              runtime,
-              '''        binding.validate()?;
-              Ok(binding)
-          }
+          binding_start = runtime.index("pub struct SignerRequestBinding {")
+          binding_end = runtime.index("\n}\n\nimpl SignerRequestBinding", binding_start)
+          binding_struct = runtime[binding_start:binding_end]
+          if "trust_state_binding_digest" not in binding_struct:
+              binding_struct = binding_struct.replace(
+                  "    pub key_policy_digest: String,",
+                  "    pub key_policy_digest: String,\n    #[serde(default, skip_serializing_if = \"Option::is_none\")]\n    pub trust_state_binding_digest: Option<String>,",
+                  1,
+              )
+              runtime = runtime[:binding_start] + binding_struct + runtime[binding_end:]
 
-          pub fn validate(&self) -> Result<(), ProductionSignerError> {''',
-              '''        binding.validate()?;
-              Ok(binding)
-          }
+          impl_start = runtime.index("impl SignerRequestBinding {")
+          impl_end = runtime.index("\n}\n\n#[derive", impl_start)
+          binding_impl = runtime[impl_start:impl_end]
+          if "trust_state_binding_digest: None" not in binding_impl:
+              binding_impl = binding_impl.replace(
+                  "            key_policy_digest: policy.digest()?,",
+                  "            key_policy_digest: policy.digest()?,\n            trust_state_binding_digest: None,",
+                  1,
+              )
+          if "pub fn build_with_trust_state(" not in binding_impl:
+              marker = "\n    pub fn validate(&self) -> Result<(), ProductionSignerError> {"
+              method = '''
 
-          pub fn build_with_trust_state(
-              request_digest: impl Into<String>,
-              caller: &AuthenticatedCallerIdentity,
-              service: &SignerServiceIdentity,
-              policy: &ProductionKeyPolicy,
-              trust_state_binding_digest: impl Into<String>,
-          ) -> Result<Self, ProductionSignerError> {
-              let mut binding = Self::build(request_digest, caller, service, policy)?;
-              binding.trust_state_binding_digest = Some(trust_state_binding_digest.into());
-              binding.validate()?;
-              Ok(binding)
-          }
-
-          pub fn validate(&self) -> Result<(), ProductionSignerError> {''',
-              "trust-state builder",
-          )
-          runtime = replace_once(
-              runtime,
-              '''        validate_sha256(&self.signer_service_identity_digest)?;
-              validate_sha256(&self.key_policy_digest)
-          }''',
-              '''        validate_sha256(&self.signer_service_identity_digest)?;
+              pub fn build_with_trust_state(
+                  request_digest: impl Into<String>,
+                  caller: &AuthenticatedCallerIdentity,
+                  service: &SignerServiceIdentity,
+                  policy: &ProductionKeyPolicy,
+                  trust_state_binding_digest: impl Into<String>,
+              ) -> Result<Self, ProductionSignerError> {
+                  let mut binding = Self::build(request_digest, caller, service, policy)?;
+                  binding.trust_state_binding_digest = Some(trust_state_binding_digest.into());
+                  binding.validate()?;
+                  Ok(binding)
+              }'''
+              if marker not in binding_impl:
+                  raise SystemExit("SignerRequestBinding validate marker not found")
+              binding_impl = binding_impl.replace(marker, method + marker, 1)
+          if "if let Some(trust_state_binding_digest)" not in binding_impl:
+              needle = "        validate_sha256(&self.signer_service_identity_digest)?;\n        validate_sha256(&self.key_policy_digest)"
+              replacement = '''        validate_sha256(&self.signer_service_identity_digest)?;
               validate_sha256(&self.key_policy_digest)?;
               if let Some(trust_state_binding_digest) = &self.trust_state_binding_digest {
                   validate_sha256(trust_state_binding_digest)?;
               }
-              Ok(())
-          }''',
-              "binding validation",
-          )
+              Ok(())'''
+              if needle not in binding_impl:
+                  raise SystemExit("SignerRequestBinding validation tail not found")
+              binding_impl = binding_impl.replace(needle, replacement, 1)
+          runtime = runtime[:impl_start] + binding_impl + runtime[impl_end:]
           runtime_path.write_text(runtime)
 
           service_path = Path("crates/windows-production-signer-service-runtime/src/lib.rs")
           service = service_path.read_text()
-          service = replace_once(
-              service,
-              '''    pub fn handle_authenticated_generation(
-              &mut self,
-              request: &ProductionSignerRequest,
-              caller: &AuthenticatedCallerIdentity,
-              trusted_now_epoch_s: u64,
-              generation: u64,
-          ) -> Result<AuthorizedProductionSignerPackage, ProductionSignerServiceError> {
-              if generation == 0 {''',
-              '''    pub fn handle_authenticated_generation(
-              &mut self,
-              request: &ProductionSignerRequest,
-              caller: &AuthenticatedCallerIdentity,
-              trusted_now_epoch_s: u64,
-              generation: u64,
-          ) -> Result<AuthorizedProductionSignerPackage, ProductionSignerServiceError> {
-              self.handle_authenticated_generation_with_trust_state(
-                  request,
-                  caller,
-                  trusted_now_epoch_s,
-                  generation,
-                  None,
-              )
-          }
+          impl_start = service.index("impl<B> ProductionSignerService<B>")
+          method_start = service.index("    pub fn handle_authenticated_generation(\n", impl_start)
+          method_end = service.index("\n    pub fn validate_backend_generation", method_start)
+          method_block = service[method_start:method_end]
+          if "handle_authenticated_generation_with_trust_state" not in method_block:
+              method_block = '''    pub fn handle_authenticated_generation(
+                  &mut self,
+                  request: &ProductionSignerRequest,
+                  caller: &AuthenticatedCallerIdentity,
+                  trusted_now_epoch_s: u64,
+                  generation: u64,
+              ) -> Result<AuthorizedProductionSignerPackage, ProductionSignerServiceError> {
+                  self.handle_authenticated_generation_with_trust_state(
+                      request,
+                      caller,
+                      trusted_now_epoch_s,
+                      generation,
+                      None,
+                  )
+              }
 
-          pub fn handle_authenticated_generation_with_trust_state(
-              &mut self,
-              request: &ProductionSignerRequest,
-              caller: &AuthenticatedCallerIdentity,
-              trusted_now_epoch_s: u64,
-              generation: u64,
-              trust_state_binding_digest: Option<&str>,
-          ) -> Result<AuthorizedProductionSignerPackage, ProductionSignerServiceError> {
-              if generation == 0 {''',
-              "trust-aware service method",
-          )
-          service = replace_once(
-              service,
-              '''        let binding =
-              SignerRequestBinding::build(request_digest, caller, &self.service_identity, &policy)?;''',
-              '''        let binding = if let Some(trust_state_binding_digest) = trust_state_binding_digest {
-              SignerRequestBinding::build_with_trust_state(
-                  request_digest,
-                  caller,
-                  &self.service_identity,
-                  &policy,
-                  trust_state_binding_digest,
-              )?
-          } else {
-              SignerRequestBinding::build(request_digest, caller, &self.service_identity, &policy)?
-          };''',
-              "trust-aware binding construction",
-          )
+              pub fn handle_authenticated_generation_with_trust_state(
+                  &mut self,
+                  request: &ProductionSignerRequest,
+                  caller: &AuthenticatedCallerIdentity,
+                  trusted_now_epoch_s: u64,
+                  generation: u64,
+                  trust_state_binding_digest: Option<&str>,
+              ) -> Result<AuthorizedProductionSignerPackage, ProductionSignerServiceError> {
+                  if generation == 0 {
+                      return Err(ProductionSignerServiceError::InvalidKeyGeneration);
+                  }
+                  let policy = policy_for_identity(&request.identity)?;
+                  request.validate_for(&policy)?;
+                  let request_digest = request.digest_for(&policy)?;
+
+                  // Consume caller authorization and replay state before any backend operation.
+                  // A backend failure must not make the same request replayable.
+                  let caller_authorization = self.identity_authorizer.authorize(
+                      caller,
+                      &self.service_identity,
+                      &self.allowlist,
+                      &request_digest,
+                      trusted_now_epoch_s,
+                  )?;
+
+                  let binding = if let Some(trust_state_binding_digest) = trust_state_binding_digest {
+                      SignerRequestBinding::build_with_trust_state(
+                          request_digest,
+                          caller,
+                          &self.service_identity,
+                          &policy,
+                          trust_state_binding_digest,
+                      )?
+                  } else {
+                      SignerRequestBinding::build(
+                          request_digest,
+                          caller,
+                          &self.service_identity,
+                          &policy,
+                      )?
+                  };
+                  let envelope = request.envelope(&policy, binding.clone())?;
+                  let envelope_digest = envelope.digest_for(&policy)?;
+
+                  let descriptor = self
+                      .backend
+                      .descriptor_for_generation(&policy, generation)?;
+                  descriptor.validate_for(&policy)?;
+                  let signature = self.backend.sign_sha256_digest_for_generation(
+                      &policy,
+                      generation,
+                      &descriptor,
+                      &binding,
+                      &envelope_digest,
+                  )?;
+                  signature.validate_for(&descriptor, &binding)?;
+
+                  let signer_response = ProductionSignerResponse::success(
+                      request.request_id.clone(),
+                      ProductionSignerSuccess {
+                          descriptor,
+                          envelope,
+                          envelope_digest,
+                          signature,
+                      },
+                  );
+                  signer_response.verify_production_eligible(&policy)?;
+                  let package = AuthorizedProductionSignerPackage {
+                      caller_authorization,
+                      signer_response,
+                  };
+                  package.verify(caller, &self.service_identity, &self.allowlist)?;
+                  Ok(package)
+              }
+          '''
+              service = service[:method_start] + method_block + service[method_end:]
           service_path.write_text(service)
 
           deployed_path = Path("crates/windows-production-trust-state-runtime/src/service.rs")
           deployed = deployed_path.read_text()
-          deployed = replace_once(
-              deployed,
-              '''        if envelope.request.identity != governed_trust.key.identity {
-              return Err(DeployedProductionSignerError::KeyGenerationMismatch);
-          }
-          if self.package_digest != self.expected_digest()? {''',
-              '''        if envelope.request.identity != governed_trust.key.identity {
-              return Err(DeployedProductionSignerError::KeyGenerationMismatch);
-          }
-          if envelope.binding.trust_state_binding_digest.as_deref()
-              != Some(accepted.binding().binding_digest.as_str())
-          {
-              return Err(DeployedProductionSignerError::SignedTrustStateBindingMismatch);
-          }
-          if self.package_digest != self.expected_digest()? {''',
-              "signed binding verification",
-          )
-          deployed = replace_once(
-              deployed,
-              '''        let signer_package = self.inner.handle_authenticated_generation(
-              request,
-              caller,
-              trusted_now_epoch_s,
-              record.generation,
-          )?;''',
-              '''        let signer_package = self.inner.handle_authenticated_generation_with_trust_state(
-              request,
-              caller,
-              trusted_now_epoch_s,
-              record.generation,
-              Some(&self.accepted.binding().binding_digest),
-          )?;''',
-              "trust-aware deployed signing",
-          )
-          deployed = replace_once(
-              deployed,
-              '''    #[error("production signer key generation does not match governed trust")]
-              KeyGenerationMismatch,''',
-              '''    #[error("production signer key generation does not match governed trust")]
-              KeyGenerationMismatch,
+          if "SignedTrustStateBindingMismatch" not in deployed:
+              verification_marker = '''        if envelope.request.identity != governed_trust.key.identity {
+                  return Err(DeployedProductionSignerError::KeyGenerationMismatch);
+              }
+          '''
+              verification_insert = verification_marker + '''        if envelope.binding.trust_state_binding_digest.as_deref()
+                  != Some(accepted.binding().binding_digest.as_str())
+              {
+                  return Err(DeployedProductionSignerError::SignedTrustStateBindingMismatch);
+              }
+          '''
+              if verification_marker not in deployed:
+                  raise SystemExit("deployed verification marker not found")
+              deployed = deployed.replace(verification_marker, verification_insert, 1)
+              old_call = '''        let signer_package = self.inner.handle_authenticated_generation(
+                  request,
+                  caller,
+                  trusted_now_epoch_s,
+                  record.generation,
+              )?;'''
+              new_call = '''        let signer_package = self.inner.handle_authenticated_generation_with_trust_state(
+                  request,
+                  caller,
+                  trusted_now_epoch_s,
+                  record.generation,
+                  Some(&self.accepted.binding().binding_digest),
+              )?;'''
+              if old_call not in deployed:
+                  raise SystemExit("deployed signer call marker not found")
+              deployed = deployed.replace(old_call, new_call, 1)
+              error_marker = '''    #[error("production signer key generation does not match governed trust")]
+              KeyGenerationMismatch,'''
+              error_insert = error_marker + '''
               #[error("hardware-signed request does not bind the accepted production trust state")]
-              SignedTrustStateBindingMismatch,''',
-              "signed binding error",
-          )
+              SignedTrustStateBindingMismatch,'''
+              if error_marker not in deployed:
+                  raise SystemExit("deployed error marker not found")
+              deployed = deployed.replace(error_marker, error_insert, 1)
           deployed_path.write_text(deployed)
           PY
 
