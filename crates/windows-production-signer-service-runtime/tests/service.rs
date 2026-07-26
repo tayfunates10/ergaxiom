@@ -1,7 +1,9 @@
 use std::cell::Cell;
 
 use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
-use ergaxiom_windows_production_signer_protocol_runtime::ProductionSignerRequest;
+use ergaxiom_windows_production_signer_protocol_runtime::{
+    ProductionSignerRequest, ProductionSignerResponse,
+};
 use ergaxiom_windows_production_signer_runtime::{
     AUTHENTICATED_CALLER_SCHEMA, AuthenticatedCallerIdentity, ECDSA_P256_SHA256, HardwareAssurance,
     HardwareKeyDescriptor, HardwareSignature, P1363_FIXED_64, ProductionKeyPolicy,
@@ -9,8 +11,8 @@ use ergaxiom_windows_production_signer_runtime::{
     SignerServiceIdentity,
 };
 use ergaxiom_windows_production_signer_service_runtime::{
-    HardwareSignerBackend, HardwareSignerBackendError, ProductionSignerService,
-    ProductionSignerServiceError,
+    AuthorizedProductionSignerPackage, HardwareSignerBackend, HardwareSignerBackendError,
+    ProductionSignerService, ProductionSignerServiceError, ProductionSignerTrustSnapshot,
 };
 use ergaxiom_windows_signer_service_identity_runtime::{
     AllowedSignerCaller, SignerCallerAllowlist, SignerIdentityError,
@@ -21,6 +23,7 @@ use sha2::{Digest, Sha256};
 const PAYLOAD_DIGEST: &str = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 const CALLER_IMAGE: &str = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
 const SERVICE_IMAGE: &str = "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc";
+const OTHER_DIGEST: &str = "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd";
 
 #[derive(Debug)]
 struct FakeHardwareBackend {
@@ -157,6 +160,25 @@ fn request(id: &str) -> Result<ProductionSignerRequest, Box<dyn std::error::Erro
     )?)
 }
 
+fn trust_snapshot(
+    package: &AuthorizedProductionSignerPackage,
+    caller: &AuthenticatedCallerIdentity,
+    service: &SignerServiceIdentity,
+    allowlist: &SignerCallerAllowlist,
+) -> Result<ProductionSignerTrustSnapshot, Box<dyn std::error::Error>> {
+    let ProductionSignerResponse::Success { result, .. } = &package.signer_response else {
+        return Err("expected production signer success".into());
+    };
+    Ok(ProductionSignerTrustSnapshot {
+        identity: result.descriptor.identity.clone(),
+        public_key_digest: result.descriptor.public_key_digest.clone(),
+        allowlist_revision: allowlist.revision,
+        allowlist_digest: allowlist.allowlist_digest.clone(),
+        caller_identity_digest: caller.digest()?,
+        signer_service_identity_digest: service.digest()?,
+    })
+}
+
 #[test]
 fn exact_authenticated_request_reaches_verified_production_signature()
 -> Result<(), Box<dyn std::error::Error>> {
@@ -170,6 +192,61 @@ fn exact_authenticated_request_reaches_verified_production_signature()
     )?;
     package.verify(&caller, service.service_identity(), service.allowlist())?;
     assert!(!package.signer_response.contains_private_material_field());
+    Ok(())
+}
+
+#[test]
+fn public_trust_snapshot_verifies_the_exact_package()
+-> Result<(), Box<dyn std::error::Error>> {
+    let backend = FakeHardwareBackend::proven()?;
+    let mut service = ProductionSignerService::new(backend, service_identity(), allowlist()?)?;
+    let caller = caller();
+    let package = service.handle_authenticated(
+        &request("production.capability.sign.1010")?,
+        &caller,
+        1_800_000_100,
+    )?;
+    let trust = trust_snapshot(
+        &package,
+        &caller,
+        service.service_identity(),
+        service.allowlist(),
+    )?;
+    let envelope = package.verify_trusted(&trust)?;
+    assert_eq!(envelope.request.digest, PAYLOAD_DIGEST);
+    Ok(())
+}
+
+#[test]
+fn public_trust_snapshot_substitution_fails_closed()
+-> Result<(), Box<dyn std::error::Error>> {
+    let backend = FakeHardwareBackend::proven()?;
+    let mut service = ProductionSignerService::new(backend, service_identity(), allowlist()?)?;
+    let caller = caller();
+    let package = service.handle_authenticated(
+        &request("production.capability.sign.1011")?,
+        &caller,
+        1_800_000_100,
+    )?;
+    let trust = trust_snapshot(
+        &package,
+        &caller,
+        service.service_identity(),
+        service.allowlist(),
+    )?;
+
+    for mutation in 0..5 {
+        let mut altered = trust.clone();
+        match mutation {
+            0 => altered.public_key_digest = OTHER_DIGEST.to_owned(),
+            1 => altered.allowlist_revision += 1,
+            2 => altered.allowlist_digest = OTHER_DIGEST.to_owned(),
+            3 => altered.caller_identity_digest = OTHER_DIGEST.to_owned(),
+            4 => altered.signer_service_identity_digest = OTHER_DIGEST.to_owned(),
+            _ => return Err("unexpected mutation".into()),
+        }
+        assert!(package.verify_trusted(&altered).is_err());
+    }
     Ok(())
 }
 
