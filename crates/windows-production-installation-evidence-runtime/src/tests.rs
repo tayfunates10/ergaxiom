@@ -5,8 +5,7 @@ use ergaxiom_windows_production_signer_host_runtime::{
     PRODUCTION_SIGNER_RESTART_DELAYS_MS, PRODUCTION_SIGNER_SERVICE_ACCOUNT,
     PRODUCTION_SIGNER_SERVICE_DISPLAY_NAME, PRODUCTION_SIGNER_SERVICE_MANIFEST_SCHEMA,
     PRODUCTION_SIGNER_SERVICE_NAME, PRODUCTION_SIGNER_SERVICE_SID_TYPE,
-    PRODUCTION_SIGNER_SERVICE_TYPE, PRODUCTION_SIGNER_START_MODE,
-    ProductionSignerServiceManifest,
+    PRODUCTION_SIGNER_SERVICE_TYPE, PRODUCTION_SIGNER_START_MODE, ProductionSignerServiceManifest,
 };
 use ergaxiom_windows_production_signer_runtime::ProductionKeyIdentity;
 use ergaxiom_windows_production_trust_state_runtime::ProductionTrustStateBinding;
@@ -26,8 +25,9 @@ const EXECUTABLE_PATH: &str = r"C:\Program Files\Ergaxiom\signer.exe";
 #[test]
 fn valid_installation_receipt_is_canonical_and_contains_no_raw_machine_guid() {
     let receipt = valid_receipt();
-    receipt.validate_seal().expect("valid installation receipt");
-    let json = serde_json::to_string(&receipt).expect("serialize receipt");
+    assert!(receipt.validate_seal().is_ok());
+    let json = serde_json::to_string(&receipt)
+        .unwrap_or_else(|error| panic!("serialize receipt failed: {error}"));
     assert!(!json.contains("00112233-4455-6677-8899-aabbccddeeff"));
     assert!(!json.contains("MachineGuid"));
 }
@@ -63,10 +63,12 @@ fn active_key_order_and_identity_substitution_fail_closed() {
     attestation.key_name = "Ergaxiom.Attestation.g00000000000000000003".to_owned();
     attestation.public_key_digest = DIGEST_E.to_owned();
     seal_observation(&mut attestation);
-    receipt.enabled_identities.push(attestation.identity.clone());
+    receipt
+        .enabled_identities
+        .push(attestation.identity.clone());
     receipt.active_keys.push(attestation);
     seal_receipt(&mut receipt);
-    receipt.validate_seal().expect("canonical two-key receipt");
+    assert!(receipt.validate_seal().is_ok());
 
     receipt.enabled_identities.swap(0, 1);
     receipt.active_keys.swap(0, 1);
@@ -80,7 +82,7 @@ fn active_key_order_and_identity_substitution_fail_closed() {
 #[test]
 fn manifest_service_identity_mutation_fails_even_after_resealing() {
     let mut receipt = valid_receipt();
-    receipt.manifest.display_name = "Substituted Production Signer".to_owned();
+    receipt.manifest.service_name = "SubstitutedProductionSigner".to_owned();
     seal_manifest(&mut receipt.manifest);
     receipt.manifest_digest = receipt.manifest.manifest_digest.clone();
     seal_receipt(&mut receipt);
@@ -293,8 +295,12 @@ fn seal_recovery(value: &mut ProductionSignerRecoveryExerciseReceipt) {
 }
 
 fn digest_with_blank<T: Serialize>(value: &T, field: &str) -> String {
-    let mut json = serde_json::to_value(value).expect("serialize canonical test value");
-    let object = json.as_object_mut().expect("canonical object");
+    let mut json = serde_json::to_value(value)
+        .unwrap_or_else(|error| panic!("serialize canonical test value failed: {error}"));
+    let Some(object) = json.as_object_mut() else {
+        panic!("canonical test value is not an object");
+    };
     object.insert(field.to_owned(), Value::String(String::new()));
-    canonical_json_sha256(&json).expect("hash canonical test value")
+    canonical_json_sha256(&json)
+        .unwrap_or_else(|error| panic!("hash canonical test value failed: {error}"))
 }
