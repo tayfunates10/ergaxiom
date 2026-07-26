@@ -37,44 +37,28 @@ on:
       - ".github/workflows/windows-production-signer.yml"
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   policy:
-    name: Canonicalize and verify read-before-impersonation transport
+    name: Verify production signer and purpose-locked issuance contracts
     runs-on: ubuntu-24.04
     steps:
-      - name: Check out pull request branch
+      - name: Check out repository
         uses: actions/checkout@v4
-        with:
-          ref: ${{ github.head_ref }}
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
 
-      - name: Materialize canonical transport formatting
-        run: cargo fmt --all
-
-      - name: Commit canonical transport source when needed
-        if: github.event_name == 'pull_request'
-        shell: bash
-        run: |
-          if git diff --quiet -- crates/windows-production-signer-transport-runtime; then
-            exit 0
-          fi
-          git config user.name "ergaxiom-ci"
-          git config user.email "ergaxiom-ci@users.noreply.github.com"
-          git add crates/windows-production-signer-transport-runtime
-          git commit -m "Canonicalize read-before-impersonation transport"
-          git push origin "HEAD:${{ github.head_ref }}"
-
       - name: Check workspace formatting
         run: cargo fmt --all -- --check
 
-      - name: Lint production signer and issuance boundary
+      - name: Capture Linux production signer Clippy diagnostics
+        shell: bash
         run: |
+          set +e
           cargo clippy \
             -p ergaxiom-attestation-runtime \
             -p ergaxiom-attestation-issuance-runtime \
@@ -86,7 +70,24 @@ jobs:
             -p ergaxiom-windows-production-signer-transport-runtime \
             -p ergaxiom-windows-cng-key-provider-runtime \
             -p ergaxiom-windows-signer-service-identity-runtime \
-            --all-targets --all-features -- -D warnings
+            --all-targets --all-features -- -D warnings \
+            2>&1 | tee "$RUNNER_TEMP/production-signer-clippy-linux.log"
+          status=${PIPESTATUS[0]}
+          printf '%s\n' "$status" > "$RUNNER_TEMP/production-signer-clippy-linux.status"
+          exit 0
+
+      - name: Upload Linux production signer Clippy diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: production-signer-clippy-linux-diagnostics
+          path: ${{ runner.temp }}/production-signer-clippy-linux.*
+          if-no-files-found: error
+          retention-days: 3
+
+      - name: Fail on Linux production signer lint mismatch
+        shell: bash
+        run: test "$(cat "$RUNNER_TEMP/production-signer-clippy-linux.status")" = "0"
 
       - name: Run platform-neutral production signer attacks
         run: |
@@ -107,10 +108,8 @@ jobs:
     name: Compile CNG signer and purpose-locked issuance boundary
     runs-on: windows-2025
     steps:
-      - name: Check out pull request branch
+      - name: Check out repository
         uses: actions/checkout@v4
-        with:
-          ref: ${{ github.head_ref }}
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -120,7 +119,7 @@ jobs:
       - name: Check workspace formatting
         run: cargo fmt --all -- --check
 
-      - name: Lint Windows production signer boundary
+      - name: Capture Windows production signer Clippy diagnostics
         shell: pwsh
         run: |
           cargo clippy `
@@ -134,9 +133,27 @@ jobs:
             -p ergaxiom-windows-production-signer-transport-runtime `
             -p ergaxiom-windows-cng-key-provider-runtime `
             -p ergaxiom-windows-signer-service-identity-runtime `
-            --all-targets --all-features -- -D warnings
+            --all-targets --all-features -- -D warnings `
+            2>&1 | Tee-Object -FilePath "$env:RUNNER_TEMP\production-signer-clippy-windows.log"
+          "$LASTEXITCODE" | Set-Content "$env:RUNNER_TEMP\production-signer-clippy-windows.status"
+          exit 0
 
-      - name: Run Windows production signer contract tests
+      - name: Upload Windows production signer Clippy diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: production-signer-clippy-windows-diagnostics
+          path: ${{ runner.temp }}/production-signer-clippy-windows.*
+          if-no-files-found: error
+          retention-days: 3
+
+      - name: Fail on Windows production signer lint mismatch
+        shell: pwsh
+        run: |
+          $status = (Get-Content "$env:RUNNER_TEMP\production-signer-clippy-windows.status").Trim()
+          if ($status -ne "0") { exit [int]$status }
+
+      - name: Capture Windows production signer contract tests
         shell: pwsh
         run: |
           cargo test `
@@ -150,4 +167,22 @@ jobs:
             -p ergaxiom-windows-production-signer-transport-runtime `
             -p ergaxiom-windows-cng-key-provider-runtime `
             -p ergaxiom-windows-signer-service-identity-runtime `
-            --all-features
+            --all-features -- --nocapture `
+            2>&1 | Tee-Object -FilePath "$env:RUNNER_TEMP\production-signer-tests-windows.log"
+          "$LASTEXITCODE" | Set-Content "$env:RUNNER_TEMP\production-signer-tests-windows.status"
+          exit 0
+
+      - name: Upload Windows production signer test diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: production-signer-tests-windows-diagnostics
+          path: ${{ runner.temp }}/production-signer-tests-windows.*
+          if-no-files-found: error
+          retention-days: 3
+
+      - name: Fail on Windows production signer test mismatch
+        shell: pwsh
+        run: |
+          $status = (Get-Content "$env:RUNNER_TEMP\production-signer-tests-windows.status").Trim()
+          if ($status -ne "0") { exit [int]$status }
