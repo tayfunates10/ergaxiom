@@ -1,0 +1,42 @@
+name: Deployment evidence diagnostics
+
+on:
+  pull_request:
+    paths:
+      - "apps/windows-production-signer-service/**"
+      - "crates/windows-production-deployment-evidence-runtime/**"
+      - "crates/windows-production-installation-evidence-runtime/**"
+      - ".github/workflows/deployment-evidence-diagnostics.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  ubuntu-diagnostics:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - name: Capture Clippy diagnostics
+        shell: bash
+        run: |
+          set +e
+          cargo clippy \
+            -p ergaxiom-windows-production-installation-evidence-runtime \
+            -p ergaxiom-windows-production-deployment-evidence-runtime \
+            -p ergaxiom-windows-production-signer-service \
+            --all-targets --all-features -- -D warnings \
+            > deployment-evidence-clippy.txt 2>&1
+          echo "$?" > deployment-evidence-clippy.status
+          exit 0
+      - uses: actions/upload-artifact@v4
+        with:
+          name: deployment-evidence-clippy-diagnostics
+          path: |
+            deployment-evidence-clippy.txt
+            deployment-evidence-clippy.status
+      - name: Fail on diagnostics
+        shell: bash
+        run: test "$(cat deployment-evidence-clippy.status)" = "0"
