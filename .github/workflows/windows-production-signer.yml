@@ -9,6 +9,9 @@ on:
       - "crates/windows-production-deployment-evidence-runtime/**"
       - "crates/windows-production-signer-host-runtime/**"
       - ".github/workflows/windows-production-signer.yml"
+  push:
+    branches:
+      - agent/tpm-cng-signer-service-v1
 
 permissions:
   contents: write
@@ -130,9 +133,10 @@ jobs:
         }
         self.service_snapshot.validate_for(&self.manifest, &manifest_path)?;
 '''
-          if old not in text:
+          if old in text:
+              text = text.replace(old, new, 1)
+          elif new not in text:
               raise SystemExit("portable manifest validation marker missing")
-          text = text.replace(old, new, 1)
           installation.write_text(text)
           PY
 
