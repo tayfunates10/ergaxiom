@@ -29,7 +29,7 @@ jobs:
         with:
           components: rustfmt, clippy
 
-      - name: Apply exact trust-state attack fixes
+      - name: Apply canonical trust-state fixes
         shell: bash
         run: |
           python - <<'PY'
@@ -37,54 +37,47 @@ jobs:
 
           deployed = Path("crates/windows-production-trust-state-runtime/tests/deployed_service.rs")
           text = deployed.read_text()
-          old = '        instance_nonce: "production-instance-a".to_owned(),'
-          new = '        instance_nonce: "production-instance-a-0123456789abcdef".to_owned(),'
-          if text.count(old) != 1:
-              raise SystemExit("expected one short service nonce")
-          deployed.write_text(text.replace(old, new, 1))
+          if "production-instance-a-0123456789abcdef" not in text:
+              old = 'instance_nonce: "production-instance-a".to_owned(),'
+              if old not in text:
+                  raise SystemExit("short service nonce not found")
+              text = text.replace(
+                  old,
+                  'instance_nonce: "production-instance-a-0123456789abcdef".to_owned(),',
+                  1,
+              )
+          deployed.write_text(text)
 
           model = Path("crates/windows-production-trust-state-runtime/src/model.rs")
           text = model.read_text()
-          old = '''        if next.revision <= checkpoint.revision {
-              return Err(ProductionTrustStateError::NonMonotonicRevision);
-          }'''
-          new = '''        if next.revision != checkpoint.revision.saturating_add(1) {
-              return Err(ProductionTrustStateError::NonMonotonicRevision);
-          }'''
-          if text.count(old) != 1:
-              raise SystemExit("expected one monotonic revision guard")
-          model.write_text(text.replace(old, new, 1))
+          old = "if next.revision <= checkpoint.revision {"
+          new = "if next.revision != checkpoint.revision.saturating_add(1) {"
+          if new not in text:
+              if text.count(old) != 1:
+                  raise SystemExit("monotonic revision guard not found")
+              text = text.replace(old, new, 1)
+          model.write_text(text)
 
           attacks = Path("crates/windows-production-trust-state-runtime/tests/model_store.rs")
           text = attacks.read_text()
-          marker = '''    assert!(matches!(
-              activator.activate(&state_two, &governance.policy, ACTIVATION + 1),
-              Err(ProductionTrustStateError::NonMonotonicRevision)
-          ));
+          if "let skipped = governance.state_envelope" not in text:
+              forked = text.index("    let forked = governance.state_envelope(state_body(")
+              skipped = '''    let skipped = governance.state_envelope(state_body(
+                  4,
+                  Some(state_two.body.body_digest.clone()),
+                  registry.snapshot(),
+                  4,
+                  4,
+                  1,
+              )?)?;
+              assert!(matches!(
+                  activator.activate(&skipped, &governance.policy, ACTIVATION + 2),
+                  Err(ProductionTrustStateError::NonMonotonicRevision)
+              ));
 
-          let forked = governance.state_envelope(state_body('''
-          replacement = '''    assert!(matches!(
-              activator.activate(&state_two, &governance.policy, ACTIVATION + 1),
-              Err(ProductionTrustStateError::NonMonotonicRevision)
-          ));
-
-          let skipped = governance.state_envelope(state_body(
-              4,
-              Some(state_two.body.body_digest.clone()),
-              registry.snapshot(),
-              4,
-              4,
-              1,
-          )?)?;
-          assert!(matches!(
-              activator.activate(&skipped, &governance.policy, ACTIVATION + 2),
-              Err(ProductionTrustStateError::NonMonotonicRevision)
-          ));
-
-          let forked = governance.state_envelope(state_body('''
-          if marker not in text:
-              raise SystemExit("model attack insertion marker not found")
-          attacks.write_text(text.replace(marker, replacement, 1))
+          '''
+              text = text[:forked] + skipped + text[forked:]
+          attacks.write_text(text)
           PY
 
       - name: Materialize canonical formatting and lockfile
@@ -92,7 +85,7 @@ jobs:
           cargo fmt --all
           cargo generate-lockfile
 
-      - name: Commit final trust-state attack fixes
+      - name: Commit final trust-state fixes
         shell: bash
         run: |
           set -euo pipefail
@@ -102,7 +95,7 @@ jobs:
           if git diff --cached --quiet; then
             echo "No source changes"
           else
-            git commit -m "Finalize deployed production trust-state attacks"
+            git commit -m "Reject skipped production trust-state revisions"
             git push origin HEAD:agent/tpm-cng-signer-service-v1
           fi
 
