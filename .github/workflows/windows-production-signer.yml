@@ -5,87 +5,117 @@ on:
     paths:
       - "Cargo.toml"
       - "Cargo.lock"
+      - "apps/windows-production-signer-provisioner/**"
+      - "crates/attestation-issuance-runtime/**"
+      - "crates/attestation-runtime/**"
+      - "crates/capability-issuance-runtime/**"
+      - "crates/capability-runtime/**"
+      - "crates/windows-cng-key-provider-runtime/**"
+      - "crates/windows-production-governed-issuance-runtime/**"
       - "crates/windows-production-key-governance-runtime/**"
+      - "crates/windows-production-signer-protocol-runtime/**"
+      - "crates/windows-production-signer-provisioning-runtime/**"
       - "crates/windows-production-signer-runtime/**"
       - "crates/windows-production-signer-service-runtime/**"
+      - "crates/windows-production-signer-transport-runtime/**"
       - "crates/windows-production-trust-state-runtime/**"
+      - "crates/windows-signer-service-identity-runtime/**"
+      - "docs/architecture/41-tpm-cng-production-signer.md"
+      - "docs/architecture/42-production-trust-registry-deployment.md"
+      - "docs/status.md"
+      - ".github/workflows/windows-production-signer.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "apps/windows-production-signer-provisioner/**"
+      - "crates/attestation-issuance-runtime/**"
+      - "crates/attestation-runtime/**"
+      - "crates/capability-issuance-runtime/**"
+      - "crates/capability-runtime/**"
+      - "crates/windows-cng-key-provider-runtime/**"
+      - "crates/windows-production-governed-issuance-runtime/**"
+      - "crates/windows-production-key-governance-runtime/**"
+      - "crates/windows-production-signer-protocol-runtime/**"
+      - "crates/windows-production-signer-provisioning-runtime/**"
+      - "crates/windows-production-signer-runtime/**"
+      - "crates/windows-production-signer-service-runtime/**"
+      - "crates/windows-production-signer-transport-runtime/**"
+      - "crates/windows-production-trust-state-runtime/**"
+      - "crates/windows-signer-service-identity-runtime/**"
+      - "docs/architecture/41-tpm-cng-production-signer.md"
+      - "docs/architecture/42-production-trust-registry-deployment.md"
+      - "docs/status.md"
       - ".github/workflows/windows-production-signer.yml"
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  fix-windows-production-trust-state:
-    name: Fix and verify Windows production trust state
-    runs-on: windows-2025
+  governed-production-trust-state:
+    name: Verify production trust state (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-24.04
+          - windows-2025
+    runs-on: ${{ matrix.os }}
     steps:
-      - name: Check out pull request branch
+      - name: Check out repository
         uses: actions/checkout@v4
-        with:
-          ref: agent/tpm-cng-signer-service-v1
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
 
-      - name: Bind Windows trust-store platform module
-        shell: bash
-        run: |
-          python - <<'PY'
-          from pathlib import Path
-          path = Path("crates/windows-production-trust-state-runtime/src/store.rs")
-          text = path.read_text()
-          addition = '''#[cfg(windows)]
-          mod platform {
-              pub use crate::windows::{atomic_replace, harden_directory, sync_directory};
-          }
-
-          '''
-          marker = "#[cfg(not(windows))]\nmod platform {"
-          if addition not in text:
-              if marker not in text:
-                  raise SystemExit("non-Windows platform module marker not found")
-              text = text.replace(marker, addition + marker, 1)
-          path.write_text(text)
-          PY
-
-      - name: Materialize canonical formatting and lockfile
-        shell: bash
-        run: |
-          cargo fmt --all
-          cargo generate-lockfile
-
-      - name: Commit Windows trust-store platform binding
-        shell: bash
-        run: |
-          set -euo pipefail
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add Cargo.lock crates/windows-production-trust-state-runtime/src/store.rs
-          if git diff --cached --quiet; then
-            echo "No source changes"
-          else
-            git commit -m "Bind Windows production trust-store platform"
-            git push origin HEAD:agent/tpm-cng-signer-service-v1
-          fi
-
       - name: Check workspace formatting
         run: cargo fmt --all -- --check
 
-      - name: Lint Windows production trust-state boundary
+      - name: Prove normal CNG runtime is open-only
+        run: cargo check -p ergaxiom-windows-cng-key-provider-runtime --no-default-features
+
+      - name: Lint production trust-state and signer boundary
         shell: bash
         run: |
           cargo clippy \
+            -p ergaxiom-attestation-runtime \
+            -p ergaxiom-attestation-issuance-runtime \
+            -p ergaxiom-capability-runtime \
+            -p ergaxiom-capability-issuance-runtime \
+            -p ergaxiom-windows-production-signer-provisioner \
+            -p ergaxiom-windows-cng-key-provider-runtime \
+            -p ergaxiom-windows-production-governed-issuance-runtime \
             -p ergaxiom-windows-production-key-governance-runtime \
             -p ergaxiom-windows-production-signer-runtime \
+            -p ergaxiom-windows-production-signer-protocol-runtime \
+            -p ergaxiom-windows-production-signer-provisioning-runtime \
             -p ergaxiom-windows-production-signer-service-runtime \
+            -p ergaxiom-windows-production-signer-transport-runtime \
             -p ergaxiom-windows-production-trust-state-runtime \
+            -p ergaxiom-windows-signer-service-identity-runtime \
             --all-targets --all-features -- -D warnings
 
-      - name: Run Windows production trust-state attacks
+      - name: Run production trust-state and signer attacks
         shell: bash
         run: |
           cargo test \
+            -p ergaxiom-attestation-runtime \
+            -p ergaxiom-attestation-issuance-runtime \
+            -p ergaxiom-capability-runtime \
+            -p ergaxiom-capability-issuance-runtime \
+            -p ergaxiom-windows-production-signer-provisioner \
+            -p ergaxiom-windows-cng-key-provider-runtime \
+            -p ergaxiom-windows-production-governed-issuance-runtime \
+            -p ergaxiom-windows-production-key-governance-runtime \
+            -p ergaxiom-windows-production-signer-runtime \
+            -p ergaxiom-windows-production-signer-protocol-runtime \
+            -p ergaxiom-windows-production-signer-provisioning-runtime \
+            -p ergaxiom-windows-production-signer-service-runtime \
+            -p ergaxiom-windows-production-signer-transport-runtime \
             -p ergaxiom-windows-production-trust-state-runtime \
+            -p ergaxiom-windows-signer-service-identity-runtime \
             --all-features -- --nocapture
