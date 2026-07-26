@@ -186,18 +186,22 @@ fn governed_public_key_or_generation_substitution_is_rejected()
     };
 
     trust.key.generation = 2;
-    assert!(package
-        .verify_governed(&trust, &registry, SIGNED_AT)
-        .is_err());
+    assert!(
+        package
+            .verify_governed(&trust, &registry, SIGNED_AT)
+            .is_err()
+    );
 
     let mut trust = GovernedProductionSignerTrustSnapshot {
         signer: trust.signer,
         key: registry.trust_binding(&identity, 1, SIGNED_AT)?,
     };
     trust.key.public_key_digest = REASON_DIGEST.to_owned();
-    assert!(package
-        .verify_governed(&trust, &registry, SIGNED_AT)
-        .is_err());
+    assert!(
+        package
+            .verify_governed(&trust, &registry, SIGNED_AT)
+            .is_err()
+    );
     Ok(())
 }
 

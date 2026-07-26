@@ -66,8 +66,8 @@ fn guarded_rotation_retires_old_generation_and_activates_successor()
 }
 
 #[test]
-fn stale_revision_digest_and_public_key_reuse_fail_closed()
--> Result<(), Box<dyn std::error::Error>> {
+fn stale_revision_digest_and_public_key_reuse_fail_closed() -> Result<(), Box<dyn std::error::Error>>
+{
     let identity = ProductionKeyIdentity::capability();
     let mut registry = registry_with_initial(identity.clone(), 7)?;
     let current_digest = registry.registry_digest()?;
@@ -117,8 +117,8 @@ fn stale_revision_digest_and_public_key_reuse_fail_closed()
 }
 
 #[test]
-fn revocation_invalidates_the_generation_and_is_one_way()
--> Result<(), Box<dyn std::error::Error>> {
+fn revocation_invalidates_the_generation_and_is_one_way() -> Result<(), Box<dyn std::error::Error>>
+{
     let identity = ProductionKeyIdentity::attestation();
     let mut registry = registry_with_initial(identity.clone(), 9)?;
     let receipt = registry.revoke_guarded(
@@ -150,8 +150,8 @@ fn revocation_invalidates_the_generation_and_is_one_way()
 }
 
 #[test]
-fn unproven_hardware_cannot_enter_the_production_registry()
--> Result<(), Box<dyn std::error::Error>> {
+fn unproven_hardware_cannot_enter_the_production_registry() -> Result<(), Box<dyn std::error::Error>>
+{
     let mut registry = ProductionKeyRegistry::default();
     let digest = registry.registry_digest()?;
     assert!(matches!(
@@ -205,7 +205,14 @@ fn registry_with_initial(
 ) -> Result<ProductionKeyRegistry, Box<dyn std::error::Error>> {
     let mut registry = ProductionKeyRegistry::default();
     let digest = registry.registry_digest()?;
-    registry.insert_initial_guarded(0, &digest, descriptor(identity, seed, true)?, 100, 2_000, 100)?;
+    registry.insert_initial_guarded(
+        0,
+        &digest,
+        descriptor(identity, seed, true)?,
+        100,
+        2_000,
+        100,
+    )?;
     Ok(registry)
 }
 
