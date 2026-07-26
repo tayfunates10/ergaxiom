@@ -1,5 +1,6 @@
 use std::cell::Cell;
 use std::error::Error;
+use std::rc::Rc;
 
 use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
 use ed25519_dalek::{Signer, SigningKey as Ed25519SigningKey};
@@ -36,7 +37,7 @@ const PAYLOAD_DIGEST: &str = "cccccccccccccccccccccccccccccccccccccccccccccccccc
 struct GenerationBackend {
     generation_one: SigningKey,
     generation_two: SigningKey,
-    selected_generation: Cell<u64>,
+    selected_generation: Rc<Cell<u64>>,
     substitute_generation_two: bool,
 }
 
@@ -45,7 +46,7 @@ impl GenerationBackend {
         Ok(Self {
             generation_one: SigningKey::from_bytes((&[17_u8; 32]).into())?,
             generation_two: SigningKey::from_bytes((&[23_u8; 32]).into())?,
-            selected_generation: Cell::new(0),
+            selected_generation: Rc::new(Cell::new(0)),
             substitute_generation_two: false,
         })
     }
@@ -195,6 +196,7 @@ fn backend_generation_substitution_fails_before_service_start() -> Result<(), Bo
 #[test]
 fn stale_state_and_signed_binding_substitution_fail_closed() -> Result<(), Box<dyn Error>> {
     let fixture = Fixture::build(GenerationBackend::production()?)?;
+    let newer = fixture.next_accepted_state()?;
     let mut deployed = TrustBoundProductionSignerService::new(
         fixture.service,
         fixture.accepted.clone(),
@@ -207,7 +209,6 @@ fn stale_state_and_signed_binding_substitution_fail_closed() -> Result<(), Box<d
     )?;
     let package = deployed.handle_authenticated(&request, &fixture.caller, ACTIVATION + 2)?;
 
-    let newer = fixture.next_accepted_state()?;
     assert!(matches!(
         package.verify_deployed(
             &newer,
@@ -243,7 +244,7 @@ fn stale_state_and_signed_binding_substitution_fail_closed() -> Result<(), Box<d
 }
 
 struct Fixture {
-    selected_generation: Cell<u64>,
+    selected_generation: Rc<Cell<u64>>,
     service: ProductionSignerService<GenerationBackend>,
     accepted: ergaxiom_windows_production_trust_state_runtime::VerifiedProductionTrustState,
     deployment_policy: ProductionSignerDeploymentPolicy,
