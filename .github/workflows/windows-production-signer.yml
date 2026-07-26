@@ -10,57 +10,74 @@ on:
       - ".github/workflows/windows-production-signer.yml"
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  canonicalize-governance:
-    name: Canonicalize and verify P-256 governance boundary
+  governance-diagnostics:
+    name: Diagnose P-256 governance boundary
     runs-on: ubuntu-24.04
     steps:
-      - name: Check out pull request branch
+      - name: Check out repository
         uses: actions/checkout@v4
-        with:
-          ref: agent/tpm-cng-signer-service-v1
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
 
-      - name: Materialize canonical formatting and lockfile
-        run: |
-          cargo fmt --all
-          cargo generate-lockfile
-
-      - name: Commit canonical governance source when needed
-        shell: bash
-        run: |
-          set -euo pipefail
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add Cargo.toml Cargo.lock \
-            crates/windows-production-key-governance-runtime \
-            crates/windows-production-signer-service-runtime
-          if git diff --cached --quiet; then
-            echo "No canonical source changes"
-          else
-            git commit -m "Canonicalize P-256 production key governance"
-            git push origin HEAD:agent/tpm-cng-signer-service-v1
-          fi
-
       - name: Check workspace formatting
         run: cargo fmt --all -- --check
 
-      - name: Lint governance and signer trust boundary
+      - name: Capture governance Clippy diagnostics
+        shell: bash
         run: |
+          set +e
           cargo clippy \
             -p ergaxiom-windows-production-key-governance-runtime \
             -p ergaxiom-windows-production-signer-service-runtime \
-            --all-targets --all-features -- -D warnings
+            --all-targets --all-features -- -D warnings \
+            2>&1 | tee "$RUNNER_TEMP/governance-clippy.log"
+          status=${PIPESTATUS[0]}
+          printf '%s\n' "$status" > "$RUNNER_TEMP/governance-clippy.status"
+          exit 0
 
-      - name: Run governance and signer trust attacks
+      - name: Upload governance Clippy diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: governance-clippy-diagnostics
+          path: ${{ runner.temp }}/governance-clippy.*
+          if-no-files-found: error
+          retention-days: 3
+
+      - name: Fail on governance lint mismatch
+        shell: bash
+        run: test "$(cat "$RUNNER_TEMP/governance-clippy.status")" = "0"
+
+      - name: Capture governance attack tests
+        if: success()
+        shell: bash
         run: |
+          set +e
           cargo test \
             -p ergaxiom-windows-production-key-governance-runtime \
             -p ergaxiom-windows-production-signer-service-runtime \
-            --all-features
+            --all-features \
+            2>&1 | tee "$RUNNER_TEMP/governance-tests.log"
+          status=${PIPESTATUS[0]}
+          printf '%s\n' "$status" > "$RUNNER_TEMP/governance-tests.status"
+          exit 0
+
+      - name: Upload governance test diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: governance-test-diagnostics
+          path: ${{ runner.temp }}/governance-tests.*
+          if-no-files-found: ignore
+          retention-days: 3
+
+      - name: Fail on governance test mismatch
+        if: success()
+        shell: bash
+        run: test "$(cat "$RUNNER_TEMP/governance-tests.status")" = "0"
