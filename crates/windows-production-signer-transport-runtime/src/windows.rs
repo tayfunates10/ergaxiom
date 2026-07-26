@@ -76,9 +76,7 @@ impl PipeServer {
         Ok(Self { handle })
     }
 
-    pub fn accept(
-        &mut self,
-    ) -> Result<(PipeConnection, AuthenticatedCallerIdentity), ProductionSignerTransportError> {
+    pub fn accept(&mut self) -> Result<PipeConnection, ProductionSignerTransportError> {
         if self.handle.is_null() || self.handle == INVALID_HANDLE_VALUE {
             return Err(ProductionSignerTransportError::PipeConnectionFailed(
                 std::io::Error::from_raw_os_error(6),
@@ -93,10 +91,9 @@ impl PipeServer {
                 return Err(ProductionSignerTransportError::PipeConnectionFailed(error));
             }
         }
-        let caller = derive_authenticated_caller_from_named_pipe(self.handle as isize)?;
         let handle = self.handle;
         self.handle = null_mut();
-        Ok((PipeConnection { handle }, caller))
+        Ok(PipeConnection { handle })
     }
 }
 
@@ -117,6 +114,13 @@ impl PipeConnection {
         max_bytes: u32,
     ) -> Result<Vec<u8>, ProductionSignerTransportError> {
         read_message(self.handle, max_bytes)
+    }
+
+    pub fn derive_authenticated_caller(
+        &self,
+    ) -> Result<AuthenticatedCallerIdentity, ProductionSignerTransportError> {
+        derive_authenticated_caller_from_named_pipe(self.handle as isize)
+            .map_err(ProductionSignerTransportError::Identity)
     }
 
     pub fn write_message(&mut self, bytes: &[u8]) -> Result<(), ProductionSignerTransportError> {
