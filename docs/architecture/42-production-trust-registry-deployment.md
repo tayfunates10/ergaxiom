@@ -6,7 +6,7 @@ The bounded production trust-state lifecycle is implemented in `ergaxiom-windows
 
 The repository can now authenticate, persist, atomically activate, reload and separately recover a public production trust state that contains the governed P-256 registry, caller allowlist binding and signer-service deployment policy. The accepted trust-state digest is also included in the P-256 signer request binding, so a hardware-signed production package cannot be detached from the state under which it was issued.
 
-This implementation is a runtime and filesystem security boundary. It does **not** claim that a production governance ceremony has occurred, that governance private keys have operational custody controls, that the signer has been installed through Windows Service Control Manager, or that a physical TPM has been independently proven.
+This implementation now includes the hardened Windows Service Control Manager host and installer contract. It does **not** claim that a production governance ceremony has occurred, that governance private keys have operational custody controls, that the fixed service has been installed on a controlled production machine, or that a physical TPM has been independently proven.
 
 ## Implemented artifacts
 
@@ -143,7 +143,7 @@ The accepted checkpoint records the last recovery sequence so the same recovery 
 
 A backend that silently opens generation 1 when generation 2 is active fails startup.
 
-This is an in-process startup authority and attack-tested deployment boundary. Installation, account configuration, service recovery settings and SCM hardening of a real Windows service remain open.
+The startup authority is now hosted by a fixed SCM own-process LocalSystem service runtime with delayed automatic start, restricted privileges, failure actions, preshutdown handling and an administrator/System-only service DACL. The executable and manifest paths are bound before the service reports `SERVICE_RUNNING`. A controlled-machine elevated installation record and operational recovery exercise remain open.
 
 ## Cryptographic trust-state binding
 
@@ -215,7 +215,7 @@ The repository now implements:
 - controlled-hardware elevated provisioning with retained reviewed evidence,
 - offline creation, custody, rotation and recovery procedures for governance private keys,
 - secure packaging and administrator-controlled distribution of signed trust-state updates,
-- installation of the authenticated signer as a hardened Windows service,
+- elevated installation and validation of the fixed hardened service on controlled production hardware,
 - machine recovery and backup procedures exercised on controlled hardware, and
 - full desktop/backend orchestration through the installed service.
 

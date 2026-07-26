@@ -199,6 +199,12 @@ Recovery has a separate signature domain, sequence, expiry, damaged/replacement 
 
 Existing fixed-snapshot artifacts remain backward compatible because the trust-state field is optional and omitted from the earlier path. New deployed issuance requires it.
 
+## Hardened Windows service host
+
+`ergaxiom-windows-production-signer-host-runtime` and the dedicated service executable bind a canonical manifest to the exact executable path/digest, trust store, governance policy, caller allowlist, deployment policy and named-pipe principal. The fixed SCM contract uses an own-process LocalSystem service, delayed automatic start, severe error control, unrestricted service SID, only `SeChangeNotifyPrivilege`, bounded restart actions, preshutdown handling and a protected administrator/System service DACL.
+
+Before reporting `SERVICE_RUNNING`, the service reloads the accepted signed state, resolves every exact active generation, opens each generation-specific CNG key by expected public-key digest, verifies the full descriptor-to-registry binding, derives the current process identity and binds the protected first-instance pipe. Relative paths, command-line quote injection, copied executable paths and hardening-policy substitutions fail closed.
+
 ## Caller identity
 
 The signer derives caller identity from the connected named-pipe client rather than accepting identity fields from the request. The Windows boundary measures:
@@ -302,7 +308,10 @@ The permanent read-only Linux and Windows matrix covers:
 - separately authorized recovery, replay rejection and revoked-key reactivation rejection,
 - exact active-generation backend startup matching,
 - hardware-signed trust-state binding and stale backend-versus-signer rejection, and
-- real Windows protected-DACL, atomic-pointer and named-pipe round trips.
+- real Windows protected-DACL, atomic-pointer and named-pipe round trips,
+- canonical SCM manifest and hardening mutation attacks,
+- exact service executable path/digest binding, and
+- Windows release-mode production service executable compilation.
 
 The canonical Ubuntu and Windows matrix passed formatting, open-only build checks, warnings-deny Clippy and the complete governed test set. The workflow remains in permanent `contents: read` mode.
 
@@ -314,7 +323,7 @@ The following remain open:
 - an operational elevated provisioning ceremony on controlled hardware and custody of its evidence,
 - operational generation, custody and recovery procedures for the separate trust-governance private keys,
 - administrator-controlled packaging and distribution of signed trust-state updates,
-- deployment of the authenticated production signer as a hardened Windows service, and
+- an elevated controlled-machine installation record and service recovery exercise, and
 - full desktop/backend orchestration through the deployed service.
 
 Authenticode, trusted timestamps, commercial certificate chains and signed installer upgrade/rollback provenance remain explicitly outside Issue #60 and belong to the following release-provenance gate.
