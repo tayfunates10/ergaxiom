@@ -501,7 +501,7 @@ impl PreparedProductionSignerHost {
 pub enum ProductionSignerHostResponse {
     Success {
         schema_version: String,
-        package: DeployedAuthorizedProductionSignerPackage,
+        package: Box<DeployedAuthorizedProductionSignerPackage>,
         response_digest: String,
     },
     Rejected {
@@ -518,7 +518,7 @@ impl ProductionSignerHostResponse {
     ) -> Result<Self, ProductionSignerHostError> {
         let mut response = Self::Success {
             schema_version: PRODUCTION_SIGNER_HOST_RESPONSE_SCHEMA.to_owned(),
-            package,
+            package: Box::new(package),
             response_digest: String::new(),
         };
         response.set_digest()?;
