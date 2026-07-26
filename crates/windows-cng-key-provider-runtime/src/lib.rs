@@ -266,9 +266,9 @@ fn encode_hex(bytes: &[u8]) -> String {
 
 #[cfg(windows)]
 mod platform {
-    pub use crate::windows::{describe_existing, ecdsa_p256_public_magic, probe, sign};
     #[cfg(feature = "provisioning")]
     pub use crate::windows::provision;
+    pub use crate::windows::{describe_existing, ecdsa_p256_public_magic, probe, sign};
 }
 
 #[cfg(not(windows))]

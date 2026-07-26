@@ -27,10 +27,8 @@ fn dedicated_tpm_gate_provisions_then_reopens_and_signs_without_private_export()
     assert_eq!(provisioning.descriptor.algorithm, "ecdsa-p256-sha256");
     assert!(!provisioning.descriptor.public_key_base64url.is_empty());
 
-    let reopened = provider.describe_existing_unverified(
-        &policy,
-        Some(&provisioning.descriptor.public_key_digest),
-    )?;
+    let reopened = provider
+        .describe_existing_unverified(&policy, Some(&provisioning.descriptor.public_key_digest))?;
     assert!(!reopened.created);
     assert_eq!(reopened.descriptor, provisioning.descriptor);
 

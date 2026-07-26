@@ -29,7 +29,7 @@ fn run(arguments: impl IntoIterator<Item = OsString>) -> Result<(), ProvisionerE
         IssuerRole::Capability => ProductionKeyPolicy::capability(),
         IssuerRole::Attestation => ProductionKeyPolicy::attestation(),
         IssuerRole::Execution | IssuerRole::Normalization | IssuerRole::Release => {
-            return Err(ProvisionerError::UnsupportedRole)
+            return Err(ProvisionerError::UnsupportedRole);
         }
     };
     let provisioned_at_epoch_s = SystemTime::now()
@@ -85,10 +85,8 @@ impl Command {
                     output = Some(PathBuf::from(next_utf8(&mut arguments, "--output")?));
                 }
                 "--expected-public-key-digest" => {
-                    expected_public_key_digest = Some(next_utf8(
-                        &mut arguments,
-                        "--expected-public-key-digest",
-                    )?);
+                    expected_public_key_digest =
+                        Some(next_utf8(&mut arguments, "--expected-public-key-digest")?);
                 }
                 "--help" | "-h" => return Err(ProvisionerError::Usage),
                 _ => return Err(ProvisionerError::UnknownArgument(argument)),
@@ -175,7 +173,9 @@ fn write_new_json<T: serde::Serialize>(path: &Path, value: &T) -> Result<(), Pro
 
 #[derive(Debug, Error)]
 enum ProvisionerError {
-    #[error("usage: ergaxiom-windows-production-signer-provisioner --role capability|attestation --output <new-json-path> [--expected-public-key-digest <sha256>]")]
+    #[error(
+        "usage: ergaxiom-windows-production-signer-provisioner --role capability|attestation --output <new-json-path> [--expected-public-key-digest <sha256>]"
+    )]
     Usage,
     #[error("command-line argument is not valid UTF-8")]
     ArgumentNotUtf8,

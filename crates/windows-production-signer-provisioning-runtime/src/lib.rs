@@ -42,7 +42,8 @@ impl ProvisioningStatement {
         policy: &ProductionKeyPolicy,
         receipt: &ProvisioningReceipt,
     ) -> Result<(), ProvisioningError> {
-        if self.schema_version != PROVISIONING_STATEMENT_SCHEMA || self.domain != PROVISIONING_DOMAIN
+        if self.schema_version != PROVISIONING_STATEMENT_SCHEMA
+            || self.domain != PROVISIONING_DOMAIN
         {
             return Err(ProvisioningError::InvalidProvisioningDomain);
         }
@@ -117,11 +118,7 @@ impl ProvisioningEvidence {
         }
         validate_receipt_contract(&self.receipt, policy)?;
         self.statement.validate_for(policy, &self.receipt)?;
-        validate_possession_signature(
-            &self.key_possession,
-            &self.statement,
-            &self.receipt,
-        )?;
+        validate_possession_signature(&self.key_possession, &self.statement, &self.receipt)?;
         validate_sha256(&self.evidence_digest)?;
         if self.evidence_digest != self.expected_digest()? {
             return Err(ProvisioningError::EvidenceDigestMismatch);
@@ -154,10 +151,7 @@ impl ProvisioningEvidence {
         let object = value
             .as_object_mut()
             .ok_or(ProvisioningError::InvalidCanonicalObject)?;
-        object.insert(
-            "evidence_digest".to_owned(),
-            Value::String(String::new()),
-        );
+        object.insert("evidence_digest".to_owned(), Value::String(String::new()));
         Ok(canonical_json_sha256(&value)?)
     }
 }
@@ -233,9 +227,7 @@ where
         if provisioned_at_epoch_s == 0 {
             return Err(ProvisioningError::InvalidProvisioningTime);
         }
-        let provisioning = self
-            .backend
-            .provision(policy, expected_public_key_digest)?;
+        let provisioning = self.backend.provision(policy, expected_public_key_digest)?;
         validate_descriptor_contract(&provisioning, policy)?;
         let receipt = ProvisioningReceipt::from_descriptor(
             provisioning.descriptor.clone(),
@@ -349,10 +341,7 @@ fn expected_receipt_digest(receipt: &ProvisioningReceipt) -> Result<String, Prov
     let object = value
         .as_object_mut()
         .ok_or(ProvisioningError::InvalidCanonicalObject)?;
-    object.insert(
-        "receipt_digest".to_owned(),
-        Value::String(String::new()),
-    );
+    object.insert("receipt_digest".to_owned(), Value::String(String::new()));
     Ok(canonical_json_sha256(&value)?)
 }
 
@@ -361,9 +350,7 @@ fn validate_possession_signature(
     statement: &ProvisioningStatement,
     receipt: &ProvisioningReceipt,
 ) -> Result<(), ProvisioningError> {
-    if possession.digest_algorithm != "sha256"
-        || possession.signature_encoding != P1363_FIXED_64
-    {
+    if possession.digest_algorithm != "sha256" || possession.signature_encoding != P1363_FIXED_64 {
         return Err(ProvisioningError::SignatureMetadataMismatch);
     }
     validate_sha256(&possession.digest)?;

@@ -32,9 +32,10 @@ impl ProvisioningBackend for FakeProvisioningBackend {
             return Err(ProvisioningError::PublicKeyDigestMismatch);
         }
         Ok(CngProvisioningResult {
-            key_name: ergaxiom_windows_cng_key_provider_runtime::CngPlatformKeyProvider::key_name_for(
-                policy,
-            )?,
+            key_name:
+                ergaxiom_windows_cng_key_provider_runtime::CngPlatformKeyProvider::key_name_for(
+                    policy,
+                )?,
             created: self.created,
             descriptor: HardwareKeyDescriptor {
                 identity: policy.identity.clone(),
@@ -74,7 +75,9 @@ impl ProvisioningBackend for FakeProvisioningBackend {
     }
 }
 
-fn authority(created: bool) -> Result<ProvisioningAuthority<FakeProvisioningBackend>, Box<dyn std::error::Error>> {
+fn authority(
+    created: bool,
+) -> Result<ProvisioningAuthority<FakeProvisioningBackend>, Box<dyn std::error::Error>> {
     Ok(ProvisioningAuthority::new(FakeProvisioningBackend {
         signing_key: SigningKey::from_bytes((&[13_u8; 32]).into())?,
         created,
@@ -89,7 +92,10 @@ fn sealed_key_possession_evidence_verifies_without_promoting_hardware()
     let verified = evidence.verify_contract(&policy)?;
     assert!(verified.created);
     assert_eq!(verified.assurance, HardwareAssurance::Unproven);
-    assert_eq!(verified.public_key_digest, evidence.receipt.public_key_digest);
+    assert_eq!(
+        verified.public_key_digest,
+        evidence.receipt.public_key_digest
+    );
     assert!(matches!(
         evidence.verify_production_eligible(&policy),
         Err(ProvisioningError::Production(
