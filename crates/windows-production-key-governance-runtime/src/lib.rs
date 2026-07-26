@@ -1,6 +1,6 @@
 #![forbid(unsafe_code)]
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
 use ergaxiom_key_governance_runtime::IssuerRole;
@@ -189,11 +189,74 @@ impl ProductionKeyTrustBinding {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-struct RegistrySnapshot {
-    schema_version: String,
-    revision: u64,
-    records: Vec<ProductionKeyRecord>,
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ProductionKeyRegistrySnapshot {
+    pub schema_version: String,
+    pub revision: u64,
+    pub records: Vec<ProductionKeyRecord>,
+}
+
+impl ProductionKeyRegistrySnapshot {
+    pub fn validate_seal(&self) -> Result<(), ProductionKeyGovernanceError> {
+        if self.schema_version != PRODUCTION_KEY_REGISTRY_SCHEMA {
+            return Err(ProductionKeyGovernanceError::UnsupportedRegistrySchema);
+        }
+        if self.revision == 0 && !self.records.is_empty() {
+            return Err(ProductionKeyGovernanceError::InvalidRegistrySnapshot);
+        }
+        let mut identities = BTreeSet::new();
+        let mut public_keys = BTreeSet::new();
+        let mut previous = None;
+        for record in &self.records {
+            record.validate_seal()?;
+            let key = (
+                record.identity.role,
+                record.identity.issuer_id.clone(),
+                record.identity.key_id.clone(),
+                record.generation,
+            );
+            if previous.as_ref().is_some_and(|candidate| candidate >= &key) {
+                return Err(ProductionKeyGovernanceError::RegistrySnapshotNotCanonical);
+            }
+            previous = Some(key.clone());
+            if !identities.insert(key) {
+                return Err(ProductionKeyGovernanceError::DuplicateRegistryRecord);
+            }
+            if !public_keys.insert(record.public_key_digest.clone()) {
+                return Err(ProductionKeyGovernanceError::PublicKeyReuse);
+            }
+        }
+        Ok(())
+    }
+
+    pub fn validate_active_generations(
+        &self,
+        at_epoch_s: u64,
+    ) -> Result<(), ProductionKeyGovernanceError> {
+        self.validate_seal()?;
+        let mut active = BTreeSet::new();
+        for record in &self.records {
+            if record.status == ProductionKeyStatus::Active
+                && at_epoch_s >= record.not_before_epoch_s
+                && at_epoch_s < record.not_after_epoch_s
+            {
+                let identity = (
+                    record.identity.role,
+                    record.identity.issuer_id.clone(),
+                    record.identity.key_id.clone(),
+                );
+                if !active.insert(identity) {
+                    return Err(ProductionKeyGovernanceError::ActiveGenerationAmbiguity);
+                }
+            }
+        }
+        Ok(())
+    }
+
+    pub fn digest(&self) -> Result<String, ProductionKeyGovernanceError> {
+        self.validate_seal()?;
+        Ok(canonical_json_sha256(&serde_json::to_value(self)?)?)
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
@@ -228,8 +291,50 @@ impl ProductionKeyRegistry {
     }
 
     pub fn registry_digest(&self) -> Result<String, ProductionKeyGovernanceError> {
-        let value = serde_json::to_value(self.snapshot())?;
-        Ok(canonical_json_sha256(&value)?)
+        self.snapshot().digest()
+    }
+
+    pub fn from_snapshot(
+        snapshot: ProductionKeyRegistrySnapshot,
+    ) -> Result<Self, ProductionKeyGovernanceError> {
+        snapshot.validate_seal()?;
+        let mut records = BTreeMap::new();
+        for record in snapshot.records.iter().cloned() {
+            let key = RecordKey::from_identity(&record.identity, record.generation);
+            if records.insert(key, record).is_some() {
+                return Err(ProductionKeyGovernanceError::DuplicateRegistryRecord);
+            }
+        }
+        let registry = Self {
+            revision: snapshot.revision,
+            records,
+        };
+        if registry.snapshot() != snapshot {
+            return Err(ProductionKeyGovernanceError::RegistrySnapshotNotCanonical);
+        }
+        Ok(registry)
+    }
+
+    pub fn active_record(
+        &self,
+        identity: &ProductionKeyIdentity,
+        at_epoch_s: u64,
+    ) -> Result<&ProductionKeyRecord, ProductionKeyGovernanceError> {
+        identity.validate()?;
+        let mut active = None;
+        for record in self.records.values().filter(|record| {
+            record.identity == *identity
+                && record.status == ProductionKeyStatus::Active
+                && at_epoch_s >= record.not_before_epoch_s
+                && at_epoch_s < record.not_after_epoch_s
+        }) {
+            record.validate_seal()?;
+            if active.is_some() {
+                return Err(ProductionKeyGovernanceError::ActiveGenerationAmbiguity);
+            }
+            active = Some(record);
+        }
+        active.ok_or(ProductionKeyGovernanceError::NoActiveGeneration)
     }
 
     pub fn insert_initial_guarded(
@@ -463,8 +568,8 @@ impl ProductionKeyRegistry {
         Ok(record)
     }
 
-    fn snapshot(&self) -> RegistrySnapshot {
-        RegistrySnapshot {
+    pub fn snapshot(&self) -> ProductionKeyRegistrySnapshot {
+        ProductionKeyRegistrySnapshot {
             schema_version: PRODUCTION_KEY_REGISTRY_SCHEMA.to_owned(),
             revision: self.revision,
             records: self.records.values().cloned().collect(),
@@ -642,6 +747,18 @@ fn encode_hex(bytes: &[u8]) -> String {
 
 #[derive(Debug, Error)]
 pub enum ProductionKeyGovernanceError {
+    #[error("production key registry schema is unsupported")]
+    UnsupportedRegistrySchema,
+    #[error("production key registry snapshot is invalid")]
+    InvalidRegistrySnapshot,
+    #[error("production key registry snapshot is not canonical")]
+    RegistrySnapshotNotCanonical,
+    #[error("production key registry contains a duplicate record")]
+    DuplicateRegistryRecord,
+    #[error("production key registry contains multiple active generations")]
+    ActiveGenerationAmbiguity,
+    #[error("production key registry has no active generation for the identity")]
+    NoActiveGeneration,
     #[error("production key record schema is unsupported")]
     UnsupportedRecordSchema,
     #[error("production key mutation receipt schema is unsupported")]

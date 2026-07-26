@@ -7,9 +7,9 @@ use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
 use ed25519_dalek::{Signer, SigningKey};
 use ergaxiom_windows_production_key_governance_runtime::ProductionKeyRegistry;
 use ergaxiom_windows_production_signer_runtime::{
-    ECDSA_P256_SHA256, HardwareAssurance, HardwareKeyDescriptor, MICROSOFT_PLATFORM_CRYPTO_PROVIDER,
-    NON_EXPORTABLE_POLICY, P1363_FIXED_64, ProductionKeyIdentity, ProductionKeyPolicy,
-    SEC1_UNCOMPRESSED_P256,
+    ECDSA_P256_SHA256, HardwareAssurance, HardwareKeyDescriptor,
+    MICROSOFT_PLATFORM_CRYPTO_PROVIDER, NON_EXPORTABLE_POLICY, P1363_FIXED_64,
+    ProductionKeyIdentity, ProductionKeyPolicy, SEC1_UNCOMPRESSED_P256,
 };
 use ergaxiom_windows_production_trust_state_runtime::{
     OfflineBootstrapExpectation, ProductionTrustRecoveryBody, ProductionTrustRecoveryEnvelope,
@@ -112,30 +112,20 @@ impl GovernanceFixture {
 }
 
 #[test]
-fn explicit_bootstrap_and_monotonic_activation_reject_unsigned_stale_forked_and_downgraded_states(
-) -> Result<(), Box<dyn Error>> {
+fn explicit_bootstrap_and_monotonic_activation_reject_unsigned_stale_forked_and_downgraded_states()
+-> Result<(), Box<dyn Error>> {
     let governance = GovernanceFixture::threshold_two()?;
     let registry = initial_registry()?;
-    let state_one = governance.state_envelope(state_body(
-        1,
-        None,
-        registry.snapshot(),
-        1,
-        1,
-        1,
-    )?)?;
+    let state_one =
+        governance.state_envelope(state_body(1, None, registry.snapshot(), 1, 1, 1)?)?;
     let expectation = OfflineBootstrapExpectation::new(
         "ergaxiom-production-a",
         state_one.envelope_digest.clone(),
         governance.policy.policy_digest.clone(),
     )?;
     let mut activator = ProductionTrustStateActivator::default();
-    let activated_one = activator.bootstrap(
-        &state_one,
-        &governance.policy,
-        &expectation,
-        ACTIVATION,
-    )?;
+    let activated_one =
+        activator.bootstrap(&state_one, &governance.policy, &expectation, ACTIVATION)?;
     assert_eq!(activated_one.checkpoint.revision, 1);
 
     let mut unsigned = state_one.clone();
@@ -190,18 +180,12 @@ fn explicit_bootstrap_and_monotonic_activation_reject_unsigned_stale_forked_and_
 }
 
 #[test]
-fn recovery_is_separate_replay_protected_and_cannot_reactivate_revoked_keys(
-) -> Result<(), Box<dyn Error>> {
+fn recovery_is_separate_replay_protected_and_cannot_reactivate_revoked_keys()
+-> Result<(), Box<dyn Error>> {
     let governance = GovernanceFixture::threshold_two()?;
     let mut registry = initial_registry()?;
-    let state_one = governance.state_envelope(state_body(
-        1,
-        None,
-        registry.snapshot(),
-        1,
-        1,
-        1,
-    )?)?;
+    let state_one =
+        governance.state_envelope(state_body(1, None, registry.snapshot(), 1, 1, 1)?)?;
     let expectation = OfflineBootstrapExpectation::new(
         "ergaxiom-production-a",
         state_one.envelope_digest.clone(),
@@ -252,12 +236,7 @@ fn recovery_is_separate_replay_protected_and_cannot_reactivate_revoked_keys(
     )?;
     let recovery = governance.recovery_envelope(recovery_body)?;
     assert!(matches!(
-        activator.recover(
-            &replacement,
-            &recovery,
-            &governance.policy,
-            ACTIVATION + 20
-        ),
+        activator.recover(&replacement, &recovery, &governance.policy, ACTIVATION + 20),
         Err(ProductionTrustStateError::RevokedKeyReactivation)
     ));
 
@@ -301,30 +280,20 @@ fn recovery_is_separate_replay_protected_and_cannot_reactivate_revoked_keys(
 }
 
 #[test]
-fn immutable_state_plus_atomic_pointer_preserves_previous_acceptance_on_pre_activation_crash(
-) -> Result<(), Box<dyn Error>> {
+fn immutable_state_plus_atomic_pointer_preserves_previous_acceptance_on_pre_activation_crash()
+-> Result<(), Box<dyn Error>> {
     let governance = GovernanceFixture::threshold_two()?;
     let registry = initial_registry()?;
-    let state_one = governance.state_envelope(state_body(
-        1,
-        None,
-        registry.snapshot(),
-        1,
-        1,
-        1,
-    )?)?;
+    let state_one =
+        governance.state_envelope(state_body(1, None, registry.snapshot(), 1, 1, 1)?)?;
     let expectation = OfflineBootstrapExpectation::new(
         "ergaxiom-production-a",
         state_one.envelope_digest.clone(),
         governance.policy.policy_digest.clone(),
     )?;
     let mut activator = ProductionTrustStateActivator::default();
-    let activated_one = activator.bootstrap(
-        &state_one,
-        &governance.policy,
-        &expectation,
-        ACTIVATION,
-    )?;
+    let activated_one =
+        activator.bootstrap(&state_one, &governance.policy, &expectation, ACTIVATION)?;
 
     let root = unique_temp_directory("trust-store-atomic")?;
     let store = ProductionTrustStateStore::new(root.clone())?;
@@ -446,10 +415,7 @@ fn state_body(
 
 fn unique_temp_directory(label: &str) -> Result<PathBuf, Box<dyn Error>> {
     let nonce = SystemTime::now().duration_since(UNIX_EPOCH)?.as_nanos();
-    Ok(std::env::temp_dir().join(format!(
-        "ergaxiom-{label}-{}-{nonce}",
-        std::process::id()
-    )))
+    Ok(std::env::temp_dir().join(format!("ergaxiom-{label}-{}-{nonce}", std::process::id())))
 }
 
 fn encode_hex(bytes: &[u8]) -> String {

@@ -8,16 +8,14 @@ use ergaxiom_windows_production_signer_runtime::{
     ProductionSignerError, SignerServiceIdentity, validate_identifier, validate_sha256,
 };
 use ergaxiom_windows_production_signer_service_runtime::{
-    AuthorizedProductionSignerPackage, GovernedProductionSignerTrustSnapshot, HardwareSignerBackend,
-    ProductionSignerService, ProductionSignerServiceError,
+    AuthorizedProductionSignerPackage, GovernedProductionSignerTrustSnapshot,
+    HardwareSignerBackend, ProductionSignerService, ProductionSignerServiceError,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use thiserror::Error;
 
-use crate::{
-    ProductionTrustStateBinding, ProductionTrustStateError, VerifiedProductionTrustState,
-};
+use crate::{ProductionTrustStateBinding, ProductionTrustStateError, VerifiedProductionTrustState};
 
 pub const PRODUCTION_SIGNER_DEPLOYMENT_POLICY_SCHEMA: &str = "0.1.0";
 pub const TRUST_BOUND_SIGNER_SERVICE_IDENTITY_SCHEMA: &str = "0.1.0";
@@ -90,8 +88,15 @@ impl ProductionSignerDeploymentPolicy {
         for identity in &self.enabled_identities {
             identity.validate()?;
             if previous.is_some_and(|previous| {
-                (previous.role, previous.issuer_id.as_str(), previous.key_id.as_str())
-                    >= (identity.role, identity.issuer_id.as_str(), identity.key_id.as_str())
+                (
+                    previous.role,
+                    previous.issuer_id.as_str(),
+                    previous.key_id.as_str(),
+                ) >= (
+                    identity.role,
+                    identity.issuer_id.as_str(),
+                    identity.key_id.as_str(),
+                )
             }) {
                 return Err(DeployedProductionSignerError::DeploymentIdentitiesNotCanonical);
             }
@@ -315,10 +320,10 @@ where
         if !self.deployment_policy.permits(&request.identity) {
             return Err(DeployedProductionSignerError::IdentityNotEnabled);
         }
-        let record = self.accepted.registry().active_record(
-            &request.identity,
-            trusted_now_epoch_s,
-        )?;
+        let record = self
+            .accepted
+            .registry()
+            .active_record(&request.identity, trusted_now_epoch_s)?;
         let signer_package = self.inner.handle_authenticated_generation(
             request,
             caller,

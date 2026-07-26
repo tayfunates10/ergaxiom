@@ -305,10 +305,7 @@ fn write_immutable_json<T: Serialize>(
     Ok(())
 }
 
-fn write_atomic_pointer(
-    destination: &Path,
-    bytes: &[u8],
-) -> Result<(), ProductionTrustStoreError> {
+fn write_atomic_pointer(destination: &Path, bytes: &[u8]) -> Result<(), ProductionTrustStoreError> {
     reject_symlink_if_present(destination)?;
     let temporary = temporary_path(destination)?;
     reject_symlink_if_present(&temporary)?;

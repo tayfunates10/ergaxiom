@@ -177,6 +177,20 @@ pub trait HardwareSignerBackend {
         policy: &ProductionKeyPolicy,
     ) -> Result<HardwareKeyDescriptor, HardwareSignerBackendError>;
 
+    fn descriptor_for_generation(
+        &self,
+        policy: &ProductionKeyPolicy,
+        generation: u64,
+    ) -> Result<HardwareKeyDescriptor, HardwareSignerBackendError> {
+        if generation == 1 {
+            self.descriptor(policy)
+        } else {
+            Err(HardwareSignerBackendError::new(
+                "KEY_GENERATION_UNSUPPORTED",
+            ))
+        }
+    }
+
     fn sign_sha256_digest(
         &self,
         policy: &ProductionKeyPolicy,
@@ -184,6 +198,23 @@ pub trait HardwareSignerBackend {
         binding: &SignerRequestBinding,
         digest: &str,
     ) -> Result<HardwareSignature, HardwareSignerBackendError>;
+
+    fn sign_sha256_digest_for_generation(
+        &self,
+        policy: &ProductionKeyPolicy,
+        generation: u64,
+        descriptor: &HardwareKeyDescriptor,
+        binding: &SignerRequestBinding,
+        digest: &str,
+    ) -> Result<HardwareSignature, HardwareSignerBackendError> {
+        if generation == 1 {
+            self.sign_sha256_digest(policy, descriptor, binding, digest)
+        } else {
+            Err(HardwareSignerBackendError::new(
+                "KEY_GENERATION_UNSUPPORTED",
+            ))
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -219,6 +250,19 @@ where
         caller: &AuthenticatedCallerIdentity,
         trusted_now_epoch_s: u64,
     ) -> Result<AuthorizedProductionSignerPackage, ProductionSignerServiceError> {
+        self.handle_authenticated_generation(request, caller, trusted_now_epoch_s, 1)
+    }
+
+    pub fn handle_authenticated_generation(
+        &mut self,
+        request: &ProductionSignerRequest,
+        caller: &AuthenticatedCallerIdentity,
+        trusted_now_epoch_s: u64,
+        generation: u64,
+    ) -> Result<AuthorizedProductionSignerPackage, ProductionSignerServiceError> {
+        if generation == 0 {
+            return Err(ProductionSignerServiceError::InvalidKeyGeneration);
+        }
         let policy = policy_for_identity(&request.identity)?;
         request.validate_for(&policy)?;
         let request_digest = request.digest_for(&policy)?;
@@ -238,11 +282,17 @@ where
         let envelope = request.envelope(&policy, binding.clone())?;
         let envelope_digest = envelope.digest_for(&policy)?;
 
-        let descriptor = self.backend.descriptor(&policy)?;
+        let descriptor = self
+            .backend
+            .descriptor_for_generation(&policy, generation)?;
         descriptor.validate_for(&policy)?;
-        let signature =
-            self.backend
-                .sign_sha256_digest(&policy, &descriptor, &binding, &envelope_digest)?;
+        let signature = self.backend.sign_sha256_digest_for_generation(
+            &policy,
+            generation,
+            &descriptor,
+            &binding,
+            &envelope_digest,
+        )?;
         signature.validate_for(&descriptor, &binding)?;
 
         let signer_response = ProductionSignerResponse::success(
@@ -263,6 +313,21 @@ where
         Ok(package)
     }
 
+    pub fn validate_backend_generation(
+        &self,
+        identity: &ProductionKeyIdentity,
+        generation: u64,
+    ) -> Result<HardwareKeyDescriptor, ProductionSignerServiceError> {
+        if generation == 0 {
+            return Err(ProductionSignerServiceError::InvalidKeyGeneration);
+        }
+        let policy = policy_for_identity(identity)?;
+        let descriptor = self
+            .backend
+            .descriptor_for_generation(&policy, generation)?;
+        descriptor.validate_for(&policy)?;
+        Ok(descriptor)
+    }
     #[must_use]
     pub const fn service_identity(&self) -> &SignerServiceIdentity {
         &self.service_identity
@@ -361,6 +426,8 @@ fn response_descriptor(
 pub enum ProductionSignerServiceError {
     #[error("production signer identity is not supported by the service")]
     UnsupportedIdentity,
+    #[error("production signer key generation must be greater than zero")]
+    InvalidKeyGeneration,
     #[error("production signer response does not contain a signature")]
     ResponseDoesNotContainSignature,
     #[error("caller authorization and signer response bindings do not match")]

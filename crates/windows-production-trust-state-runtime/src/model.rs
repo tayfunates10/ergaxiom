@@ -128,7 +128,10 @@ impl TrustGovernanceKeyRecord {
             .map_err(|_| ProductionTrustStateError::InvalidGovernancePublicKey)
     }
 
-    fn valid_for_signature_at(&self, signed_at_epoch_s: u64) -> Result<(), ProductionTrustStateError> {
+    fn valid_for_signature_at(
+        &self,
+        signed_at_epoch_s: u64,
+    ) -> Result<(), ProductionTrustStateError> {
         self.validate_seal()?;
         if self.status == TrustGovernanceKeyStatus::Revoked {
             return Err(ProductionTrustStateError::GovernanceKeyRevoked);
@@ -528,7 +531,9 @@ pub struct ProductionTrustStateBinding {
 }
 
 impl ProductionTrustStateBinding {
-    fn from_parts(envelope: &ProductionTrustStateEnvelope) -> Result<Self, ProductionTrustStateError> {
+    fn from_parts(
+        envelope: &ProductionTrustStateEnvelope,
+    ) -> Result<Self, ProductionTrustStateError> {
         let body = &envelope.body;
         let mut binding = Self {
             schema_version: PRODUCTION_TRUST_STATE_BINDING_SCHEMA.to_owned(),
@@ -804,7 +809,10 @@ impl ProductionTrustRecoveryEnvelope {
             envelope_digest: String::new(),
         };
         envelope.envelope_digest = envelope.expected_digest()?;
-        envelope.verify(governance_policy, envelope.body.expires_at_epoch_s.saturating_sub(1))?;
+        envelope.verify(
+            governance_policy,
+            envelope.body.expires_at_epoch_s.saturating_sub(1),
+        )?;
         Ok(envelope)
     }
 
@@ -1016,9 +1024,7 @@ impl ProductionTrustStateActivator {
     }
 }
 
-pub fn trust_state_signature_message(
-    digest: &str,
-) -> Result<Vec<u8>, ProductionTrustStateError> {
+pub fn trust_state_signature_message(digest: &str) -> Result<Vec<u8>, ProductionTrustStateError> {
     signature_message(TRUST_STATE_SIGNATURE_DOMAIN, digest)
 }
 

@@ -13,8 +13,7 @@ use windows_sys::Win32::Storage::FileSystem::{
 use crate::ProductionTrustStoreError;
 
 const SDDL_REVISION_1: u32 = 1;
-const PROTECTED_DIRECTORY_SDDL: &str =
-    "D:P(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)(A;OICI;FA;;;OW)";
+const PROTECTED_DIRECTORY_SDDL: &str = "D:P(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)(A;OICI;FA;;;OW)";
 
 pub fn harden_directory(path: &Path) -> Result<(), ProductionTrustStoreError> {
     let path = wide_path(path);
@@ -36,10 +35,7 @@ pub fn harden_directory(path: &Path) -> Result<(), ProductionTrustStoreError> {
     Ok(())
 }
 
-pub fn atomic_replace(
-    source: &Path,
-    destination: &Path,
-) -> Result<(), ProductionTrustStoreError> {
+pub fn atomic_replace(source: &Path, destination: &Path) -> Result<(), ProductionTrustStoreError> {
     let source = wide_path(source);
     let destination = wide_path(destination);
     // SAFETY: both paths are NUL-terminated and point to live UTF-16 buffers.
