@@ -42,13 +42,7 @@ pub mod Win32 {
                 // only normalizes WIN32_ERROR to std::io's signed raw-error type.
                 unsafe {
                     windows_sys_external::Win32::System::Registry::RegGetValueW(
-                        hkey,
-                        sub_key,
-                        value,
-                        flags,
-                        value_type,
-                        data,
-                        data_size,
+                        hkey, sub_key, value, flags, value_type, data, data_size,
                     ) as i32
                 }
             }
