@@ -39,6 +39,7 @@ members = [
   "crates/typed-planner-runtime",
   "crates/windows-bridge-runtime",
   "crates/windows-cng-key-provider-runtime",
+  "crates/windows-production-governed-issuance-runtime",
   "crates/windows-production-key-governance-runtime",
   "crates/windows-production-signer-protocol-runtime",
   "crates/windows-production-signer-provisioning-runtime",
