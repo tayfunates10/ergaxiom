@@ -21,8 +21,9 @@ use ergaxiom_windows_production_signer_runtime::{
     SignerRequestBinding, SignerServiceIdentity,
 };
 use ergaxiom_windows_production_signer_service_runtime::{
-    AuthorizedProductionSignerPackage, GovernedProductionSignerTrustSnapshot, HardwareSignerBackend,
-    HardwareSignerBackendError, ProductionSignerService, ProductionSignerTrustSnapshot,
+    AuthorizedProductionSignerPackage, GovernedProductionSignerTrustSnapshot,
+    HardwareSignerBackend, HardwareSignerBackendError, ProductionSignerService,
+    ProductionSignerTrustSnapshot,
 };
 use ergaxiom_windows_signer_service_identity_runtime::{
     AllowedSignerCaller, SignerCallerAllowlist,
@@ -110,7 +111,10 @@ fn governed_capability_authority_issues_only_against_exact_registry_generation()
     let envelope = token
         .signer_package
         .verify_governed(&trust, &registry, ISSUED_AT)?;
-    assert_eq!(envelope.request.identity, ProductionKeyIdentity::capability());
+    assert_eq!(
+        envelope.request.identity,
+        ProductionKeyIdentity::capability()
+    );
     assert_eq!(envelope.request.digest.len(), 64);
     assert!(matches!(
         token.signer_package.signer_response,
@@ -120,8 +124,8 @@ fn governed_capability_authority_issues_only_against_exact_registry_generation()
 }
 
 #[test]
-fn revoked_registry_rejects_stale_governed_authority_before_signing()
--> Result<(), Box<dyn Error>> {
+fn revoked_registry_rejects_stale_governed_authority_before_signing() -> Result<(), Box<dyn Error>>
+{
     let (transport, trust, mut registry) = fixture(11)?;
     let identity = ProductionKeyIdentity::capability();
     registry.revoke_guarded(
@@ -140,8 +144,7 @@ fn revoked_registry_rejects_stale_governed_authority_before_signing()
 }
 
 #[test]
-fn rotated_registry_rejects_old_signer_public_key()
--> Result<(), Box<dyn Error>> {
+fn rotated_registry_rejects_old_signer_public_key() -> Result<(), Box<dyn Error>> {
     let (transport, old_trust, mut registry) = fixture(11)?;
     let identity = ProductionKeyIdentity::capability();
     registry.rotate_guarded(
@@ -149,7 +152,10 @@ fn rotated_registry_rejects_old_signer_public_key()
         &registry.registry_digest()?,
         &identity,
         1,
-        descriptor_for_key(identity.clone(), &SigningKey::from_bytes((&[12_u8; 32]).into())?)?,
+        descriptor_for_key(
+            identity.clone(),
+            &SigningKey::from_bytes((&[12_u8; 32]).into())?,
+        )?,
         150,
         160,
         1_500,
@@ -162,11 +168,8 @@ fn rotated_registry_rejects_old_signer_public_key()
         },
         key: new_binding,
     };
-    let authority = GovernedProductionCapabilityIssuanceAuthority::new(
-        transport,
-        new_trust,
-        registry,
-    )?;
+    let authority =
+        GovernedProductionCapabilityIssuanceAuthority::new(transport, new_trust, registry)?;
     assert!(authority.issue(draft()).is_err());
     Ok(())
 }

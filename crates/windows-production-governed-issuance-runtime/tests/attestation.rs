@@ -65,8 +65,7 @@ fn governed_attestation_reassesses_bundle_and_binds_registry_generation()
 }
 
 #[test]
-fn governed_attestation_stale_registry_and_revocation_fail_closed()
--> Result<(), Box<dyn Error>> {
+fn governed_attestation_stale_registry_and_revocation_fail_closed() -> Result<(), Box<dyn Error>> {
     let context = context()?;
     let calls = Rc::new(Cell::new(0));
     let signing_key = P256SigningKey::from_bytes((&[12_u8; 32]).into())?;

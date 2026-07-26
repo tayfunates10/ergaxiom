@@ -60,11 +60,9 @@ where
     ) -> Result<ProductionSignerBoundCapabilityToken, GovernedProductionIssuanceError> {
         let issued_at_epoch_s = draft.issued_at_epoch_s;
         let token = self.inner.issue(draft)?;
-        token.signer_package.verify_governed(
-            &self.trust,
-            &self.registry,
-            issued_at_epoch_s,
-        )?;
+        token
+            .signer_package
+            .verify_governed(&self.trust, &self.registry, issued_at_epoch_s)?;
         Ok(token)
     }
 

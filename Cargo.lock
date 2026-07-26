@@ -1021,6 +1021,29 @@ dependencies = [
 ]
 
 [[package]]
+name = "ergaxiom-windows-production-governed-issuance-runtime"
+version = "0.1.0"
+dependencies = [
+ "base64",
+ "ergaxiom-attestation-issuance-runtime",
+ "ergaxiom-attestation-runtime",
+ "ergaxiom-capability-issuance-runtime",
+ "ergaxiom-capability-runtime",
+ "ergaxiom-contract-runtime",
+ "ergaxiom-operator-plan-runtime",
+ "ergaxiom-proof-kernel",
+ "ergaxiom-windows-production-key-governance-runtime",
+ "ergaxiom-windows-production-signer-protocol-runtime",
+ "ergaxiom-windows-production-signer-runtime",
+ "ergaxiom-windows-production-signer-service-runtime",
+ "ergaxiom-windows-signer-service-identity-runtime",
+ "p256",
+ "serde_json",
+ "sha2",
+ "thiserror",
+]
+
+[[package]]
 name = "ergaxiom-windows-production-key-governance-runtime"
 version = "0.1.0"
 dependencies = [
