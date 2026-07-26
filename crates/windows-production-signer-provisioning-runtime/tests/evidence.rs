@@ -2,7 +2,6 @@ use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
 use ergaxiom_windows_cng_key_provider_runtime::CngProvisioningResult;
 use ergaxiom_windows_production_signer_provisioning_runtime::{
     KeyPossessionSignature, ProvisioningAuthority, ProvisioningBackend, ProvisioningError,
-    require_elevated_administrator,
 };
 use ergaxiom_windows_production_signer_runtime::{
     ECDSA_P256_SHA256, HardwareAssurance, HardwareKeyDescriptor, P1363_FIXED_64,
@@ -151,7 +150,7 @@ fn expected_public_key_digest_is_enforced() -> Result<(), Box<dyn std::error::Er
 #[test]
 fn administrator_gate_fails_closed_off_windows() {
     assert!(matches!(
-        require_elevated_administrator(),
+        ergaxiom_windows_production_signer_provisioning_runtime::require_elevated_administrator(),
         Err(ProvisioningError::UnsupportedPlatform)
     ));
 }
