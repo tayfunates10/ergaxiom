@@ -1,0 +1,13 @@
+[package]
+name = "ergaxiom-windows-production-signer-service"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+publish = false
+
+[dependencies]
+ergaxiom-windows-production-signer-host-runtime = { path = "../../crates/windows-production-signer-host-runtime" }
+
+[lints]
+workspace = true
