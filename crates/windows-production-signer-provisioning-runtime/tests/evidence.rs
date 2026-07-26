@@ -139,8 +139,8 @@ fn generation_two_is_bound_to_key_name_statement_and_possession_signature()
 }
 
 #[test]
-fn zero_generation_is_rejected_before_backend_invocation()
--> Result<(), Box<dyn std::error::Error>> {
+fn zero_generation_is_rejected_before_backend_invocation() -> Result<(), Box<dyn std::error::Error>>
+{
     assert!(matches!(
         authority(true)?.provision_generation(
             &ProductionKeyPolicy::capability(),

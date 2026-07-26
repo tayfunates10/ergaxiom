@@ -41,8 +41,7 @@ fn later_generations_are_deterministic_distinct_and_round_trip()
 }
 
 #[test]
-fn zero_and_noncanonical_generation_names_fail_closed()
--> Result<(), Box<dyn std::error::Error>> {
+fn zero_and_noncanonical_generation_names_fail_closed() -> Result<(), Box<dyn std::error::Error>> {
     let policy = ProductionKeyPolicy::capability();
     assert!(matches!(
         CngPlatformKeyProvider::key_name_for_generation(&policy, 0),
