@@ -35,9 +35,7 @@ pub struct AuthenticatedPipeConnection {
 }
 
 impl AuthenticatedPipeConnection {
-    pub fn caller(
-        &self,
-    ) -> Result<&AuthenticatedCallerIdentity, ProductionSignerTransportError> {
+    pub fn caller(&self) -> Result<&AuthenticatedCallerIdentity, ProductionSignerTransportError> {
         self.caller
             .as_ref()
             .ok_or(ProductionSignerTransportError::CallerIdentityUnavailable)
