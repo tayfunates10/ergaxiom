@@ -102,24 +102,16 @@ impl ProductionSignerServiceManifest {
         let caller_allowlist_path = require_absolute_path(caller_allowlist_path.into())?;
         let deployment_policy_path = require_absolute_path(deployment_policy_path.into())?;
 
-        let executable_sha256 = hash_stable_file(
-            &executable_path,
-            PRODUCTION_SIGNER_MAX_EXECUTABLE_BYTES,
-        )?;
-        let governance_policy: TrustGovernancePolicy = read_bounded_json(
-            &governance_policy_path,
-            PRODUCTION_SIGNER_MAX_CONFIG_BYTES,
-        )?;
+        let executable_sha256 =
+            hash_stable_file(&executable_path, PRODUCTION_SIGNER_MAX_EXECUTABLE_BYTES)?;
+        let governance_policy: TrustGovernancePolicy =
+            read_bounded_json(&governance_policy_path, PRODUCTION_SIGNER_MAX_CONFIG_BYTES)?;
         governance_policy.validate_seal()?;
-        let caller_allowlist: SignerCallerAllowlist = read_bounded_json(
-            &caller_allowlist_path,
-            PRODUCTION_SIGNER_MAX_CONFIG_BYTES,
-        )?;
+        let caller_allowlist: SignerCallerAllowlist =
+            read_bounded_json(&caller_allowlist_path, PRODUCTION_SIGNER_MAX_CONFIG_BYTES)?;
         caller_allowlist.validate()?;
-        let deployment_policy: ProductionSignerDeploymentPolicy = read_bounded_json(
-            &deployment_policy_path,
-            PRODUCTION_SIGNER_MAX_CONFIG_BYTES,
-        )?;
+        let deployment_policy: ProductionSignerDeploymentPolicy =
+            read_bounded_json(&deployment_policy_path, PRODUCTION_SIGNER_MAX_CONFIG_BYTES)?;
         deployment_policy.validate_seal()?;
         let accepted = ProductionTrustStateStore::new(&trust_store_root)?
             .load_accepted(&governance_policy, trusted_now_epoch_s)?;
@@ -176,8 +168,7 @@ impl ProductionSignerServiceManifest {
             || self.start_mode != PRODUCTION_SIGNER_START_MODE
             || self.error_control != PRODUCTION_SIGNER_ERROR_CONTROL
             || self.service_sid_type != PRODUCTION_SIGNER_SERVICE_SID_TYPE
-            || self.required_privileges
-                != vec![PRODUCTION_SIGNER_REQUIRED_PRIVILEGE.to_owned()]
+            || self.required_privileges != vec![PRODUCTION_SIGNER_REQUIRED_PRIVILEGE.to_owned()]
             || self.failure_restart_delays_ms != PRODUCTION_SIGNER_RESTART_DELAYS_MS
             || self.preshutdown_timeout_ms != PRODUCTION_SIGNER_PRESHUTDOWN_TIMEOUT_MS
             || self.max_config_file_bytes == 0
@@ -210,7 +201,10 @@ impl ProductionSignerServiceManifest {
         Ok(())
     }
 
-    pub fn service_command_line(&self, manifest_path: &Path) -> Result<String, ProductionSignerHostError> {
+    pub fn service_command_line(
+        &self,
+        manifest_path: &Path,
+    ) -> Result<String, ProductionSignerHostError> {
         self.validate_seal()?;
         let manifest_path = require_absolute_path(manifest_path.to_path_buf())?;
         let executable = quote_windows_argument(&self.executable_path)?;
@@ -364,7 +358,9 @@ impl GovernedCngSignerBackend {
             .collect();
         match matching.as_slice() {
             [opened] => Ok(*opened),
-            _ => Err(HardwareSignerBackendError::new("KEY_GENERATION_UNAVAILABLE")),
+            _ => Err(HardwareSignerBackendError::new(
+                "KEY_GENERATION_UNAVAILABLE",
+            )),
         }
     }
 }
@@ -411,12 +407,7 @@ impl HardwareSignerBackend for GovernedCngSignerBackend {
             return Err(HardwareSignerBackendError::new("DESCRIPTOR_SUBSTITUTION"));
         }
         self.provider
-            .sign_sha256_digest_unverified(
-                policy,
-                &opened.provisioning,
-                binding,
-                digest,
-            )
+            .sign_sha256_digest_unverified(policy, &opened.provisioning, binding, digest)
             .map_err(|_| HardwareSignerBackendError::new("CNG_SIGN_FAILED"))
     }
 }
@@ -491,16 +482,17 @@ impl PreparedProductionSignerHost {
             }
         };
         let caller = connection.caller()?.clone();
-        let response = match self
-            .service
-            .handle_authenticated(&request, &caller, trusted_now_epoch_s)
-        {
-            Ok(package) => ProductionSignerHostResponse::success(package)?,
-            Err(_) => ProductionSignerHostResponse::rejected(
-                Some(request.request_id.clone()),
-                "SIGNING_REJECTED",
-            )?,
-        };
+        let response =
+            match self
+                .service
+                .handle_authenticated(&request, &caller, trusted_now_epoch_s)
+            {
+                Ok(package) => ProductionSignerHostResponse::success(package)?,
+                Err(_) => ProductionSignerHostResponse::rejected(
+                    Some(request.request_id.clone()),
+                    "SIGNING_REJECTED",
+                )?,
+            };
         connection.write_json(&response, self.pipe_contract.max_response_bytes)?;
         Ok(())
     }
@@ -605,9 +597,7 @@ pub fn install_service(
 }
 
 #[cfg(not(windows))]
-pub fn uninstall_service(
-    _manifest_path: &Path,
-) -> Result<(), ProductionSignerHostError> {
+pub fn uninstall_service(_manifest_path: &Path) -> Result<(), ProductionSignerHostError> {
     Err(ProductionSignerHostError::UnsupportedPlatform)
 }
 
@@ -620,9 +610,7 @@ pub fn validate_installed_service(
 }
 
 #[cfg(not(windows))]
-pub fn run_service_dispatcher(
-    _manifest_path: PathBuf,
-) -> Result<(), ProductionSignerHostError> {
+pub fn run_service_dispatcher(_manifest_path: PathBuf) -> Result<(), ProductionSignerHostError> {
     Err(ProductionSignerHostError::UnsupportedPlatform)
 }
 
@@ -719,7 +707,8 @@ fn read_bounded_file(path: &Path, max_bytes: u64) -> Result<Vec<u8>, ProductionS
     }
     let before_modified = before.modified().ok();
     let mut bytes = Vec::with_capacity(before.len() as usize);
-    file.take(max_bytes.saturating_add(1)).read_to_end(&mut bytes)?;
+    file.take(max_bytes.saturating_add(1))
+        .read_to_end(&mut bytes)?;
     let after = file.metadata()?;
     if bytes.len() as u64 != before.len()
         || bytes.len() as u64 > max_bytes

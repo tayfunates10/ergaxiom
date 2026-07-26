@@ -25,18 +25,18 @@ use windows_sys::Win32::System::Services::{
     OpenServiceW, QueryServiceConfigW, QueryServiceStatusEx, RegisterServiceCtrlHandlerExW,
     SC_ACTION, SC_ACTION_NONE, SC_ACTION_RESTART, SC_MANAGER_CONNECT, SC_MANAGER_CREATE_SERVICE,
     SC_STATUS_PROCESS_INFO, SERVICE_ACCEPT_PRESHUTDOWN, SERVICE_ACCEPT_SHUTDOWN,
-    SERVICE_ACCEPT_STOP, SERVICE_ALL_ACCESS, SERVICE_AUTO_START, SERVICE_CONFIG_DELAYED_AUTO_START_INFO,
-    SERVICE_CONFIG_DESCRIPTION, SERVICE_CONFIG_FAILURE_ACTIONS,
-    SERVICE_CONFIG_FAILURE_ACTIONS_FLAG, SERVICE_CONFIG_PRESHUTDOWN_INFO,
-    SERVICE_CONFIG_REQUIRED_PRIVILEGES_INFO, SERVICE_CONFIG_SERVICE_SID_INFO,
-    SERVICE_CONTROL_PRESHUTDOWN, SERVICE_CONTROL_SHUTDOWN, SERVICE_CONTROL_STOP,
-    SERVICE_DELAYED_AUTO_START_INFO, SERVICE_DESCRIPTIONW, SERVICE_ERROR_SEVERE,
-    SERVICE_FAILURE_ACTIONS_FLAG, SERVICE_FAILURE_ACTIONSW, SERVICE_PRESHUTDOWN_INFO,
-    SERVICE_QUERY_CONFIG, SERVICE_QUERY_STATUS, SERVICE_REQUIRED_PRIVILEGES_INFOW,
-    SERVICE_RUNNING, SERVICE_SID_INFO, SERVICE_SID_TYPE_UNRESTRICTED, SERVICE_START_PENDING,
-    SERVICE_STATUS, SERVICE_STATUS_HANDLE, SERVICE_STATUS_PROCESS, SERVICE_STOP,
-    SERVICE_STOP_PENDING, SERVICE_STOPPED, SERVICE_TABLE_ENTRYW, SERVICE_WIN32_OWN_PROCESS,
-    SetServiceStatus, StartServiceCtrlDispatcherW,
+    SERVICE_ACCEPT_STOP, SERVICE_ALL_ACCESS, SERVICE_AUTO_START,
+    SERVICE_CONFIG_DELAYED_AUTO_START_INFO, SERVICE_CONFIG_DESCRIPTION,
+    SERVICE_CONFIG_FAILURE_ACTIONS, SERVICE_CONFIG_FAILURE_ACTIONS_FLAG,
+    SERVICE_CONFIG_PRESHUTDOWN_INFO, SERVICE_CONFIG_REQUIRED_PRIVILEGES_INFO,
+    SERVICE_CONFIG_SERVICE_SID_INFO, SERVICE_CONTROL_PRESHUTDOWN, SERVICE_CONTROL_SHUTDOWN,
+    SERVICE_CONTROL_STOP, SERVICE_DELAYED_AUTO_START_INFO, SERVICE_DESCRIPTIONW,
+    SERVICE_ERROR_SEVERE, SERVICE_FAILURE_ACTIONS_FLAG, SERVICE_FAILURE_ACTIONSW,
+    SERVICE_PRESHUTDOWN_INFO, SERVICE_QUERY_CONFIG, SERVICE_QUERY_STATUS,
+    SERVICE_REQUIRED_PRIVILEGES_INFOW, SERVICE_RUNNING, SERVICE_SID_INFO,
+    SERVICE_SID_TYPE_UNRESTRICTED, SERVICE_START_PENDING, SERVICE_STATUS, SERVICE_STATUS_HANDLE,
+    SERVICE_STATUS_PROCESS, SERVICE_STOP, SERVICE_STOP_PENDING, SERVICE_STOPPED,
+    SERVICE_TABLE_ENTRYW, SERVICE_WIN32_OWN_PROCESS, SetServiceStatus, StartServiceCtrlDispatcherW,
 };
 use windows_sys::Win32::System::Threading::{
     CreateEventW, GetCurrentProcess, GetCurrentProcessId, GetProcessTimes, INFINITE, SetEvent,
@@ -238,13 +238,7 @@ unsafe extern "system" fn service_main(_argc: u32, _argv: *mut *mut u16) {
             let _ = set_service_status(SERVICE_STOPPED, 0, 0, 0, 0);
         }
         Err(_) => {
-            let _ = set_service_status(
-                SERVICE_STOPPED,
-                0,
-                0,
-                0,
-                SERVICE_SPECIFIC_STARTUP_FAILURE,
-            );
+            let _ = set_service_status(SERVICE_STOPPED, 0, 0, 0, SERVICE_SPECIFIC_STARTUP_FAILURE);
         }
     }
 }
@@ -319,7 +313,11 @@ fn configure_service(service: &ServiceHandle) -> Result<(), ProductionSignerHost
     let mut description = SERVICE_DESCRIPTIONW {
         lpDescription: description_text.as_mut_ptr(),
     };
-    change_config(service, SERVICE_CONFIG_DESCRIPTION, (&mut description).cast())?;
+    change_config(
+        service,
+        SERVICE_CONFIG_DESCRIPTION,
+        (&mut description).cast(),
+    )?;
 
     let mut delayed = SERVICE_DELAYED_AUTO_START_INFO {
         fDelayedAutostart: 1,
@@ -454,7 +452,8 @@ fn query_service_config(
     }
     let error = std::io::Error::last_os_error();
     if error.raw_os_error() != Some(ERROR_INSUFFICIENT_BUFFER as i32)
-        || required < size_of::<windows_sys::Win32::System::Services::QUERY_SERVICE_CONFIGW>() as u32
+        || required
+            < size_of::<windows_sys::Win32::System::Services::QUERY_SERVICE_CONFIGW>() as u32
     {
         return Err(ProductionSignerHostError::WindowsService(error));
     }
@@ -558,11 +557,11 @@ fn set_service_status(
 }
 
 fn wake_named_pipe() {
-    let pipe_name = match wide(ergaxiom_windows_signer_service_identity_runtime::PRODUCTION_PIPE_NAME)
-    {
-        Ok(value) => value,
-        Err(_) => return,
-    };
+    let pipe_name =
+        match wide(ergaxiom_windows_signer_service_identity_runtime::PRODUCTION_PIPE_NAME) {
+            Ok(value) => value,
+            Err(_) => return,
+        };
     unsafe {
         let _ = windows_sys::Win32::System::Pipes::WaitNamedPipeW(
             pipe_name.as_ptr(),
@@ -590,7 +589,9 @@ fn trusted_now_epoch_s() -> Result<u64, ProductionSignerHostError> {
         .map_err(|_| ProductionSignerHostError::ServiceHardeningWeakened)
 }
 
-fn read_manifest(path: &Path) -> Result<ProductionSignerServiceManifest, ProductionSignerHostError> {
+fn read_manifest(
+    path: &Path,
+) -> Result<ProductionSignerServiceManifest, ProductionSignerHostError> {
     let file = std::fs::File::open(path)?;
     let manifest: ProductionSignerServiceManifest = serde_json::from_reader(file)?;
     Ok(manifest)

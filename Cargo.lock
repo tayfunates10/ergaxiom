@@ -1062,6 +1062,29 @@ dependencies = [
 ]
 
 [[package]]
+name = "ergaxiom-windows-production-signer-host-runtime"
+version = "0.1.0"
+dependencies = [
+ "ed25519-dalek",
+ "ergaxiom-proof-kernel",
+ "ergaxiom-windows-cng-key-provider-runtime",
+ "ergaxiom-windows-production-key-governance-runtime",
+ "ergaxiom-windows-production-signer-protocol-runtime",
+ "ergaxiom-windows-production-signer-runtime",
+ "ergaxiom-windows-production-signer-service-runtime",
+ "ergaxiom-windows-production-signer-transport-runtime",
+ "ergaxiom-windows-production-trust-state-runtime",
+ "ergaxiom-windows-signer-service-identity-runtime",
+ "p256",
+ "rand_core 0.6.4",
+ "serde",
+ "serde_json",
+ "sha2",
+ "thiserror",
+ "windows-sys",
+]
+
+[[package]]
 name = "ergaxiom-windows-production-signer-protocol-runtime"
 version = "0.1.0"
 dependencies = [
@@ -1115,6 +1138,13 @@ dependencies = [
  "serde_json",
  "sha2",
  "thiserror",
+]
+
+[[package]]
+name = "ergaxiom-windows-production-signer-service"
+version = "0.1.0"
+dependencies = [
+ "ergaxiom-windows-production-signer-host-runtime",
 ]
 
 [[package]]
