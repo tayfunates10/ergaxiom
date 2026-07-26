@@ -71,6 +71,7 @@ static STOP_EVENT_HANDLE_VALUE: AtomicUsize = AtomicUsize::new(0);
 
 pub fn current_service_identity(
     service_id: &str,
+    expected_executable_path: &Path,
     executable_sha256: &str,
     started_at_epoch_s: u64,
 ) -> Result<SignerServiceIdentity, ProductionSignerHostError> {
@@ -91,7 +92,11 @@ pub fn current_service_identity(
     if process_creation_time_100ns == 0 {
         return Err(last_service_error());
     }
-    let current_executable = std::env::current_exe()?;
+    let current_executable = std::fs::canonicalize(std::env::current_exe()?)?;
+    let expected_executable = std::fs::canonicalize(expected_executable_path)?;
+    if current_executable != expected_executable {
+        return Err(ProductionSignerHostError::ExecutablePathMismatch);
+    }
     if hash_stable_file(&current_executable, PRODUCTION_SIGNER_MAX_EXECUTABLE_BYTES)?
         != executable_sha256
     {

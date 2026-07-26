@@ -1,6 +1,6 @@
 use std::error::Error;
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use super::*;
@@ -60,17 +60,21 @@ fn canonical_service_manifest_and_command_line_validate() -> Result<(), Box<dyn 
 #[test]
 fn scm_hardening_mutations_fail_closed() -> Result<(), Box<dyn Error>> {
     let manifest = sealed_manifest()?;
-    let mutations: Vec<Box<dyn Fn(&mut ProductionSignerServiceManifest)>> = vec![
-        Box::new(|value| value.service_name = "ErgaxiomSignerDev".to_owned()),
-        Box::new(|value| value.service_account = "LocalService".to_owned()),
-        Box::new(|value| value.service_type = "SHARED_PROCESS".to_owned()),
-        Box::new(|value| value.start_mode = "DEMAND".to_owned()),
-        Box::new(|value| value.error_control = "IGNORE".to_owned()),
-        Box::new(|value| value.service_sid_type = "NONE".to_owned()),
-        Box::new(|value| value.required_privileges.push("SeDebugPrivilege".to_owned())),
-        Box::new(|value| value.failure_restart_delays_ms = vec![0, 0]),
-        Box::new(|value| value.preshutdown_timeout_ms = 0),
-        Box::new(|value| value.max_config_file_bytes = 0),
+    let mutations: [fn(&mut ProductionSignerServiceManifest); 10] = [
+        |value| value.service_name = "ErgaxiomSignerDev".to_owned(),
+        |value| value.service_account = "LocalService".to_owned(),
+        |value| value.service_type = "SHARED_PROCESS".to_owned(),
+        |value| value.start_mode = "DEMAND".to_owned(),
+        |value| value.error_control = "IGNORE".to_owned(),
+        |value| value.service_sid_type = "NONE".to_owned(),
+        |value| {
+            value
+                .required_privileges
+                .push("SeDebugPrivilege".to_owned())
+        },
+        |value| value.failure_restart_delays_ms = vec![0, 0],
+        |value| value.preshutdown_timeout_ms = 0,
+        |value| value.max_config_file_bytes = 0,
     ];
     for mutate in mutations {
         let mut altered = manifest.clone();
@@ -125,10 +129,8 @@ fn manifest_write_is_create_new_and_response_is_sealed() -> Result<(), Box<dyn E
     let stored: ProductionSignerServiceManifest = serde_json::from_slice(&bytes)?;
     stored.validate_seal()?;
 
-    let mut rejected = ProductionSignerHostResponse::rejected(
-        Some("request-1".to_owned()),
-        "SIGNING_REJECTED",
-    )?;
+    let mut rejected =
+        ProductionSignerHostResponse::rejected(Some("request-1".to_owned()), "SIGNING_REJECTED")?;
     rejected.validate_seal()?;
     if let ProductionSignerHostResponse::Rejected { code, .. } = &mut rejected {
         *code = "ACCEPTED".to_owned();
@@ -144,7 +146,7 @@ fn manifest_write_is_create_new_and_response_is_sealed() -> Result<(), Box<dyn E
 #[cfg(not(windows))]
 #[test]
 fn scm_operations_are_unavailable_off_windows() -> Result<(), Box<dyn Error>> {
-    let path = Path::new("/tmp/ergaxiom-production-service.json");
+    let path = std::path::Path::new("/tmp/ergaxiom-production-service.json");
     assert!(matches!(
         install_service(path, 1),
         Err(ProductionSignerHostError::UnsupportedPlatform)
@@ -167,6 +169,7 @@ fn current_service_identity_binds_current_executable() -> Result<(), Box<dyn Err
     let digest = hash_stable_file(&current, PRODUCTION_SIGNER_MAX_EXECUTABLE_BYTES)?;
     let identity = crate::windows::current_service_identity(
         "ergaxiom-production-signer",
+        &current,
         &digest,
         trusted_test_time()?,
     )?;

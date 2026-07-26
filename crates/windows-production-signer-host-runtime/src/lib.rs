@@ -3,6 +3,9 @@
 #[cfg(windows)]
 mod windows;
 
+#[cfg(test)]
+mod tests;
+
 use std::fs::{File, OpenOptions};
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
@@ -428,6 +431,7 @@ impl PreparedProductionSignerHost {
         let loaded = LoadedProductionSignerHostConfig::load(manifest_path, trusted_now_epoch_s)?;
         let service_identity = windows::current_service_identity(
             &loaded.deployment_policy.service_id,
+            Path::new(&loaded.manifest.executable_path),
             &loaded.manifest.executable_sha256,
             trusted_now_epoch_s,
         )?;
@@ -843,6 +847,8 @@ pub enum ProductionSignerHostError {
     FileChangedDuringRead,
     #[error("production signer executable digest does not match the manifest")]
     ExecutableDigestMismatch,
+    #[error("production signer executable path does not match the manifest")]
+    ExecutablePathMismatch,
     #[error("accepted production trust state does not match installed configuration")]
     AcceptedStateConfigurationMismatch,
     #[error("production signer named-pipe policy does not match deployment policy")]
