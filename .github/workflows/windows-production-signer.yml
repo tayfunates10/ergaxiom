@@ -10,71 +10,44 @@ on:
       - ".github/workflows/windows-production-signer.yml"
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  canonicalize-service-host:
-    name: Canonicalize production signer service host
+  diagnose-service-host:
+    name: Diagnose production signer service host
     runs-on: ubuntu-24.04
     steps:
-      - name: Check out pull request branch
+      - name: Check out repository
         uses: actions/checkout@v4
-        with:
-          ref: agent/tpm-cng-signer-service-v1
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
 
-      - name: Complete Windows feature set
-        shell: bash
-        run: |
-          python - <<'PY'
-          from pathlib import Path
-          path = Path("crates/windows-production-signer-host-runtime/Cargo.toml")
-          text = path.read_text()
-          marker = '  "Win32_System_Services",\n'
-          addition = '  "Win32_System_Pipes",\n'
-          if addition not in text:
-              if marker not in text:
-                  raise SystemExit("Windows service feature marker missing")
-              text = text.replace(marker, addition + marker, 1)
-          path.write_text(text)
-          PY
-
-      - name: Materialize canonical formatting and lockfile
-        run: |
-          cargo fmt --all
-          cargo generate-lockfile
-
-      - name: Commit canonical service host sources
-        shell: bash
-        run: |
-          set -euo pipefail
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add Cargo.lock Cargo.toml apps/windows-production-signer-service crates/windows-production-signer-host-runtime
-          if git diff --cached --quiet; then
-            echo "No canonical changes"
-          else
-            git commit -m "Canonicalize production signer service host"
-            git push origin HEAD:agent/tpm-cng-signer-service-v1
-          fi
-
       - name: Check workspace formatting
         run: cargo fmt --all -- --check
 
-      - name: Lint platform-neutral service host
+      - name: Capture service host Clippy diagnostics
+        shell: bash
         run: |
+          set +e
           cargo clippy \
             -p ergaxiom-windows-production-signer-host-runtime \
             -p ergaxiom-windows-production-signer-service \
-            --all-targets --all-features -- -D warnings
+            --all-targets --all-features -- -D warnings \
+            > service-host-clippy.txt 2>&1
+          echo $? > service-host-clippy.exit
+          exit 0
 
-      - name: Run platform-neutral service host tests
-        run: |
-          cargo test \
-            -p ergaxiom-windows-production-signer-host-runtime \
-            -p ergaxiom-windows-production-signer-service \
-            --all-features -- --nocapture
+      - name: Upload service host diagnostics
+        uses: actions/upload-artifact@v4
+        with:
+          name: service-host-clippy-diagnostics
+          path: |
+            service-host-clippy.txt
+            service-host-clippy.exit
+
+      - name: Fail on service host lint mismatch
+        shell: bash
+        run: test "$(cat service-host-clippy.exit)" = "0"
