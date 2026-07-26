@@ -17,8 +17,8 @@ use ergaxiom_windows_production_signer_protocol_runtime::{
 use ergaxiom_windows_production_signer_runtime::{
     AUTHENTICATED_CALLER_SCHEMA, AuthenticatedCallerIdentity, ECDSA_P256_SHA256, HardwareAssurance,
     HardwareKeyDescriptor, HardwareSignature, P1363_FIXED_64, ProductionKeyIdentity,
-    ProductionKeyPolicy, SEC1_UNCOMPRESSED_P256, SIGNER_SERVICE_IDENTITY_SCHEMA,
-    SignerRequestBinding, SignerServiceIdentity,
+    ProductionKeyPolicy, SIGNER_SERVICE_IDENTITY_SCHEMA, SignerRequestBinding,
+    SignerServiceIdentity,
 };
 use ergaxiom_windows_production_signer_service_runtime::{
     AuthorizedProductionSignerPackage, GovernedProductionSignerTrustSnapshot,
