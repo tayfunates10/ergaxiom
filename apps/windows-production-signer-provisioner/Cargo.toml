@@ -1,0 +1,18 @@
+[package]
+name = "ergaxiom-windows-production-signer-provisioner"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+publish = false
+
+[dependencies]
+ergaxiom-key-governance-runtime = { path = "../../crates/key-governance-runtime" }
+ergaxiom-windows-cng-key-provider-runtime = { path = "../../crates/windows-cng-key-provider-runtime", features = ["provisioning"] }
+ergaxiom-windows-production-signer-provisioning-runtime = { path = "../../crates/windows-production-signer-provisioning-runtime" }
+ergaxiom-windows-production-signer-runtime = { path = "../../crates/windows-production-signer-runtime" }
+serde_json.workspace = true
+thiserror.workspace = true
+
+[lints]
+workspace = true
