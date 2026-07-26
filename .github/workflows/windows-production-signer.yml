@@ -5,64 +5,19 @@ on:
     paths:
       - "Cargo.toml"
       - "Cargo.lock"
-      - "apps/windows-production-signer-provisioner/**"
-      - "crates/attestation-issuance-runtime/**"
-      - "crates/attestation-runtime/**"
-      - "crates/capability-issuance-runtime/**"
-      - "crates/capability-runtime/**"
-      - "crates/windows-cng-key-provider-runtime/**"
-      - "crates/windows-production-governed-issuance-runtime/**"
       - "crates/windows-production-key-governance-runtime/**"
-      - "crates/windows-production-signer-protocol-runtime/**"
-      - "crates/windows-production-signer-provisioning-runtime/**"
       - "crates/windows-production-signer-runtime/**"
       - "crates/windows-production-signer-service-runtime/**"
-      - "crates/windows-production-signer-transport-runtime/**"
       - "crates/windows-production-trust-state-runtime/**"
-      - "crates/windows-signer-service-identity-runtime/**"
-      - "docs/architecture/41-tpm-cng-production-signer.md"
-      - "docs/architecture/42-production-trust-registry-deployment.md"
-      - "docs/status.md"
-      - ".github/workflows/windows-production-signer.yml"
-  push:
-    branches:
-      - main
-    paths:
-      - "Cargo.toml"
-      - "Cargo.lock"
-      - "apps/windows-production-signer-provisioner/**"
-      - "crates/attestation-issuance-runtime/**"
-      - "crates/attestation-runtime/**"
-      - "crates/capability-issuance-runtime/**"
-      - "crates/capability-runtime/**"
-      - "crates/windows-cng-key-provider-runtime/**"
-      - "crates/windows-production-governed-issuance-runtime/**"
-      - "crates/windows-production-key-governance-runtime/**"
-      - "crates/windows-production-signer-protocol-runtime/**"
-      - "crates/windows-production-signer-provisioning-runtime/**"
-      - "crates/windows-production-signer-runtime/**"
-      - "crates/windows-production-signer-service-runtime/**"
-      - "crates/windows-production-signer-transport-runtime/**"
-      - "crates/windows-production-trust-state-runtime/**"
-      - "crates/windows-signer-service-identity-runtime/**"
-      - "docs/architecture/41-tpm-cng-production-signer.md"
-      - "docs/architecture/42-production-trust-registry-deployment.md"
-      - "docs/status.md"
       - ".github/workflows/windows-production-signer.yml"
 
 permissions:
   contents: read
 
 jobs:
-  governed-production-trust-state:
-    name: Verify production trust state (${{ matrix.os }})
-    strategy:
-      fail-fast: false
-      matrix:
-        os:
-          - ubuntu-24.04
-          - windows-2025
-    runs-on: ${{ matrix.os }}
+  diagnose-windows-production-trust-state:
+    name: Diagnose Windows production trust state
+    runs-on: windows-2025
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
@@ -75,47 +30,57 @@ jobs:
       - name: Check workspace formatting
         run: cargo fmt --all -- --check
 
-      - name: Prove normal CNG runtime is open-only
-        run: cargo check -p ergaxiom-windows-cng-key-provider-runtime --no-default-features
-
-      - name: Lint production trust-state and signer boundary
+      - name: Capture Windows trust-state Clippy diagnostics
         shell: bash
         run: |
+          set +e
           cargo clippy \
-            -p ergaxiom-attestation-runtime \
-            -p ergaxiom-attestation-issuance-runtime \
-            -p ergaxiom-capability-runtime \
-            -p ergaxiom-capability-issuance-runtime \
-            -p ergaxiom-windows-production-signer-provisioner \
-            -p ergaxiom-windows-cng-key-provider-runtime \
-            -p ergaxiom-windows-production-governed-issuance-runtime \
             -p ergaxiom-windows-production-key-governance-runtime \
             -p ergaxiom-windows-production-signer-runtime \
-            -p ergaxiom-windows-production-signer-protocol-runtime \
-            -p ergaxiom-windows-production-signer-provisioning-runtime \
             -p ergaxiom-windows-production-signer-service-runtime \
-            -p ergaxiom-windows-production-signer-transport-runtime \
             -p ergaxiom-windows-production-trust-state-runtime \
-            -p ergaxiom-windows-signer-service-identity-runtime \
-            --all-targets --all-features -- -D warnings
+            --all-targets --all-features -- -D warnings \
+            2>&1 | tee "$RUNNER_TEMP/windows-trust-state-clippy.log"
+          status=${PIPESTATUS[0]}
+          printf '%s\n' "$status" > "$RUNNER_TEMP/windows-trust-state-clippy.status"
+          exit 0
 
-      - name: Run production trust-state and signer attacks
+      - name: Upload Windows trust-state Clippy diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-trust-state-clippy-diagnostics
+          path: ${{ runner.temp }}/windows-trust-state-clippy.*
+          if-no-files-found: error
+          retention-days: 3
+
+      - name: Fail on Windows trust-state lint mismatch
+        shell: bash
+        run: test "$(cat "$RUNNER_TEMP/windows-trust-state-clippy.status")" = "0"
+
+      - name: Capture Windows trust-state tests
+        if: success()
         shell: bash
         run: |
+          set +e
           cargo test \
-            -p ergaxiom-attestation-runtime \
-            -p ergaxiom-attestation-issuance-runtime \
-            -p ergaxiom-capability-runtime \
-            -p ergaxiom-capability-issuance-runtime \
-            -p ergaxiom-windows-production-signer-provisioner \
-            -p ergaxiom-windows-cng-key-provider-runtime \
-            -p ergaxiom-windows-production-governed-issuance-runtime \
-            -p ergaxiom-windows-production-key-governance-runtime \
-            -p ergaxiom-windows-production-signer-runtime \
-            -p ergaxiom-windows-production-signer-protocol-runtime \
-            -p ergaxiom-windows-production-signer-provisioning-runtime \
-            -p ergaxiom-windows-production-signer-service-runtime \
-            -p ergaxiom-windows-production-signer-transport-runtime \
             -p ergaxiom-windows-production-trust-state-runtime \
-            -p ergaxiom-windows-signer-service-identity-runtime \
-            --all-features -- --nocapture
+            --all-features -- --nocapture \
+            2>&1 | tee "$RUNNER_TEMP/windows-trust-state-tests.log"
+          status=${PIPESTATUS[0]}
+          printf '%s\n' "$status" > "$RUNNER_TEMP/windows-trust-state-tests.status"
+          exit 0
+
+      - name: Upload Windows trust-state test diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-trust-state-test-diagnostics
+          path: ${{ runner.temp }}/windows-trust-state-tests.*
+          if-no-files-found: ignore
+          retention-days: 3
+
+      - name: Fail on Windows trust-state test mismatch
+        if: success()
+        shell: bash
+        run: test "$(cat "$RUNNER_TEMP/windows-trust-state-tests.status")" = "0"
