@@ -1,147 +1,223 @@
-# Production Trust Registry Deployment Gate
+# Production Trust Registry Deployment and Persistence
 
 ## Status
 
-This document defines the next bounded gate after governed P-256 rotation and revocation. It is intentionally a deployment and persistence boundary, not another in-memory registry model.
+The bounded production trust-state lifecycle is implemented in `ergaxiom-windows-production-trust-state-runtime`.
 
-The current repository can canonically add, rotate, retire and revoke P-256 generations and can bind Capability Token and Acceptance Certificate verification to an exact registry revision and digest. It does not yet persist, authenticate, distribute, recover or atomically activate that registry across installed production components.
+The repository can now authenticate, persist, atomically activate, reload and separately recover a public production trust state that contains the governed P-256 registry, caller allowlist binding and signer-service deployment policy. The accepted trust-state digest is also included in the P-256 signer request binding, so a hardware-signed production package cannot be detached from the state under which it was issued.
 
-This gate remains part of the open deployment lifecycle under Issue #60. It must not be represented as implemented merely because this specification exists.
+This implementation is a runtime and filesystem security boundary. It does **not** claim that a production governance ceremony has occurred, that governance private keys have operational custody controls, that the signer has been installed through Windows Service Control Manager, or that a physical TPM has been independently proven.
 
-## Goal
+## Implemented artifacts
 
-Provide one fail-closed lifecycle for production trust state so that the provisioner, signer service, backend issuance authority and independent verifier consume the same authenticated registry snapshot and cannot silently downgrade, fork or roll back it.
+A production trust state contains public material only:
 
-## Required artifacts
-
-A deployed trust state will contain only public material:
-
-- schema version,
-- monotonically increasing registry revision,
-- canonical registry digest,
-- complete governed P-256 key records,
-- accepted caller-allowlist revision and digest,
-- accepted signer-service executable digest and service policy digest,
+- deployment identity,
+- monotonically increasing state revision,
 - previous accepted state digest,
-- activation time,
+- complete canonical P-256 registry snapshot,
+- registry revision and digest,
+- caller-allowlist revision and digest,
+- signer-service executable digest,
+- signer deployment-policy revision and digest,
+- activation and validity times,
 - minimum accepted revision,
-- recovery policy identifier,
-- trust-state signature metadata, and
-- canonical trust-state envelope digest.
+- recovery-policy identifier,
+- governance-policy digest,
+- threshold governance signatures,
+- canonical body and envelope digests, and
+- an independently sealed public trust-state binding.
 
-No CNG private key, seed, password, DPAPI blob or exportable private material may appear in these artifacts.
+No CNG private key, seed, password, DPAPI blob or exportable private material is accepted in these artifacts.
 
-## Trust-state authority
+## Separate trust-governance authority
 
-Trust-state updates must be signed by a cryptographically separate governance authority. The Capability and Attestation signing keys must not be able to authorize their own registry entry, rotation, revocation or rollback.
+Trust-state authorization uses a separate Ed25519 governance policy. Capability and Attestation P-256 keys cannot authorize their own registration, rotation, revocation, service policy or rollback.
 
-The first production trust root must be established by an explicit offline bootstrap ceremony. Later updates must chain to the previously accepted state and must satisfy the configured governance threshold before activation.
+The governance policy binds:
 
-## Persistence boundary
+- policy identity and revision,
+- signature threshold,
+- canonical governance-key records,
+- public-key digests,
+- validity windows,
+- active or revoked state, and
+- the canonical policy digest.
 
-The signer and backend must load trust state from an administrator-controlled location with:
+Duplicate governance identities, public-key reuse, unknown signers, duplicate signatures, expired keys, revoked keys, algorithm substitution and signatures below threshold fail closed.
 
-- restrictive filesystem ACLs,
+The repository implements the public policy and verification path. Generation and custody of real governance private keys remain an operational ceremony outside the repository's current evidence.
+
+## Explicit offline bootstrap
+
+The first accepted production state cannot be inferred from an embedded default or environment variable. Bootstrap requires an explicit offline expectation that pins:
+
+- deployment identity,
+- exact initial trust-state envelope digest, and
+- exact governance-policy digest.
+
+Bootstrap accepts only revision 1 with no previous-state digest. Once a checkpoint exists, bootstrap cannot be repeated.
+
+## Monotonic normal activation
+
+Normal activation requires:
+
+1. the exact same deployment identity,
+2. the next state revision to equal the accepted revision plus one,
+3. the previous-state digest to equal the accepted state digest,
+4. a valid governance threshold,
+5. a canonical and digest-sealed P-256 registry snapshot,
+6. no registry, allowlist, service-policy or minimum-revision downgrade,
+7. exactly one valid active generation for each enabled logical identity, and
+8. activation inside the declared validity window.
+
+Stale revisions, skipped revisions, forked previous digests, unsigned states, invalid governance signatures, malformed registry records and downgrade attempts are rejected.
+
+## Accepted checkpoint
+
+The accepted checkpoint independently seals:
+
+- deployment identity,
+- accepted state and envelope digests,
+- state revision,
+- registry revision and digest,
+- allowlist revision,
+- service-policy revision,
+- minimum accepted revision,
+- last accepted recovery sequence, and
+- checkpoint digest.
+
+A persisted pointer is not trusted merely because it names a state file. On reload, the pointer seal, immutable file seal, envelope signatures, registry snapshot and checkpoint-to-state correspondence are all reverified.
+
+## Atomic filesystem store
+
+`ProductionTrustStateStore` accepts only an explicit absolute root path. There is no production environment-variable or embedded-development fallback.
+
+The store uses:
+
+- immutable digest-named state files under `states/`,
+- immutable digest-named recovery files under `recoveries/`,
+- one sealed `accepted.json` pointer as the activation point,
 - create-new temporary files,
-- complete file synchronization before rename,
-- same-volume atomic replacement,
-- independently persisted accepted revision and digest,
-- no renderer-writable path,
-- no environment-variable replacement in production mode, and
-- no silent fallback to embedded development trust.
+- complete file synchronization before activation,
+- bounded file sizes and bounded reads,
+- symbolic-link rejection,
+- metadata stability checks during reads, and
+- an atomic pointer replacement.
 
-A crash before atomic activation must leave the previously accepted state usable. A crash after activation must not permit the previous state to become current again unless a separately authorized recovery artifact explicitly allows it.
+On Unix test environments the protected store receives mode `0700`. On Windows the root and child directories receive a protected DACL granting full inherited access only to LocalSystem, Built-in Administrators and the current owner.
 
-## Monotonic activation
+Windows pointer activation uses `MoveFileExW` with `MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH` after the immutable state file has been flushed.
 
-Normal activation must reject:
+A crash or failure before pointer replacement leaves the previously accepted state current. An existing temporary pointer blocks activation rather than causing deletion or unsafe reuse.
 
-- revision zero,
-- a revision lower than or equal to the accepted revision,
-- a previous-state digest that does not match the accepted state,
-- an invalid governance signature,
-- an unknown governance key,
-- an expired or revoked governance key,
-- registry digest mismatch,
-- malformed key records,
-- an active P-256 record without proven hardware assurance,
-- multiple active generations for one logical identity at one issuance time,
-- an allowlist or service-policy downgrade, and
-- activation outside the declared validity interval.
+## Separate recovery path
 
-## Recovery
+Recovery is not normal rollback. A recovery envelope uses a separate signing domain and binds:
 
-Recovery is not ordinary rollback. It requires a distinct signed recovery artifact that binds:
+- deployment and recovery-policy identity,
+- damaged accepted state digest,
+- replacement state digest,
+- recovery-reason digest,
+- monotonically increasing recovery sequence,
+- minimum uncompromised revision,
+- maximum allowed replacement revision, and
+- expiry time.
 
-- the damaged or unavailable state digest,
-- the replacement state digest,
-- the recovery reason digest,
-- a recovery sequence number,
-- the maximum permitted revision transition,
-- the affected machine or deployment identity, and
-- an expiry time.
+Recovery rejects expired authorization, replayed recovery sequence, state-digest substitution, replacement below the minimum uncompromised revision and reactivation or mutation of a revoked P-256 generation.
 
-A recovery artifact must not reactivate a revoked key or reduce the minimum accepted revision below the last uncompromised checkpoint.
+The accepted checkpoint records the last recovery sequence so the same recovery authorization cannot be reused after restart.
 
-## Signer-service startup
+## Signer-service startup binding
 
-The hardened signer service must fail startup unless it can:
+`TrustBoundProductionSignerService` validates a loaded accepted trust state before serving signing requests. Startup requires:
 
-1. authenticate the persisted trust-state envelope,
-2. verify the monotonic activation record,
-3. resolve exactly one active generation for each enabled signing role,
-4. open the corresponding generation-specific CNG key,
-5. match its public-key digest and policy digest to the active registry record,
-6. match its executable and service-policy identity to the trust state, and
-7. bind the loaded trust-state digest into its per-instance identity.
+1. the exact caller-allowlist revision and digest,
+2. the exact signer executable digest,
+3. the exact service ID,
+4. the exact signer deployment-policy revision and digest,
+5. an enabled production identity,
+6. exactly one active generation for that identity,
+7. a backend descriptor for that generation, and
+8. exact descriptor-to-registry provider, algorithm, encoding, export-policy, policy-digest and public-key binding.
 
-Every returned production package must expose the loaded trust-state revision and digest through its public trust binding.
+A backend that silently opens generation 1 when generation 2 is active fails startup.
 
-## Backend and verifier behavior
+This is an in-process startup authority and attack-tested deployment boundary. Installation, account configuration, service recovery settings and SCM hardening of a real Windows service remain open.
 
-The backend issuance authority must reject a signer response whose trust-state revision or digest differs from its own accepted state. Independent verification must use an explicitly supplied accepted trust state and must not fetch mutable network trust during verification.
+## Cryptographic trust-state binding
 
-Historical artifacts may be verified against archived authenticated trust states, subject to revocation semantics. An archived state cannot be used for new issuance.
+`SignerRequestBinding` has a backward-compatible optional `trust_state_binding_digest` field. Existing artifacts without the field continue to use the earlier verification path.
+
+The deployed signer path requires the accepted trust-state binding digest and includes it in:
+
+- the signer request binding digest,
+- the signed production envelope, and
+- the P-256 hardware signature.
+
+The returned deployed package also exposes the accepted state revision, registry revision/digest, service policy and binding digest. Backend verification rejects a response whose accepted state differs from its own state, even when the P-256 signature is otherwise cryptographically valid.
+
+## Historical verification
+
+Archived authenticated trust states can be supplied explicitly for historical verification. Verification does not fetch mutable network trust.
+
+Archived states cannot authorize new issuance through the deployed service. Revoked P-256 generations continue to fail according to the registry's fail-closed revocation semantics.
 
 ## Attack coverage
 
-Permanent tests must cover:
+Permanent tests cover:
 
-- unsigned trust-state files,
-- stale and skipped revisions,
+- missing or insufficient governance signatures,
+- governance algorithm, key and digest substitution,
+- stale, duplicated and skipped state revisions,
 - forked previous-state digests,
-- registry/body digest mismatch,
-- governance-role confusion,
-- compromised signer key attempting self-authorization,
+- registry/body/envelope/checkpoint digest mutation,
 - active-generation ambiguity,
-- revoked-key reactivation,
 - allowlist and service-policy downgrade,
-- partial write and crash before rename,
-- replacement after file verification but before open,
-- renderer-controlled path substitution,
-- environment-variable downgrade,
+- explicit-bootstrap mismatch and repeated bootstrap,
+- recovery expiry, replay and state substitution,
+- recovery below the minimum uncompromised revision,
+- revoked-key reactivation,
+- relative-path and symbolic-link rejection,
+- partial activation and stale temporary pointer behavior,
+- immutable state-file conflict,
+- backend/registry generation substitution,
 - stale backend versus signer state,
-- stale verifier state,
-- unauthorized recovery,
-- replayed recovery artifact, and
-- recovery below the minimum uncompromised revision.
+- signed trust-state binding substitution, and
+- forbidden secret-shaped fields.
+
+The permanent workflow runs with `permissions: contents: read`. Ubuntu and Windows 2025 pass formatting, open-only CNG compilation, warnings-deny Clippy and the complete trust-state/signer attack set.
 
 ## Hardware claim boundary
 
-This gate persists and authenticates public governance state. It does not by itself prove physical TPM assurance. A registry entry may become production-active only after the separate controlled-hardware evidence gate has accepted the key as `PROVEN_HARDWARE_BACKED`.
+Persistence and governance signatures authenticate public trust state. They do not prove physical TPM assurance.
 
-## Exit criteria
+A production registry still accepts only `PROVEN_HARDWARE_BACKED` descriptors, but hosted CI does not create that proof. A controlled-hardware evidence gate and reviewed promotion policy remain required.
 
-This gate is complete only when:
+## Implemented exit boundary
 
-- trust-state schemas and canonical digests are implemented,
-- a separate governance signature and verification path exists,
-- guarded atomic persistence and monotonic activation are implemented,
-- signer startup binds the accepted trust state to its service identity,
-- backend issuance and independent verification reject state divergence,
-- recovery is separately authorized and attack-tested,
-- Linux platform-neutral and real Windows persistence/service tests pass, and
-- no production path silently falls back to development or embedded trust.
+The repository now implements:
+
+- canonical trust-state schemas and digests,
+- a separate threshold governance-verification path,
+- explicit offline bootstrap,
+- exact monotonic activation,
+- guarded atomic persistence,
+- independently sealed accepted checkpoints,
+- separately authorized recovery,
+- signer startup binding to registry, allowlist, executable and service policy,
+- backend rejection of trust-state divergence, and
+- Linux and real Windows persistence/service attack tests.
+
+## Remaining operational boundary before Issue #60 can close
+
+- independently trusted physical-TPM evidence and promotion policy,
+- controlled-hardware elevated provisioning with retained reviewed evidence,
+- offline creation, custody, rotation and recovery procedures for governance private keys,
+- secure packaging and administrator-controlled distribution of signed trust-state updates,
+- installation of the authenticated signer as a hardened Windows service,
+- machine recovery and backup procedures exercised on controlled hardware, and
+- full desktop/backend orchestration through the installed service.
 
 ## Explicitly out of scope
 
