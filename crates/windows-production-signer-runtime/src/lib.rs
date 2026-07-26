@@ -287,6 +287,8 @@ pub struct SignerRequestBinding {
     pub caller_identity_digest: String,
     pub signer_service_identity_digest: String,
     pub key_policy_digest: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub trust_state_binding_digest: Option<String>,
 }
 
 impl SignerRequestBinding {
@@ -302,11 +304,24 @@ impl SignerRequestBinding {
             caller_identity_digest: caller.digest()?,
             signer_service_identity_digest: service.digest()?,
             key_policy_digest: policy.digest()?,
+            trust_state_binding_digest: None,
         };
         binding.validate()?;
         Ok(binding)
     }
 
+    pub fn build_with_trust_state(
+        request_digest: impl Into<String>,
+        caller: &AuthenticatedCallerIdentity,
+        service: &SignerServiceIdentity,
+        policy: &ProductionKeyPolicy,
+        trust_state_binding_digest: impl Into<String>,
+    ) -> Result<Self, ProductionSignerError> {
+        let mut binding = Self::build(request_digest, caller, service, policy)?;
+        binding.trust_state_binding_digest = Some(trust_state_binding_digest.into());
+        binding.validate()?;
+        Ok(binding)
+    }
     pub fn validate(&self) -> Result<(), ProductionSignerError> {
         if self.schema_version != SIGNER_REQUEST_BINDING_SCHEMA {
             return Err(ProductionSignerError::UnsupportedBindingSchema);
@@ -314,7 +329,11 @@ impl SignerRequestBinding {
         validate_sha256(&self.request_digest)?;
         validate_sha256(&self.caller_identity_digest)?;
         validate_sha256(&self.signer_service_identity_digest)?;
-        validate_sha256(&self.key_policy_digest)
+        validate_sha256(&self.key_policy_digest)?;
+        if let Some(trust_state_binding_digest) = &self.trust_state_binding_digest {
+            validate_sha256(trust_state_binding_digest)?;
+        }
+        Ok(())
     }
 
     pub fn digest(&self) -> Result<String, ProductionSignerError> {

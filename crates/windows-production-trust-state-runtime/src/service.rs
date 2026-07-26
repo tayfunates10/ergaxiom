@@ -258,6 +258,11 @@ impl DeployedAuthorizedProductionSignerPackage {
         if envelope.request.identity != governed_trust.key.identity {
             return Err(DeployedProductionSignerError::KeyGenerationMismatch);
         }
+        if envelope.binding.trust_state_binding_digest.as_deref()
+            != Some(accepted.binding().binding_digest.as_str())
+        {
+            return Err(DeployedProductionSignerError::SignedTrustStateBindingMismatch);
+        }
         if self.package_digest != self.expected_digest()? {
             return Err(DeployedProductionSignerError::DeployedPackageDigestMismatch);
         }
@@ -324,12 +329,15 @@ where
             .accepted
             .registry()
             .active_record(&request.identity, trusted_now_epoch_s)?;
-        let signer_package = self.inner.handle_authenticated_generation(
-            request,
-            caller,
-            trusted_now_epoch_s,
-            record.generation,
-        )?;
+        let signer_package = self
+            .inner
+            .handle_authenticated_generation_with_trust_state(
+                request,
+                caller,
+                trusted_now_epoch_s,
+                record.generation,
+                Some(&self.accepted.binding().binding_digest),
+            )?;
         DeployedAuthorizedProductionSignerPackage::build(
             &self.accepted,
             self.service_identity.clone(),
@@ -436,6 +444,8 @@ pub enum DeployedProductionSignerError {
     TrustStateDivergence,
     #[error("production signer key generation does not match governed trust")]
     KeyGenerationMismatch,
+    #[error("hardware-signed request does not bind the accepted production trust state")]
+    SignedTrustStateBindingMismatch,
     #[error("production signing identity is not enabled by deployment policy")]
     IdentityNotEnabled,
     #[error("no unambiguous active production key generation is available")]

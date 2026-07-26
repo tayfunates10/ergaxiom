@@ -260,6 +260,23 @@ where
         trusted_now_epoch_s: u64,
         generation: u64,
     ) -> Result<AuthorizedProductionSignerPackage, ProductionSignerServiceError> {
+        self.handle_authenticated_generation_with_trust_state(
+            request,
+            caller,
+            trusted_now_epoch_s,
+            generation,
+            None,
+        )
+    }
+
+    pub fn handle_authenticated_generation_with_trust_state(
+        &mut self,
+        request: &ProductionSignerRequest,
+        caller: &AuthenticatedCallerIdentity,
+        trusted_now_epoch_s: u64,
+        generation: u64,
+        trust_state_binding_digest: Option<&str>,
+    ) -> Result<AuthorizedProductionSignerPackage, ProductionSignerServiceError> {
         if generation == 0 {
             return Err(ProductionSignerServiceError::InvalidKeyGeneration);
         }
@@ -267,8 +284,6 @@ where
         request.validate_for(&policy)?;
         let request_digest = request.digest_for(&policy)?;
 
-        // Consume caller authorization and replay state before any backend operation.
-        // A backend failure must not make the same request replayable.
         let caller_authorization = self.identity_authorizer.authorize(
             caller,
             &self.service_identity,
@@ -277,8 +292,17 @@ where
             trusted_now_epoch_s,
         )?;
 
-        let binding =
-            SignerRequestBinding::build(request_digest, caller, &self.service_identity, &policy)?;
+        let binding = if let Some(trust_state_binding_digest) = trust_state_binding_digest {
+            SignerRequestBinding::build_with_trust_state(
+                request_digest,
+                caller,
+                &self.service_identity,
+                &policy,
+                trust_state_binding_digest,
+            )?
+        } else {
+            SignerRequestBinding::build(request_digest, caller, &self.service_identity, &policy)?
+        };
         let envelope = request.envelope(&policy, binding.clone())?;
         let envelope_digest = envelope.digest_for(&policy)?;
 
