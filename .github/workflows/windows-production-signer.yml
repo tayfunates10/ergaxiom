@@ -10,45 +10,114 @@ on:
       - ".github/workflows/windows-production-signer.yml"
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
-  diagnose-windows-service-host:
-    name: Diagnose Windows production signer service host
+  fix-windows-service-host:
+    name: Fix Windows production signer service host bindings
     runs-on: windows-2025
     steps:
-      - name: Check out repository
+      - name: Check out pull request branch
         uses: actions/checkout@v4
+        with:
+          ref: agent/tpm-cng-signer-service-v1
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
 
+      - name: Apply exact Windows diagnostics
+        shell: pwsh
+        run: |
+          @'
+          from pathlib import Path
+
+          lib = Path("crates/windows-production-signer-host-runtime/src/lib.rs")
+          text = lib.read_text()
+          marker = "use ergaxiom_windows_production_signer_service_runtime::{\n    HardwareSignerBackend, HardwareSignerBackendError, ProductionSignerServiceError,\n};"
+          replacement = "use ergaxiom_windows_production_signer_service_runtime::{\n    HardwareSignerBackend, HardwareSignerBackendError, ProductionSignerServiceError,\n};\n#[cfg(windows)]\nuse ergaxiom_windows_production_signer_service_runtime::ProductionSignerService;"
+          if marker not in text:
+              raise SystemExit("service import marker missing")
+          text = text.replace(marker, replacement, 1)
+          lib.write_text(text)
+
+          win = Path("crates/windows-production-signer-host-runtime/src/windows.rs")
+          text = win.read_text()
+          text = text.replace(
+              "    ProductionSignerPipeServer, ProductionSignerTransportError,\n",
+              "    ProductionSignerPipeServer,\n",
+              1,
+          )
+          text = text.replace(
+              "use windows_sys::Win32::Security::{DACL_SECURITY_INFORMATION, SetServiceObjectSecurity};",
+              "use windows_sys::Win32::Security::DACL_SECURITY_INFORMATION;",
+              1,
+          )
+          services = "    SetServiceStatus, StartServiceCtrlDispatcherW,\n"
+          if services not in text:
+              raise SystemExit("services import marker missing")
+          text = text.replace(
+              services,
+              "    SetServiceObjectSecurity, SetServiceStatus, StartServiceCtrlDispatcherW,\n",
+              1,
+          )
+          const_marker = "const SERVICE_DACL_SDDL: &str ="
+          if "const DELETE_ACCESS: u32 = 0x0001_0000;" not in text:
+              text = text.replace(
+                  const_marker,
+                  "const DELETE_ACCESS: u32 = 0x0001_0000;\n" + const_marker,
+                  1,
+              )
+          text = text.replace(
+              "SERVICE_STOP | SERVICE_QUERY_STATUS | windows_sys::Win32::System::Services::DELETE,",
+              "SERVICE_STOP | SERVICE_QUERY_STATUS | DELETE_ACCESS,",
+              1,
+          )
+          replacements = {
+              "(&mut description).cast()": "(&mut description as *mut SERVICE_DESCRIPTIONW).cast()",
+              "(&mut delayed).cast()": "(&mut delayed as *mut SERVICE_DELAYED_AUTO_START_INFO).cast()",
+              "(&mut sid).cast()": "(&mut sid as *mut SERVICE_SID_INFO).cast()",
+              "(&mut privilege_info).cast()": "(&mut privilege_info as *mut SERVICE_REQUIRED_PRIVILEGES_INFOW).cast()",
+              "(&mut failure_actions).cast()": "(&mut failure_actions as *mut SERVICE_FAILURE_ACTIONSW).cast()",
+              "(&mut failure_flag).cast()": "(&mut failure_flag as *mut SERVICE_FAILURE_ACTIONS_FLAG).cast()",
+              "(&mut preshutdown).cast()": "(&mut preshutdown as *mut SERVICE_PRESHUTDOWN_INFO).cast()",
+          }
+          for old, new in replacements.items():
+              if old not in text:
+                  raise SystemExit(f"Windows cast marker missing: {old}")
+              text = text.replace(old, new, 1)
+          win.write_text(text)
+          '@ | python
+
+      - name: Materialize canonical formatting
+        run: cargo fmt --all
+
+      - name: Commit Windows SCM binding fixes
+        shell: pwsh
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add crates/windows-production-signer-host-runtime/src/lib.rs crates/windows-production-signer-host-runtime/src/windows.rs
+          git diff --cached --quiet
+          if ($LASTEXITCODE -ne 0) {
+            git commit -m "Fix Windows production signer SCM bindings"
+            git push origin HEAD:agent/tpm-cng-signer-service-v1
+          }
+
       - name: Check workspace formatting
         run: cargo fmt --all -- --check
 
-      - name: Capture Windows service host Clippy diagnostics
-        shell: pwsh
+      - name: Lint Windows service host
         run: |
           cargo clippy `
             -p ergaxiom-windows-production-signer-host-runtime `
             -p ergaxiom-windows-production-signer-service `
-            --all-targets --all-features -- -D warnings `
-            *> windows-service-host-clippy.txt
-          $code = $LASTEXITCODE
-          Set-Content windows-service-host-clippy.exit $code
-          exit 0
+            --all-targets --all-features -- -D warnings
 
-      - name: Upload Windows service host diagnostics
-        uses: actions/upload-artifact@v4
-        with:
-          name: windows-service-host-clippy-diagnostics
-          path: |
-            windows-service-host-clippy.txt
-            windows-service-host-clippy.exit
-
-      - name: Fail on Windows service host lint mismatch
-        shell: pwsh
+      - name: Run Windows service host tests
         run: |
-          if ((Get-Content windows-service-host-clippy.exit) -ne "0") { exit 1 }
+          cargo test `
+            -p ergaxiom-windows-production-signer-host-runtime `
+            -p ergaxiom-windows-production-signer-service `
+            --all-features -- --nocapture
