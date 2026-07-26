@@ -2,12 +2,13 @@
 
 use ergaxiom_key_governance_runtime::IssuerRole;
 use ergaxiom_windows_production_signer_protocol_runtime::{
-    ProductionSignerProtocolError, ProductionSignerRequest, ProductionSignerResponse,
-    ProductionSignerSuccess,
+    ProductionSignerEnvelope, ProductionSignerProtocolError, ProductionSignerRequest,
+    ProductionSignerResponse, ProductionSignerSuccess,
 };
 use ergaxiom_windows_production_signer_runtime::{
     AuthenticatedCallerIdentity, HardwareKeyDescriptor, HardwareSignature, ProductionKeyIdentity,
     ProductionKeyPolicy, ProductionSignerError, SignerRequestBinding, SignerServiceIdentity,
+    validate_sha256,
 };
 use ergaxiom_windows_signer_service_identity_runtime::{
     CallerAuthorizationReceipt, SignerCallerAllowlist, SignerIdentityAuthorizer,
@@ -15,6 +16,37 @@ use ergaxiom_windows_signer_service_identity_runtime::{
 };
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ProductionSignerTrustSnapshot {
+    pub identity: ProductionKeyIdentity,
+    pub public_key_digest: String,
+    pub allowlist_revision: u64,
+    pub allowlist_digest: String,
+    pub caller_identity_digest: String,
+    pub signer_service_identity_digest: String,
+}
+
+impl ProductionSignerTrustSnapshot {
+    pub fn validate_for(
+        &self,
+        policy: &ProductionKeyPolicy,
+    ) -> Result<(), ProductionSignerServiceError> {
+        policy.validate()?;
+        self.identity.validate()?;
+        if self.identity != policy.identity {
+            return Err(ProductionSignerServiceError::TrustIdentityMismatch);
+        }
+        validate_sha256(&self.public_key_digest)?;
+        validate_sha256(&self.allowlist_digest)?;
+        validate_sha256(&self.caller_identity_digest)?;
+        validate_sha256(&self.signer_service_identity_digest)?;
+        if self.allowlist_revision == 0 {
+            return Err(ProductionSignerServiceError::InvalidTrustAllowlistRevision);
+        }
+        Ok(())
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AuthorizedProductionSignerPackage {
@@ -33,15 +65,46 @@ impl AuthorizedProductionSignerPackage {
         self.caller_authorization
             .validate(caller, service_identity, allowlist)?;
         let envelope = self.signer_response.verify_production_eligible(&policy)?;
-        if envelope.request.digest_for(&policy)? != self.caller_authorization.request_digest
-            || envelope.binding.caller_identity_digest
-                != self.caller_authorization.caller_identity_digest
-            || envelope.binding.signer_service_identity_digest
-                != self.caller_authorization.signer_service_identity_digest
-        {
-            return Err(ProductionSignerServiceError::AuthorizationResponseBindingMismatch);
-        }
+        validate_authorization_response_binding(&self.caller_authorization, &envelope, &policy)?;
         Ok(())
+    }
+
+    pub fn verify_trusted(
+        &self,
+        trust: &ProductionSignerTrustSnapshot,
+    ) -> Result<ProductionSignerEnvelope, ProductionSignerServiceError> {
+        let identity = response_identity(&self.signer_response)?;
+        let policy = policy_for_identity(identity)?;
+        trust.validate_for(&policy)?;
+        if identity != &trust.identity {
+            return Err(ProductionSignerServiceError::TrustIdentityMismatch);
+        }
+        let descriptor = response_descriptor(&self.signer_response)?;
+        if descriptor.public_key_digest != trust.public_key_digest {
+            return Err(ProductionSignerServiceError::TrustPublicKeyDigestMismatch);
+        }
+        if self.caller_authorization.allowlist_revision != trust.allowlist_revision
+            || self.caller_authorization.allowlist_digest != trust.allowlist_digest
+        {
+            return Err(ProductionSignerServiceError::TrustAllowlistMismatch);
+        }
+        if self.caller_authorization.caller_identity_digest != trust.caller_identity_digest {
+            return Err(ProductionSignerServiceError::TrustCallerIdentityMismatch);
+        }
+        if self.caller_authorization.signer_service_identity_digest
+            != trust.signer_service_identity_digest
+        {
+            return Err(ProductionSignerServiceError::TrustServiceIdentityMismatch);
+        }
+        let envelope = self.signer_response.verify_production_eligible(&policy)?;
+        validate_authorization_response_binding(&self.caller_authorization, &envelope, &policy)?;
+        if envelope.binding.caller_identity_digest != trust.caller_identity_digest {
+            return Err(ProductionSignerServiceError::TrustCallerIdentityMismatch);
+        }
+        if envelope.binding.signer_service_identity_digest != trust.signer_service_identity_digest {
+            return Err(ProductionSignerServiceError::TrustServiceIdentityMismatch);
+        }
+        Ok(envelope)
     }
 }
 
@@ -174,11 +237,32 @@ pub fn policy_for_identity(
     }
 }
 
+fn validate_authorization_response_binding(
+    authorization: &CallerAuthorizationReceipt,
+    envelope: &ProductionSignerEnvelope,
+    policy: &ProductionKeyPolicy,
+) -> Result<(), ProductionSignerServiceError> {
+    if envelope.request.digest_for(policy)? != authorization.request_digest
+        || envelope.binding.caller_identity_digest != authorization.caller_identity_digest
+        || envelope.binding.signer_service_identity_digest
+            != authorization.signer_service_identity_digest
+    {
+        return Err(ProductionSignerServiceError::AuthorizationResponseBindingMismatch);
+    }
+    Ok(())
+}
+
 fn response_identity(
     response: &ProductionSignerResponse,
 ) -> Result<&ProductionKeyIdentity, ProductionSignerServiceError> {
+    Ok(&response_descriptor(response)?.identity)
+}
+
+fn response_descriptor(
+    response: &ProductionSignerResponse,
+) -> Result<&HardwareKeyDescriptor, ProductionSignerServiceError> {
     match response {
-        ProductionSignerResponse::Success { result, .. } => Ok(&result.descriptor.identity),
+        ProductionSignerResponse::Success { result, .. } => Ok(&result.descriptor),
         ProductionSignerResponse::Error { .. } => {
             Err(ProductionSignerServiceError::ResponseDoesNotContainSignature)
         }
@@ -193,6 +277,18 @@ pub enum ProductionSignerServiceError {
     ResponseDoesNotContainSignature,
     #[error("caller authorization and signer response bindings do not match")]
     AuthorizationResponseBindingMismatch,
+    #[error("production signer trust identity does not match the fixed policy")]
+    TrustIdentityMismatch,
+    #[error("production signer trust public-key digest does not match")]
+    TrustPublicKeyDigestMismatch,
+    #[error("production signer trust allowlist revision is invalid")]
+    InvalidTrustAllowlistRevision,
+    #[error("production signer trust allowlist binding does not match")]
+    TrustAllowlistMismatch,
+    #[error("production signer trusted caller identity does not match")]
+    TrustCallerIdentityMismatch,
+    #[error("production signer trusted service identity does not match")]
+    TrustServiceIdentityMismatch,
     #[error(transparent)]
     Backend(#[from] HardwareSignerBackendError),
     #[error(transparent)]
