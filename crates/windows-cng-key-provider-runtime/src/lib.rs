@@ -13,6 +13,8 @@ use sha2::{Digest, Sha256};
 use thiserror::Error;
 
 const KEY_NAME_PREFIX: &str = "Ergaxiom.Production";
+const GENERATION_SEPARATOR: &str = ".g";
+const GENERATION_WIDTH: usize = 20;
 const SHA256_DIGEST_BYTES: usize = 32;
 const P256_PUBLIC_KEY_BYTES: usize = 65;
 const P256_SIGNATURE_BYTES: usize = 64;
@@ -54,9 +56,51 @@ impl CngPlatformKeyProvider {
     }
 
     pub fn key_name_for(policy: &ProductionKeyPolicy) -> Result<String, CngProviderError> {
+        Self::key_name_for_generation(policy, 1)
+    }
+
+    pub fn key_name_for_generation(
+        policy: &ProductionKeyPolicy,
+        generation: u64,
+    ) -> Result<String, CngProviderError> {
         policy.validate()?;
+        if generation == 0 {
+            return Err(CngProviderError::InvalidKeyGeneration);
+        }
         let identity_digest = policy.identity.digest()?;
-        Ok(format!("{KEY_NAME_PREFIX}.{identity_digest}"))
+        let base = format!("{KEY_NAME_PREFIX}.{identity_digest}");
+        if generation == 1 {
+            Ok(base)
+        } else {
+            Ok(format!(
+                "{base}{GENERATION_SEPARATOR}{generation:0GENERATION_WIDTH$}"
+            ))
+        }
+    }
+
+    pub fn generation_from_key_name(
+        policy: &ProductionKeyPolicy,
+        key_name: &str,
+    ) -> Result<u64, CngProviderError> {
+        policy.validate()?;
+        let generation_one = Self::key_name_for(policy)?;
+        if key_name == generation_one {
+            return Ok(1);
+        }
+        let prefix = format!("{generation_one}{GENERATION_SEPARATOR}");
+        let suffix = key_name
+            .strip_prefix(&prefix)
+            .ok_or(CngProviderError::InvalidKeyGenerationName)?;
+        if suffix.len() != GENERATION_WIDTH || !suffix.bytes().all(|byte| byte.is_ascii_digit()) {
+            return Err(CngProviderError::InvalidKeyGenerationName);
+        }
+        let generation = suffix
+            .parse::<u64>()
+            .map_err(|_| CngProviderError::InvalidKeyGenerationName)?;
+        if generation < 2 || Self::key_name_for_generation(policy, generation)? != key_name {
+            return Err(CngProviderError::InvalidKeyGenerationName);
+        }
+        Ok(generation)
     }
 
     pub fn probe(&self) -> Result<CngProviderProbe, CngProviderError> {
@@ -68,9 +112,18 @@ impl CngPlatformKeyProvider {
         policy: &ProductionKeyPolicy,
         expected_public_key_digest: Option<&str>,
     ) -> Result<CngProvisioningResult, CngProviderError> {
+        self.describe_existing_generation_unverified(policy, 1, expected_public_key_digest)
+    }
+
+    pub fn describe_existing_generation_unverified(
+        &self,
+        policy: &ProductionKeyPolicy,
+        generation: u64,
+        expected_public_key_digest: Option<&str>,
+    ) -> Result<CngProvisioningResult, CngProviderError> {
         policy.validate()?;
         validate_expected_digest(expected_public_key_digest)?;
-        let key_name = Self::key_name_for(policy)?;
+        let key_name = Self::key_name_for_generation(policy, generation)?;
         let native = platform::describe_existing(&key_name)?;
         build_result(policy, key_name, native, expected_public_key_digest)
     }
@@ -81,9 +134,19 @@ impl CngPlatformKeyProvider {
         policy: &ProductionKeyPolicy,
         expected_public_key_digest: Option<&str>,
     ) -> Result<CngProvisioningResult, CngProviderError> {
+        self.provision_generation_unverified(policy, 1, expected_public_key_digest)
+    }
+
+    #[cfg(feature = "provisioning")]
+    pub fn provision_generation_unverified(
+        &self,
+        policy: &ProductionKeyPolicy,
+        generation: u64,
+        expected_public_key_digest: Option<&str>,
+    ) -> Result<CngProvisioningResult, CngProviderError> {
         policy.validate()?;
         validate_expected_digest(expected_public_key_digest)?;
-        let key_name = Self::key_name_for(policy)?;
+        let key_name = Self::key_name_for_generation(policy, generation)?;
         let native = platform::provision(&key_name)?;
         build_result(policy, key_name, native, expected_public_key_digest)
     }
@@ -187,8 +250,8 @@ fn validate_key_binding(
     policy: &ProductionKeyPolicy,
     provisioning: &CngProvisioningResult,
 ) -> Result<(), CngProviderError> {
-    if provisioning.key_name != CngPlatformKeyProvider::key_name_for(policy)?
-        || provisioning.descriptor.identity != policy.identity
+    CngPlatformKeyProvider::generation_from_key_name(policy, &provisioning.key_name)?;
+    if provisioning.descriptor.identity != policy.identity
         || provisioning.descriptor.provider != MICROSOFT_PLATFORM_CRYPTO_PROVIDER
         || provisioning.descriptor.algorithm != ECDSA_P256_SHA256
         || provisioning.descriptor.public_key_encoding != SEC1_UNCOMPRESSED_P256
@@ -303,6 +366,10 @@ pub enum CngProviderError {
     UnsupportedPlatform,
     #[error("production signer policy is invalid: {0}")]
     Policy(#[from] ProductionSignerError),
+    #[error("production CNG key generation must be greater than zero")]
+    InvalidKeyGeneration,
+    #[error("persisted CNG key name does not contain a canonical generation")]
+    InvalidKeyGenerationName,
     #[error("Microsoft Platform Crypto Provider could not be opened: 0x{0:08x}")]
     ProviderOpenFailed(i32),
     #[error("CNG provider implementation flags could not be read: 0x{0:08x}")]
