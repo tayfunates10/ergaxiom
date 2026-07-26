@@ -8,8 +8,8 @@ use ergaxiom_windows_production_signer_protocol_runtime::ProductionSignerRequest
 use ergaxiom_windows_production_signer_runtime::{
     AUTHENTICATED_CALLER_SCHEMA, ECDSA_P256_SHA256, HardwareAssurance, HardwareKeyDescriptor,
     HardwareSignature, MICROSOFT_PLATFORM_CRYPTO_PROVIDER, NON_EXPORTABLE_POLICY, P1363_FIXED_64,
-    ProductionKeyIdentity, ProductionKeyPolicy, SEC1_UNCOMPRESSED_P256, SIGNER_SERVICE_IDENTITY_SCHEMA,
-    SignerRequestBinding, SignerServiceIdentity,
+    ProductionKeyIdentity, ProductionKeyPolicy, SEC1_UNCOMPRESSED_P256,
+    SIGNER_SERVICE_IDENTITY_SCHEMA, SignerRequestBinding, SignerServiceIdentity,
 };
 use ergaxiom_windows_production_signer_service_runtime::{
     GovernedProductionSignerTrustSnapshot, HardwareSignerBackend, HardwareSignerBackendError,
@@ -24,10 +24,7 @@ use ergaxiom_windows_production_trust_state_runtime::{
 use ergaxiom_windows_signer_service_identity_runtime::{
     AllowedSignerCaller, SignerCallerAllowlist,
 };
-use p256::ecdsa::{
-    Signature, SigningKey,
-    signature::hazmat::PrehashSigner,
-};
+use p256::ecdsa::{Signature, SigningKey, signature::hazmat::PrehashSigner};
 use sha2::{Digest, Sha256};
 
 const ACTIVATION: u64 = 1_900_100_000;
@@ -60,12 +57,17 @@ impl GenerationBackend {
         })
     }
 
-    fn key_for_generation(&self, generation: u64) -> Result<&SigningKey, HardwareSignerBackendError> {
+    fn key_for_generation(
+        &self,
+        generation: u64,
+    ) -> Result<&SigningKey, HardwareSignerBackendError> {
         match generation {
             1 => Ok(&self.generation_one),
             2 if !self.substitute_generation_two => Ok(&self.generation_two),
             2 => Ok(&self.generation_one),
-            _ => Err(HardwareSignerBackendError::new("KEY_GENERATION_UNSUPPORTED")),
+            _ => Err(HardwareSignerBackendError::new(
+                "KEY_GENERATION_UNSUPPORTED",
+            )),
         }
     }
 
@@ -146,8 +148,8 @@ impl HardwareSignerBackend for GenerationBackend {
 }
 
 #[test]
-fn deployed_service_selects_generation_two_and_hardware_signature_binds_exact_trust_state(
-) -> Result<(), Box<dyn Error>> {
+fn deployed_service_selects_generation_two_and_hardware_signature_binds_exact_trust_state()
+-> Result<(), Box<dyn Error>> {
     let fixture = Fixture::build(GenerationBackend::production()?)?;
     let mut deployed = TrustBoundProductionSignerService::new(
         fixture.service,
@@ -226,15 +228,17 @@ fn stale_state_and_signed_binding_substitution_fail_closed() -> Result<(), Box<d
     {
         result.envelope.binding.trust_state_binding_digest = Some(PAYLOAD_DIGEST.to_owned());
     }
-    assert!(altered
-        .verify_deployed(
-            &fixture.accepted,
-            &fixture.deployment_policy,
-            &fixture.service_identity,
-            &fixture.governed_trust,
-            ACTIVATION + 2,
-        )
-        .is_err());
+    assert!(
+        altered
+            .verify_deployed(
+                &fixture.accepted,
+                &fixture.deployment_policy,
+                &fixture.service_identity,
+                &fixture.governed_trust,
+                ACTIVATION + 2,
+            )
+            .is_err()
+    );
     Ok(())
 }
 
@@ -280,10 +284,7 @@ impl Fixture {
         registry.insert_initial_guarded(
             0,
             &initial_digest,
-            descriptor_from_key(
-                &ProductionKeyPolicy::capability(),
-                &backend.generation_one,
-            )?,
+            descriptor_from_key(&ProductionKeyPolicy::capability(), &backend.generation_one)?,
             ACTIVATION - 100,
             ACTIVATION + 1_000,
             ACTIVATION - 90,
@@ -295,10 +296,7 @@ impl Fixture {
             &digest,
             &ProductionKeyIdentity::capability(),
             1,
-            descriptor_from_key(
-                &ProductionKeyPolicy::capability(),
-                &backend.generation_two,
-            )?,
+            descriptor_from_key(&ProductionKeyPolicy::capability(), &backend.generation_two)?,
             ACTIVATION,
             ACTIVATION,
             ACTIVATION + 1_000,
@@ -339,18 +337,13 @@ impl Fixture {
             governance_policy.policy_digest.clone(),
         )?;
         let mut activator = ProductionTrustStateActivator::default();
-        let activated = activator.bootstrap(
-            &envelope,
-            &governance_policy,
-            &expectation,
-            ACTIVATION,
-        )?;
+        let activated =
+            activator.bootstrap(&envelope, &governance_policy, &expectation, ACTIVATION)?;
         let accepted = activated.verified;
 
-        let record = accepted.registry().active_record(
-            &ProductionKeyIdentity::capability(),
-            ACTIVATION + 2,
-        )?;
+        let record = accepted
+            .registry()
+            .active_record(&ProductionKeyIdentity::capability(), ACTIVATION + 2)?;
         let signer_trust = ProductionSignerTrustSnapshot {
             identity: record.identity.clone(),
             public_key_digest: record.public_key_digest.clone(),
@@ -367,11 +360,7 @@ impl Fixture {
                 ACTIVATION + 2,
             )?,
         };
-        let service = ProductionSignerService::new(
-            backend,
-            service_identity.clone(),
-            allowlist,
-        )?;
+        let service = ProductionSignerService::new(backend, service_identity.clone(), allowlist)?;
         Ok(Self {
             selected_generation,
             service,
@@ -387,7 +376,10 @@ impl Fixture {
 
     fn next_accepted_state(
         &self,
-    ) -> Result<ergaxiom_windows_production_trust_state_runtime::VerifiedProductionTrustState, Box<dyn Error>> {
+    ) -> Result<
+        ergaxiom_windows_production_trust_state_runtime::VerifiedProductionTrustState,
+        Box<dyn Error>,
+    > {
         let body = ProductionTrustStateBody::new(
             "ergaxiom-production-a",
             2,
@@ -404,8 +396,10 @@ impl Fixture {
             1,
             "offline-recovery-v1",
         )?;
-        Ok(signed_state(&body, &self.governance_key, &self.governance_policy)?
-            .verify(&self.governance_policy, ACTIVATION + 2)?)
+        Ok(
+            signed_state(&body, &self.governance_key, &self.governance_policy)?
+                .verify(&self.governance_policy, ACTIVATION + 2)?,
+        )
     }
 }
 
