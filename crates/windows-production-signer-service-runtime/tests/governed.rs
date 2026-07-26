@@ -229,18 +229,25 @@ fn signed_package(
         PAYLOAD_DIGEST,
     )?;
     let package = service.handle_authenticated(&request, &caller, SIGNED_AT)?;
-    let ProductionSignerResponse::Success { result, .. } = &package.signer_response else {
-        return Err("expected production signer success".into());
+    let (descriptor, identity, public_key_digest) = match &package.signer_response {
+        ProductionSignerResponse::Success { result, .. } => (
+            result.descriptor.clone(),
+            result.descriptor.identity.clone(),
+            result.descriptor.public_key_digest.clone(),
+        ),
+        ProductionSignerResponse::Error { .. } => {
+            return Err("expected production signer success".into());
+        }
     };
     let trust = ProductionSignerTrustSnapshot {
-        identity: result.descriptor.identity.clone(),
-        public_key_digest: result.descriptor.public_key_digest.clone(),
+        identity,
+        public_key_digest,
         allowlist_revision: allowlist.revision,
         allowlist_digest: allowlist.allowlist_digest,
         caller_identity_digest: caller.digest()?,
         signer_service_identity_digest: service_identity.digest()?,
     };
-    Ok((package, trust, result.descriptor.clone()))
+    Ok((package, trust, descriptor))
 }
 
 fn caller() -> AuthenticatedCallerIdentity {
