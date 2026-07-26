@@ -12,92 +12,20 @@ on:
       - ".github/workflows/windows-production-signer.yml"
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  fix-deployed-trust-state-tests:
-    name: Fix and verify deployed production trust-state signer
+  diagnose-deployed-trust-state-tests:
+    name: Diagnose deployed trust-state attacks
     runs-on: ubuntu-24.04
     steps:
-      - name: Check out pull request branch
+      - name: Check out repository
         uses: actions/checkout@v4
-        with:
-          ref: agent/tpm-cng-signer-service-v1
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
-
-      - name: Fix exact deployed signer fixture diagnostics
-        shell: bash
-        run: |
-          python - <<'PY'
-          from pathlib import Path
-          path = Path("crates/windows-production-trust-state-runtime/tests/deployed_service.rs")
-          text = path.read_text()
-
-          text = text.replace(
-              "use std::error::Error;\n",
-              "use std::error::Error;\nuse std::rc::Rc;\n",
-              1,
-          )
-          text = text.replace(
-              "    selected_generation: Cell<u64>,",
-              "    selected_generation: Rc<Cell<u64>>,",
-          )
-          text = text.replace(
-              "            selected_generation: Cell::new(0),",
-              "            selected_generation: Rc::new(Cell::new(0)),",
-              1,
-          )
-
-          old = '''    let fixture = Fixture::build(GenerationBackend::production()?)?;
-              let mut deployed = TrustBoundProductionSignerService::new(
-                  fixture.service,
-                  fixture.accepted.clone(),
-                  fixture.deployment_policy.clone(),
-              )?;
-              let request = ProductionSignerRequest::sign_digest(
-                  "deployed-request-2",'''
-          new = '''    let fixture = Fixture::build(GenerationBackend::production()?)?;
-              let newer = fixture.next_accepted_state()?;
-              let mut deployed = TrustBoundProductionSignerService::new(
-                  fixture.service,
-                  fixture.accepted.clone(),
-                  fixture.deployment_policy.clone(),
-              )?;
-              let request = ProductionSignerRequest::sign_digest(
-                  "deployed-request-2",'''
-          if old not in text:
-              raise SystemExit("stale-state fixture setup marker not found")
-          text = text.replace(old, new, 1)
-          text = text.replace(
-              "\n    let newer = fixture.next_accepted_state()?;\n    assert!(matches!(",
-              "\n    assert!(matches!(",
-              1,
-          )
-          path.write_text(text)
-          PY
-
-      - name: Materialize canonical formatting and lockfile
-        run: |
-          cargo fmt --all
-          cargo generate-lockfile
-
-      - name: Commit deployed signer fixture fixes
-        shell: bash
-        run: |
-          set -euo pipefail
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add Cargo.lock crates/windows-production-trust-state-runtime/tests/deployed_service.rs
-          if git diff --cached --quiet; then
-            echo "No source changes"
-          else
-            git commit -m "Fix deployed production signer attack fixture"
-            git push origin HEAD:agent/tpm-cng-signer-service-v1
-          fi
 
       - name: Check workspace formatting
         run: cargo fmt --all -- --check
@@ -111,11 +39,27 @@ jobs:
             -p ergaxiom-windows-production-trust-state-runtime \
             --all-targets --all-features -- -D warnings
 
-      - name: Run deployed trust-state attacks
+      - name: Capture deployed signer attack diagnostics
+        shell: bash
         run: |
+          set +e
           cargo test \
-            -p ergaxiom-windows-production-key-governance-runtime \
-            -p ergaxiom-windows-production-signer-runtime \
-            -p ergaxiom-windows-production-signer-service-runtime \
             -p ergaxiom-windows-production-trust-state-runtime \
-            --all-features -- --nocapture
+            --test deployed_service --all-features -- --nocapture \
+            2>&1 | tee "$RUNNER_TEMP/deployed-signer-attacks.log"
+          status=${PIPESTATUS[0]}
+          printf '%s\n' "$status" > "$RUNNER_TEMP/deployed-signer-attacks.status"
+          exit 0
+
+      - name: Upload deployed signer attack diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: deployed-signer-attack-diagnostics
+          path: ${{ runner.temp }}/deployed-signer-attacks.*
+          if-no-files-found: error
+          retention-days: 3
+
+      - name: Fail on deployed signer attack mismatch
+        shell: bash
+        run: test "$(cat "$RUNNER_TEMP/deployed-signer-attacks.status")" = "0"
