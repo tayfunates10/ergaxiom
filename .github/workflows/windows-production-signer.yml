@@ -5,6 +5,8 @@ on:
     paths:
       - "Cargo.toml"
       - "Cargo.lock"
+      - "crates/capability-issuance-runtime/**"
+      - "crates/capability-runtime/**"
       - "crates/windows-cng-key-provider-runtime/**"
       - "crates/windows-production-signer-protocol-runtime/**"
       - "crates/windows-production-signer-runtime/**"
@@ -19,6 +21,8 @@ on:
     paths:
       - "Cargo.toml"
       - "Cargo.lock"
+      - "crates/capability-issuance-runtime/**"
+      - "crates/capability-runtime/**"
       - "crates/windows-cng-key-provider-runtime/**"
       - "crates/windows-production-signer-protocol-runtime/**"
       - "crates/windows-production-signer-runtime/**"
@@ -33,7 +37,7 @@ permissions:
 
 jobs:
   policy:
-    name: Verify production signer policy, protocol, service, transport and identity contracts
+    name: Verify production signer and capability issuance contracts
     runs-on: ubuntu-24.04
     steps:
       - name: Check out repository
@@ -52,6 +56,8 @@ jobs:
         run: |
           set +e
           cargo clippy \
+            -p ergaxiom-capability-runtime \
+            -p ergaxiom-capability-issuance-runtime \
             -p ergaxiom-windows-production-signer-runtime \
             -p ergaxiom-windows-production-signer-protocol-runtime \
             -p ergaxiom-windows-production-signer-service-runtime \
@@ -80,6 +86,8 @@ jobs:
       - name: Run platform-neutral production signer attacks
         run: |
           cargo test \
+            -p ergaxiom-capability-runtime \
+            -p ergaxiom-capability-issuance-runtime \
             -p ergaxiom-windows-production-signer-runtime \
             -p ergaxiom-windows-production-signer-protocol-runtime \
             -p ergaxiom-windows-production-signer-service-runtime \
@@ -89,7 +97,7 @@ jobs:
             --all-features
 
   windows-cng:
-    name: Compile CNG provider, protocol, service, transport and caller identity
+    name: Compile CNG signer and capability issuance boundary
     runs-on: windows-2025
     steps:
       - name: Check out repository
@@ -107,6 +115,8 @@ jobs:
         shell: pwsh
         run: |
           cargo clippy `
+            -p ergaxiom-capability-runtime `
+            -p ergaxiom-capability-issuance-runtime `
             -p ergaxiom-windows-production-signer-runtime `
             -p ergaxiom-windows-production-signer-protocol-runtime `
             -p ergaxiom-windows-production-signer-service-runtime `
@@ -137,6 +147,8 @@ jobs:
         shell: pwsh
         run: |
           cargo test `
+            -p ergaxiom-capability-runtime `
+            -p ergaxiom-capability-issuance-runtime `
             -p ergaxiom-windows-production-signer-runtime `
             -p ergaxiom-windows-production-signer-protocol-runtime `
             -p ergaxiom-windows-production-signer-service-runtime `
