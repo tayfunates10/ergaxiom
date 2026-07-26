@@ -14,15 +14,13 @@ use ergaxiom_windows_cng_key_provider_runtime::{
 use ergaxiom_windows_production_key_governance_runtime::{
     ProductionKeyRecord, ProductionKeyStatus,
 };
-use ergaxiom_windows_production_signer_protocol_runtime::ProductionSignerRequest;
 use ergaxiom_windows_production_signer_runtime::{
     HardwareAssurance, HardwareKeyDescriptor, HardwareSignature, ProductionKeyIdentity,
-    ProductionKeyPolicy, ProductionSignerError, SignerRequestBinding, SignerServiceIdentity,
-    validate_identifier, validate_sha256,
+    ProductionKeyPolicy, ProductionSignerError, SignerRequestBinding, validate_identifier,
+    validate_sha256,
 };
 use ergaxiom_windows_production_signer_service_runtime::{
-    HardwareSignerBackend, HardwareSignerBackendError, ProductionSignerService,
-    ProductionSignerServiceError,
+    HardwareSignerBackend, HardwareSignerBackendError, ProductionSignerServiceError,
 };
 use ergaxiom_windows_production_signer_transport_runtime::{
     AuthenticatedPipeConnection, ProductionSignerTransportError,
@@ -707,7 +705,8 @@ fn read_bounded_file(path: &Path, max_bytes: u64) -> Result<Vec<u8>, ProductionS
     }
     let before_modified = before.modified().ok();
     let mut bytes = Vec::with_capacity(before.len() as usize);
-    file.take(max_bytes.saturating_add(1))
+    (&mut file)
+        .take(max_bytes.saturating_add(1))
         .read_to_end(&mut bytes)?;
     let after = file.metadata()?;
     if bytes.len() as u64 != before.len()
