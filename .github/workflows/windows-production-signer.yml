@@ -5,12 +5,14 @@ on:
     paths:
       - "Cargo.toml"
       - "Cargo.lock"
+      - "apps/windows-production-signer-provisioner/**"
       - "crates/attestation-issuance-runtime/**"
       - "crates/attestation-runtime/**"
       - "crates/capability-issuance-runtime/**"
       - "crates/capability-runtime/**"
       - "crates/windows-cng-key-provider-runtime/**"
       - "crates/windows-production-signer-protocol-runtime/**"
+      - "crates/windows-production-signer-provisioning-runtime/**"
       - "crates/windows-production-signer-runtime/**"
       - "crates/windows-production-signer-service-runtime/**"
       - "crates/windows-production-signer-transport-runtime/**"
@@ -23,12 +25,14 @@ on:
     paths:
       - "Cargo.toml"
       - "Cargo.lock"
+      - "apps/windows-production-signer-provisioner/**"
       - "crates/attestation-issuance-runtime/**"
       - "crates/attestation-runtime/**"
       - "crates/capability-issuance-runtime/**"
       - "crates/capability-runtime/**"
       - "crates/windows-cng-key-provider-runtime/**"
       - "crates/windows-production-signer-protocol-runtime/**"
+      - "crates/windows-production-signer-provisioning-runtime/**"
       - "crates/windows-production-signer-runtime/**"
       - "crates/windows-production-signer-service-runtime/**"
       - "crates/windows-production-signer-transport-runtime/**"
@@ -41,7 +45,7 @@ permissions:
 
 jobs:
   policy:
-    name: Verify production signer and purpose-locked issuance contracts
+    name: Verify production signer, provisioning and issuance contracts
     runs-on: ubuntu-24.04
     steps:
       - name: Check out repository
@@ -55,17 +59,25 @@ jobs:
       - name: Check workspace formatting
         run: cargo fmt --all -- --check
 
+      - name: Prove normal CNG runtime has no provisioning feature
+        run: |
+          cargo check \
+            -p ergaxiom-windows-cng-key-provider-runtime \
+            --no-default-features
+
       - name: Capture Linux production signer Clippy diagnostics
         shell: bash
         run: |
           set +e
           cargo clippy \
+            -p ergaxiom-windows-production-signer-provisioner \
             -p ergaxiom-attestation-runtime \
             -p ergaxiom-attestation-issuance-runtime \
             -p ergaxiom-capability-runtime \
             -p ergaxiom-capability-issuance-runtime \
             -p ergaxiom-windows-production-signer-runtime \
             -p ergaxiom-windows-production-signer-protocol-runtime \
+            -p ergaxiom-windows-production-signer-provisioning-runtime \
             -p ergaxiom-windows-production-signer-service-runtime \
             -p ergaxiom-windows-production-signer-transport-runtime \
             -p ergaxiom-windows-cng-key-provider-runtime \
@@ -92,12 +104,14 @@ jobs:
       - name: Run platform-neutral production signer attacks
         run: |
           cargo test \
+            -p ergaxiom-windows-production-signer-provisioner \
             -p ergaxiom-attestation-runtime \
             -p ergaxiom-attestation-issuance-runtime \
             -p ergaxiom-capability-runtime \
             -p ergaxiom-capability-issuance-runtime \
             -p ergaxiom-windows-production-signer-runtime \
             -p ergaxiom-windows-production-signer-protocol-runtime \
+            -p ergaxiom-windows-production-signer-provisioning-runtime \
             -p ergaxiom-windows-production-signer-service-runtime \
             -p ergaxiom-windows-production-signer-transport-runtime \
             -p ergaxiom-windows-cng-key-provider-runtime \
@@ -105,7 +119,7 @@ jobs:
             --all-features
 
   windows-cng:
-    name: Compile CNG signer and purpose-locked issuance boundary
+    name: Compile CNG signer, administrator provisioner and issuance boundary
     runs-on: windows-2025
     steps:
       - name: Check out repository
@@ -119,16 +133,25 @@ jobs:
       - name: Check workspace formatting
         run: cargo fmt --all -- --check
 
+      - name: Prove normal Windows CNG runtime is open-only
+        shell: pwsh
+        run: |
+          cargo check `
+            -p ergaxiom-windows-cng-key-provider-runtime `
+            --no-default-features
+
       - name: Capture Windows production signer Clippy diagnostics
         shell: pwsh
         run: |
           cargo clippy `
+            -p ergaxiom-windows-production-signer-provisioner `
             -p ergaxiom-attestation-runtime `
             -p ergaxiom-attestation-issuance-runtime `
             -p ergaxiom-capability-runtime `
             -p ergaxiom-capability-issuance-runtime `
             -p ergaxiom-windows-production-signer-runtime `
             -p ergaxiom-windows-production-signer-protocol-runtime `
+            -p ergaxiom-windows-production-signer-provisioning-runtime `
             -p ergaxiom-windows-production-signer-service-runtime `
             -p ergaxiom-windows-production-signer-transport-runtime `
             -p ergaxiom-windows-cng-key-provider-runtime `
@@ -157,12 +180,14 @@ jobs:
         shell: pwsh
         run: |
           cargo test `
+            -p ergaxiom-windows-production-signer-provisioner `
             -p ergaxiom-attestation-runtime `
             -p ergaxiom-attestation-issuance-runtime `
             -p ergaxiom-capability-runtime `
             -p ergaxiom-capability-issuance-runtime `
             -p ergaxiom-windows-production-signer-runtime `
             -p ergaxiom-windows-production-signer-protocol-runtime `
+            -p ergaxiom-windows-production-signer-provisioning-runtime `
             -p ergaxiom-windows-production-signer-service-runtime `
             -p ergaxiom-windows-production-signer-transport-runtime `
             -p ergaxiom-windows-cng-key-provider-runtime `
