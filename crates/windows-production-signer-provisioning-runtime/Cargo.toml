@@ -1,0 +1,33 @@
+[package]
+name = "ergaxiom-windows-production-signer-provisioning-runtime"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+publish = false
+
+[dependencies]
+base64.workspace = true
+ergaxiom-proof-kernel = { path = "../proof-kernel" }
+ergaxiom-windows-cng-key-provider-runtime = { path = "../windows-cng-key-provider-runtime", features = ["provisioning"] }
+ergaxiom-windows-production-signer-runtime = { path = "../windows-production-signer-runtime" }
+p256.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+thiserror.workspace = true
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = ">=0.59, <=0.61", features = [
+  "Win32_Foundation",
+  "Win32_Security",
+  "Win32_System_Threading"
+] }
+
+[lints.rust]
+unsafe_code = "allow"
+unsafe_op_in_unsafe_fn = "deny"
+
+[lints.clippy]
+unwrap_used = "deny"
+expect_used = "deny"
