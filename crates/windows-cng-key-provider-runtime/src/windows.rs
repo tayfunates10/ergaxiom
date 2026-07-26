@@ -4,12 +4,16 @@ use std::ptr::{null, null_mut};
 use ergaxiom_windows_production_signer_runtime::HardwareAssurance;
 use windows_sys::Win32::Security::Cryptography::{
     BCRYPT_ECCPUBLIC_BLOB, BCRYPT_ECDSA_PUBLIC_P256_MAGIC, MS_PLATFORM_CRYPTO_PROVIDER,
-    NCRYPT_ALLOW_SIGNING_FLAG, NCRYPT_ECDSA_P256_ALGORITHM, NCRYPT_EXPORT_POLICY_PROPERTY,
-    NCRYPT_FLAGS, NCRYPT_HANDLE, NCRYPT_IMPL_HARDWARE_FLAG, NCRYPT_IMPL_SOFTWARE_FLAG,
-    NCRYPT_IMPL_TYPE_PROPERTY, NCRYPT_KEY_HANDLE, NCRYPT_KEY_USAGE_PROPERTY, NCRYPT_PERSIST_FLAG,
-    NCRYPT_PROV_HANDLE, NCRYPT_SILENT_FLAG, NCryptCreatePersistedKey, NCryptDeleteKey,
-    NCryptExportKey, NCryptFinalizeKey, NCryptFreeObject, NCryptGetProperty, NCryptOpenKey,
-    NCryptOpenStorageProvider, NCryptSetProperty, NCryptSignHash,
+    NCRYPT_ALLOW_SIGNING_FLAG, NCRYPT_EXPORT_POLICY_PROPERTY, NCRYPT_FLAGS, NCRYPT_HANDLE,
+    NCRYPT_IMPL_HARDWARE_FLAG, NCRYPT_IMPL_SOFTWARE_FLAG, NCRYPT_IMPL_TYPE_PROPERTY,
+    NCRYPT_KEY_HANDLE, NCRYPT_KEY_USAGE_PROPERTY, NCRYPT_PROV_HANDLE, NCRYPT_SILENT_FLAG,
+    NCryptExportKey, NCryptFreeObject, NCryptGetProperty, NCryptOpenKey, NCryptOpenStorageProvider,
+    NCryptSignHash,
+};
+#[cfg(feature = "provisioning")]
+use windows_sys::Win32::Security::Cryptography::{
+    NCRYPT_ECDSA_P256_ALGORITHM, NCRYPT_PERSIST_FLAG, NCryptCreatePersistedKey, NCryptDeleteKey,
+    NCryptFinalizeKey, NCryptSetProperty,
 };
 
 use crate::{CngProviderError, CngProviderProbe, NativeProvisioning};
@@ -42,7 +46,21 @@ pub fn probe() -> Result<CngProviderProbe, CngProviderError> {
     })
 }
 
-pub fn describe_or_provision(key_name: &str) -> Result<NativeProvisioning, CngProviderError> {
+pub fn describe_existing(key_name: &str) -> Result<NativeProvisioning, CngProviderError> {
+    let probe = probe()?;
+    let provider = ProviderHandle::open()?;
+    let key = open_existing_key(provider.raw, key_name)?;
+    validate_key_policy(key.raw)?;
+    let public_blob = export_public_blob(key.raw)?;
+    Ok(NativeProvisioning {
+        created: false,
+        provider_implementation_flags: probe.implementation_flags,
+        public_blob,
+    })
+}
+
+#[cfg(feature = "provisioning")]
+pub fn provision(key_name: &str) -> Result<NativeProvisioning, CngProviderError> {
     let probe = probe()?;
     let provider = ProviderHandle::open()?;
     let (key, created) = open_or_create_key(provider.raw, key_name)?;
@@ -58,23 +76,7 @@ pub fn describe_or_provision(key_name: &str) -> Result<NativeProvisioning, CngPr
 pub fn sign(key_name: &str, digest: &[u8; 32]) -> Result<Vec<u8>, CngProviderError> {
     let _probe = probe()?;
     let provider = ProviderHandle::open()?;
-    let key_name = wide(key_name)?;
-    let mut key = 0;
-    // SAFETY: provider is a live CNG provider handle, key_name is NUL-terminated and
-    // remains alive for the call, and phkey points to writable handle storage.
-    let status = unsafe {
-        NCryptOpenKey(
-            provider.raw,
-            &mut key,
-            key_name.as_ptr(),
-            0,
-            NCRYPT_SILENT_FLAG,
-        )
-    };
-    if status != ERROR_SUCCESS {
-        return Err(CngProviderError::KeyOpenFailed(status));
-    }
-    let key = KeyHandle::opened(key);
+    let key = open_existing_key(provider.raw, key_name)?;
     validate_key_policy(key.raw)?;
 
     let mut required = 0_u32;
@@ -121,17 +123,33 @@ pub const fn ecdsa_p256_public_magic() -> u32 {
     BCRYPT_ECDSA_PUBLIC_P256_MAGIC
 }
 
+fn open_existing_key(
+    provider: NCRYPT_PROV_HANDLE,
+    key_name: &str,
+) -> Result<KeyHandle, CngProviderError> {
+    let key_name = wide(key_name)?;
+    let mut key = 0;
+    // SAFETY: provider is live, key_name is NUL-terminated, and phkey is writable.
+    let status =
+        unsafe { NCryptOpenKey(provider, &mut key, key_name.as_ptr(), 0, NCRYPT_SILENT_FLAG) };
+    if status != ERROR_SUCCESS {
+        return Err(CngProviderError::KeyOpenFailed(status));
+    }
+    Ok(KeyHandle { raw: key })
+}
+
+#[cfg(feature = "provisioning")]
 fn open_or_create_key(
     provider: NCRYPT_PROV_HANDLE,
     key_name: &str,
-) -> Result<(KeyHandle, bool), CngProviderError> {
+) -> Result<(ProvisioningKeyHandle, bool), CngProviderError> {
     let key_name = wide(key_name)?;
     let mut key = 0;
     // SAFETY: provider is live, key_name is NUL-terminated, and phkey is writable.
     let open_status =
         unsafe { NCryptOpenKey(provider, &mut key, key_name.as_ptr(), 0, NCRYPT_SILENT_FLAG) };
     if open_status == ERROR_SUCCESS {
-        return Ok((KeyHandle::opened(key), false));
+        return Ok((ProvisioningKeyHandle::opened(key), false));
     }
 
     // SAFETY: provider is live, algorithm and key-name pointers are NUL-terminated,
@@ -149,7 +167,7 @@ fn open_or_create_key(
     if create_status != ERROR_SUCCESS {
         return Err(CngProviderError::KeyCreateFailed(create_status));
     }
-    let mut key = KeyHandle::created(key);
+    let mut key = ProvisioningKeyHandle::created(key);
     set_u32_property(
         key.raw,
         NCRYPT_EXPORT_POLICY_PROPERTY,
@@ -267,6 +285,7 @@ fn get_u32_property(
     Ok(value)
 }
 
+#[cfg(feature = "provisioning")]
 fn set_u32_property(
     handle: NCRYPT_HANDLE,
     property: *const u16,
@@ -334,10 +353,25 @@ impl Drop for ProviderHandle {
 
 struct KeyHandle {
     raw: NCRYPT_KEY_HANDLE,
+}
+
+impl Drop for KeyHandle {
+    fn drop(&mut self) {
+        if self.raw != 0 {
+            // SAFETY: raw is an owned live key handle and is freed exactly once.
+            let _ = unsafe { NCryptFreeObject(self.raw) };
+        }
+    }
+}
+
+#[cfg(feature = "provisioning")]
+struct ProvisioningKeyHandle {
+    raw: NCRYPT_KEY_HANDLE,
     delete_on_drop: bool,
 }
 
-impl KeyHandle {
+#[cfg(feature = "provisioning")]
+impl ProvisioningKeyHandle {
     const fn opened(raw: NCRYPT_KEY_HANDLE) -> Self {
         Self {
             raw,
@@ -353,7 +387,8 @@ impl KeyHandle {
     }
 }
 
-impl Drop for KeyHandle {
+#[cfg(feature = "provisioning")]
+impl Drop for ProvisioningKeyHandle {
     fn drop(&mut self) {
         if self.raw == 0 {
             return;
