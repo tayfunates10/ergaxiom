@@ -1,0 +1,151 @@
+name: Sync exhaustive service identity proof
+
+on:
+  pull_request:
+    paths:
+      - "crates/windows-production-trust-state-runtime/**"
+      - "crates/windows-production-signer-transport-runtime/**"
+      - "crates/windows-production-signer-host-runtime/**"
+      - "docs/architecture/49-purpose-locked-service-identity-proof.md"
+      - ".github/workflows/sync-service-identity-proof*.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  validate-and-sync:
+    runs-on: windows-2025
+    steps:
+      - name: Check out branch
+        uses: actions/checkout@v4
+        with:
+          ref: agent/tauri-service-identity-proof-v1
+          fetch-depth: 0
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Reapply base transformation and repair enum matches
+        shell: python
+        run: |
+          from pathlib import Path
+          import textwrap
+
+          workflow = Path(".github/workflows/sync-service-identity-proof.yml").read_text()
+          start = workflow.index(
+              "      - name: Wire identity proof protocol\n        shell: python\n        run: |\n"
+          )
+          start = workflow.index("        run: |\n", start) + len("        run: |\n")
+          end = workflow.index("\n      - name: Validate proof foundation", start)
+          base_script = textwrap.dedent(workflow[start:end])
+          exec(compile(base_script, "wire-identity-proof", "exec"), {})
+
+          path = Path("crates/windows-production-signer-transport-runtime/src/lib.rs")
+          text = path.read_text()
+
+          def repair_segment(text, start_marker, end_marker, repair):
+              start = text.index(start_marker)
+              end = text.index(end_marker, start)
+              segment = text[start:end]
+              repaired = repair(segment)
+              if repaired == segment:
+                  raise SystemExit(f"segment repair made no change: {start_marker}")
+              return text[:start] + repaired + text[end:]
+
+          def add_identity_to_schema_match(segment):
+              if "Self::IdentityProof" in segment:
+                  return segment
+              needle = "            | Self::Rejected {"
+              replacement = '''            | Self::IdentityProof {
+                  schema_version,
+                  response_digest,
+                  ..
+              }
+              | Self::Rejected {'''
+              if needle not in segment:
+                  raise SystemExit("schema match rejection arm missing")
+              return segment.replace(needle, replacement, 1)
+
+          def add_identity_to_deployed_match(segment):
+              if "Self::IdentityProof" in segment:
+                  return segment
+              needle = '''            Self::Rejected {
+                  request_id, code, ..
+              } => {'''
+              replacement = '''            Self::IdentityProof { .. } => {
+                  Err(ProductionSignerTransportError::UnexpectedHostResponse)
+              }
+              Self::Rejected {
+                  request_id, code, ..
+              } => {'''
+              if needle not in segment:
+                  raise SystemExit("deployed response rejection arm missing")
+              return segment.replace(needle, replacement, 1)
+
+          def add_identity_to_digest_match(segment):
+              if "Self::IdentityProof" in segment:
+                  return segment
+              needle = "            | Self::Rejected {"
+              replacement = '''            | Self::IdentityProof {
+                  response_digest, ..
+              }
+              | Self::Rejected {'''
+              if needle not in segment:
+                  raise SystemExit("set-digest rejection arm missing")
+              return segment.replace(needle, replacement, 1)
+
+          text = repair_segment(
+              text,
+              "    pub fn validate_seal(&self)",
+              "    pub fn into_deployed_package(",
+              add_identity_to_schema_match,
+          )
+          text = repair_segment(
+              text,
+              "    pub fn into_deployed_package(",
+              "    pub fn into_identity_proof(",
+              add_identity_to_deployed_match,
+          )
+          text = repair_segment(
+              text,
+              "    fn set_digest(&mut self)",
+              "    fn expected_digest(&self)",
+              add_identity_to_digest_match,
+          )
+          path.write_text(text)
+
+      - name: Validate proof foundation
+        shell: pwsh
+        run: |
+          cargo fmt --all
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          cargo fmt --all -- --check
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          cargo clippy -p ergaxiom-windows-production-trust-state-runtime --all-targets --all-features -- -D warnings
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          cargo clippy -p ergaxiom-windows-production-signer-transport-runtime --all-targets --all-features -- -D warnings
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          cargo clippy -p ergaxiom-windows-production-signer-host-runtime --all-targets --all-features -- -D warnings
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          cargo test -p ergaxiom-windows-production-trust-state-runtime --all-targets
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          cargo test -p ergaxiom-windows-production-signer-transport-runtime --all-targets
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          cargo test -p ergaxiom-windows-production-signer-host-runtime --all-targets
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Commit validated proof foundation
+        shell: pwsh
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add crates/windows-production-trust-state-runtime/src/lib.rs crates/windows-production-trust-state-runtime/src/service.rs crates/windows-production-trust-state-runtime/src/identity_proof.rs crates/windows-production-signer-transport-runtime/src/lib.rs crates/windows-production-signer-host-runtime/src/lib.rs docs/architecture/49-purpose-locked-service-identity-proof.md
+          git diff --cached --quiet
+          if ($LASTEXITCODE -eq 0) { exit 0 }
+          git commit -m "Add purpose-locked live signer identity proof"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          git push origin HEAD:agent/tauri-service-identity-proof-v1
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
