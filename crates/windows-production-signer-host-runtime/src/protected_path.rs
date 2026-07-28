@@ -398,14 +398,18 @@ mod windows {
 
         #[test]
         fn accepts_protected_administrator_descriptor() {
-            validate_sddl("O:BAD:P(A;;FA;;;SY)(A;;FA;;;BA)(A;;FR;;;BU)")
-                .expect("protected administrator descriptor must pass");
+            assert!(
+                validate_sddl("O:BAD:P(A;;FA;;;SY)(A;;FA;;;BA)(A;;FR;;;BU)").is_ok(),
+                "protected administrator descriptor must pass"
+            );
         }
 
         #[test]
         fn accepts_non_administrator_deny_ace() {
-            validate_sddl("O:BAD:P(D;;FW;;;BU)(A;;FA;;;SY)(A;;FA;;;BA)(A;;FR;;;BU)")
-                .expect("deny ACE must not weaken the administrator boundary");
+            assert!(
+                validate_sddl("O:BAD:P(D;;FW;;;BU)(A;;FA;;;SY)(A;;FA;;;BA)(A;;FR;;;BU)").is_ok(),
+                "deny ACE must not weaken the administrator boundary"
+            );
         }
 
         #[test]
