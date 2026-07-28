@@ -159,10 +159,10 @@ fn rejected_host_response_uses_the_client_wire_contract() -> Result<(), Box<dyn 
 #[cfg(windows)]
 #[test]
 fn transport_failures_are_scoped_to_one_connection() {
-    assert!(is_recoverable_connection_error(
+    assert!(crate::windows::is_recoverable_connection_error(
         &ProductionSignerHostError::Transport(ProductionSignerTransportError::MessageSizeInvalid,),
     ));
-    assert!(!is_recoverable_connection_error(
+    assert!(!crate::windows::is_recoverable_connection_error(
         &ProductionSignerHostError::ServiceHardeningWeakened,
     ));
 }

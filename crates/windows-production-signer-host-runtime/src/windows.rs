@@ -318,7 +318,7 @@ fn service_worker() -> Result<(), ProductionSignerHostError> {
     Ok(())
 }
 
-fn is_recoverable_connection_error(error: &ProductionSignerHostError) -> bool {
+pub(crate) fn is_recoverable_connection_error(error: &ProductionSignerHostError) -> bool {
     matches!(error, ProductionSignerHostError::Transport(_))
 }
 
