@@ -1,3 +1,5 @@
+include!("deployment.rs");
+
 use ergaxiom_attestation_issuance_runtime::{
     AttestationCertificateDraft, ProductionAttestationSignerTransport,
 };
@@ -18,8 +20,8 @@ use ergaxiom_windows_production_governed_issuance_runtime::{
 };
 use ergaxiom_windows_production_key_governance_runtime::ProductionKeyRegistry;
 use ergaxiom_windows_production_signer_service_runtime::GovernedProductionSignerTrustSnapshot;
-use serde_json::Value;
-use thiserror::Error;
+use serde_json::Value as JsonValue;
+use thiserror::Error as ThisError;
 
 use crate::{
     BackendIssuanceAuthorization, BackendIssuanceError, BackendIssuanceKind, BackendIssuancePolicy,
@@ -123,7 +125,7 @@ where
         execute_receipt: &DesktopCommandReceipt,
         compiled_contract: CompiledContract,
         compiled_plan: &CompiledPlan,
-        bundle_value: &Value,
+        bundle_value: &JsonValue,
         verified_assurance_level: AssuranceLevel,
         draft: AttestationCertificateDraft,
         trusted_now_epoch_s: u64,
@@ -160,7 +162,7 @@ where
     }
 }
 
-#[derive(Debug, Error)]
+#[derive(Debug, ThisError)]
 pub enum BackendProductionIssuanceError {
     #[error(transparent)]
     Authorization(#[from] BackendIssuanceError),
