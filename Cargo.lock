@@ -470,9 +470,17 @@ dependencies = [
  "ergaxiom-key-governance-runtime",
  "ergaxiom-operator-plan-runtime",
  "ergaxiom-proof-kernel",
+ "ergaxiom-windows-production-governed-issuance-runtime",
+ "ergaxiom-windows-production-key-governance-runtime",
+ "ergaxiom-windows-production-signer-protocol-runtime",
+ "ergaxiom-windows-production-signer-runtime",
+ "ergaxiom-windows-production-signer-service-runtime",
  "ergaxiom-windows-signer-protocol-runtime",
+ "ergaxiom-windows-signer-service-identity-runtime",
+ "p256",
  "serde",
  "serde_json",
+ "sha2",
  "thiserror",
 ]
 

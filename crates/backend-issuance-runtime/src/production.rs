@@ -13,8 +13,8 @@ use ergaxiom_desktop_shell_runtime::{
 use ergaxiom_operator_plan_runtime::CompiledPlan;
 use ergaxiom_proof_kernel::AssuranceLevel;
 use ergaxiom_windows_production_governed_issuance_runtime::{
-    GovernedProductionAttestationIssuanceAuthority,
-    GovernedProductionCapabilityIssuanceAuthority, GovernedProductionIssuanceError,
+    GovernedProductionAttestationIssuanceAuthority, GovernedProductionCapabilityIssuanceAuthority,
+    GovernedProductionIssuanceError,
 };
 use ergaxiom_windows_production_key_governance_runtime::ProductionKeyRegistry;
 use ergaxiom_windows_production_signer_service_runtime::GovernedProductionSignerTrustSnapshot;
@@ -22,8 +22,7 @@ use serde_json::Value;
 use thiserror::Error;
 
 use crate::{
-    BackendIssuanceAuthorization, BackendIssuanceError, BackendIssuanceKind,
-    BackendIssuancePolicy,
+    BackendIssuanceAuthorization, BackendIssuanceError, BackendIssuanceKind, BackendIssuancePolicy,
 };
 
 #[derive(Debug)]

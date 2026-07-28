@@ -17,8 +17,9 @@ use ergaxiom_windows_production_signer_runtime::{
     SignerRequestBinding, SignerServiceIdentity,
 };
 use ergaxiom_windows_production_signer_service_runtime::{
-    AuthorizedProductionSignerPackage, GovernedProductionSignerTrustSnapshot, HardwareSignerBackend,
-    HardwareSignerBackendError, ProductionSignerService, ProductionSignerTrustSnapshot,
+    AuthorizedProductionSignerPackage, GovernedProductionSignerTrustSnapshot,
+    HardwareSignerBackend, HardwareSignerBackendError, ProductionSignerService,
+    ProductionSignerTrustSnapshot,
 };
 use ergaxiom_windows_signer_service_identity_runtime::{
     AllowedSignerCaller, SignerCallerAllowlist,
@@ -33,10 +34,8 @@ const PRODUCTION_CALLER_IMAGE: &str =
 const PRODUCTION_SERVICE_IMAGE: &str =
     "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc";
 
-type ProductionAuthority = BackendAuthorizedProductionIssuanceAuthority<
-    ProductionTransport,
-    ProductionTransport,
->;
+type ProductionAuthority =
+    BackendAuthorizedProductionIssuanceAuthority<ProductionTransport, ProductionTransport>;
 
 #[derive(Debug)]
 struct ProductionBackend {
@@ -147,7 +146,10 @@ fn backend_authority_issues_governed_production_capability_and_attestation()
         CAPABILITY_AT,
         60,
     )?;
-    assert_eq!(capability.authorization.kind, BackendIssuanceKind::Capability);
+    assert_eq!(
+        capability.authorization.kind,
+        BackendIssuanceKind::Capability
+    );
     assert_eq!(fixture.capability_calls.get(), 1);
     let capability_envelope = capability.token.signer_package.verify_governed(
         &fixture.capability_trust,
@@ -171,7 +173,10 @@ fn backend_authority_issues_governed_production_capability_and_attestation()
         ATTESTATION_AT,
         60,
     )?;
-    assert_eq!(attestation.authorization.kind, BackendIssuanceKind::Attestation);
+    assert_eq!(
+        attestation.authorization.kind,
+        BackendIssuanceKind::Attestation
+    );
     assert_eq!(fixture.attestation_calls.get(), 1);
     verify_governed_production_attestation_against_bundle(
         &attestation.package,
@@ -404,9 +409,7 @@ fn production_allowlist() -> Result<SignerCallerAllowlist, Box<dyn Error>> {
     )?)
 }
 
-fn production_decode_sha256(
-    value: &str,
-) -> Result<[u8; 32], HardwareSignerBackendError> {
+fn production_decode_sha256(value: &str) -> Result<[u8; 32], HardwareSignerBackendError> {
     if value.len() != 64 {
         return Err(HardwareSignerBackendError::new("DIGEST_LENGTH_INVALID"));
     }
