@@ -1,0 +1,72 @@
+name: Backend production deployment
+
+on:
+  pull_request:
+    paths:
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "crates/backend-issuance-runtime/**"
+      - "crates/windows-production-signer-host-runtime/**"
+      - "crates/windows-production-trust-state-runtime/**"
+      - "crates/windows-production-key-governance-runtime/**"
+      - "crates/windows-production-signer-runtime/**"
+      - "crates/windows-signer-service-identity-runtime/**"
+      - "docs/architecture/46-backend-production-deployment-manifest.md"
+      - ".github/workflows/backend-production-deployment.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "crates/backend-issuance-runtime/**"
+      - "crates/windows-production-signer-host-runtime/**"
+      - "crates/windows-production-trust-state-runtime/**"
+      - "crates/windows-production-key-governance-runtime/**"
+      - "crates/windows-production-signer-runtime/**"
+      - "crates/windows-signer-service-identity-runtime/**"
+      - "docs/architecture/46-backend-production-deployment-manifest.md"
+      - ".github/workflows/backend-production-deployment.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  verify-backend-production-deployment:
+    name: Verify backend deployment manifest (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-24.04
+          - windows-2025
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Check workspace formatting
+        run: cargo fmt --all -- --check
+
+      - name: Lint backend deployment boundary
+        run: >-
+          cargo clippy
+          -p ergaxiom-backend-issuance-runtime
+          --all-targets
+          --all-features
+          --
+          -D warnings
+
+      - name: Run backend deployment attacks
+        run: >-
+          cargo test
+          -p ergaxiom-backend-issuance-runtime
+          --all-features
+          deployment::tests
+          --
+          --nocapture
