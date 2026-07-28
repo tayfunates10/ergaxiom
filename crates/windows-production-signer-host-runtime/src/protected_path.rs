@@ -47,12 +47,14 @@ mod windows {
 
     use windows_sys::Win32::Foundation::LocalFree;
     use windows_sys::Win32::Security::Authorization::{
-        ConvertSidToStringSidW, GetNamedSecurityInfoW, SE_FILE_OBJECT,
+        ConvertSidToStringSidW, ConvertStringSecurityDescriptorToSecurityDescriptorW,
+        GetNamedSecurityInfoW, SE_FILE_OBJECT,
     };
     use windows_sys::Win32::Security::{
         ACCESS_ALLOWED_ACE, ACE_HEADER, ACL_SIZE_INFORMATION, AclSizeInformation,
         DACL_SECURITY_INFORMATION, GetAce, GetAclInformation, GetSecurityDescriptorControl,
-        IsValidSid, OWNER_SECURITY_INFORMATION, SE_DACL_PROTECTED, SECURITY_DESCRIPTOR_CONTROL,
+        GetSecurityDescriptorDacl, GetSecurityDescriptorOwner, IsValidSid,
+        OWNER_SECURITY_INFORMATION, SE_DACL_PROTECTED, SECURITY_DESCRIPTOR_CONTROL,
     };
     use windows_sys::Win32::Storage::FileSystem::FILE_ATTRIBUTE_REPARSE_POINT;
 
@@ -295,7 +297,8 @@ mod windows {
     impl Drop for SecurityDescriptor {
         fn drop(&mut self) {
             if !self.raw.is_null() {
-                // SAFETY: raw was allocated by GetNamedSecurityInfoW and remains owned here.
+                // SAFETY: raw was allocated by GetNamedSecurityInfoW or the SDDL conversion API
+                // and remains owned by this wrapper.
                 unsafe {
                     let _ = LocalFree(self.raw);
                 }
@@ -336,6 +339,95 @@ mod windows {
                     let _ = LocalFree(self.raw.cast());
                 }
             }
+        }
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+
+        const SDDL_REVISION_1: u32 = 1;
+
+        fn validate_sddl(sddl: &str) -> Result<(), ProductionSignerHostError> {
+            let encoded: Vec<u16> = sddl.encode_utf16().chain(std::iter::once(0)).collect();
+            let mut raw = null_mut();
+            // SAFETY: encoded is NUL-terminated and raw points to writable descriptor storage.
+            if unsafe {
+                ConvertStringSecurityDescriptorToSecurityDescriptorW(
+                    encoded.as_ptr(),
+                    SDDL_REVISION_1,
+                    &mut raw,
+                    null_mut(),
+                )
+            } == 0
+            {
+                return Err(last_security_error());
+            }
+            let descriptor = SecurityDescriptor::owned(raw)?;
+            let mut owner = null_mut();
+            let mut owner_defaulted = 0;
+            // SAFETY: descriptor is a live self-relative security descriptor.
+            if unsafe {
+                GetSecurityDescriptorOwner(descriptor.raw, &mut owner, &mut owner_defaulted)
+            } == 0
+            {
+                return Err(last_security_error());
+            }
+            let mut dacl_present = 0;
+            let mut dacl = null_mut();
+            let mut dacl_defaulted = 0;
+            // SAFETY: descriptor is live and all output pointers refer to writable storage.
+            if unsafe {
+                GetSecurityDescriptorDacl(
+                    descriptor.raw,
+                    &mut dacl_present,
+                    &mut dacl,
+                    &mut dacl_defaulted,
+                )
+            } == 0
+            {
+                return Err(last_security_error());
+            }
+            if dacl_present == 0 {
+                return Err(ProductionSignerHostError::AdministratorControlledDaclMissing);
+            }
+            validate_descriptor(descriptor.raw, owner, dacl)
+        }
+
+        #[test]
+        fn accepts_protected_administrator_descriptor() {
+            validate_sddl("O:BAD:P(A;;FA;;;SY)(A;;FA;;;BA)(A;;FR;;;BU)")
+                .expect("protected administrator descriptor must pass");
+        }
+
+        #[test]
+        fn accepts_non_administrator_deny_ace() {
+            validate_sddl("O:BAD:P(D;;FW;;;BU)(A;;FA;;;SY)(A;;FA;;;BA)(A;;FR;;;BU)")
+                .expect("deny ACE must not weaken the administrator boundary");
+        }
+
+        #[test]
+        fn rejects_non_administrator_owner() {
+            assert!(matches!(
+                validate_sddl("O:BUD:P(A;;FA;;;SY)(A;;FA;;;BA)"),
+                Err(ProductionSignerHostError::AdministratorControlledOwnerRejected)
+            ));
+        }
+
+        #[test]
+        fn rejects_unprotected_dacl() {
+            assert!(matches!(
+                validate_sddl("O:BAD:(A;;FA;;;SY)(A;;FA;;;BA)"),
+                Err(ProductionSignerHostError::AdministratorControlledDaclNotProtected)
+            ));
+        }
+
+        #[test]
+        fn rejects_non_administrator_write_ace() {
+            assert!(matches!(
+                validate_sddl("O:BAD:P(A;;FA;;;SY)(A;;FA;;;BA)(A;;FW;;;BU)"),
+                Err(ProductionSignerHostError::AdministratorControlledWriteAccessRejected)
+            ));
         }
     }
 }
