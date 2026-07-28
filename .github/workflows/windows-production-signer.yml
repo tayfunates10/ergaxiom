@@ -118,6 +118,7 @@ jobs:
       - name: Run production service and signer attacks
         shell: bash
         run: |
+          set +e
           cargo test \
             -p ergaxiom-attestation-runtime \
             -p ergaxiom-attestation-issuance-runtime \
@@ -138,7 +139,18 @@ jobs:
             -p ergaxiom-windows-production-signer-transport-runtime \
             -p ergaxiom-windows-production-trust-state-runtime \
             -p ergaxiom-windows-signer-service-identity-runtime \
-            --all-features -- --nocapture
+            --all-features -- --nocapture 2>&1 | tee production-signer-attacks.log
+          status=${PIPESTATUS[0]}
+          exit "$status"
+
+      - name: Upload production signer attack diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: production-signer-attacks-${{ matrix.os }}
+          if-no-files-found: error
+          retention-days: 7
+          path: production-signer-attacks.log
 
       - name: Compile production signer service executable
         run: cargo build -p ergaxiom-windows-production-signer-service --release
