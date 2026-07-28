@@ -228,12 +228,13 @@ jobs:
       - name: Fail when Clippy failed
         shell: bash
         run: test "$(cat pr61-clippy-diagnostics.status)" = "0"
-      - name: Commit verified repairs and remove temporary workflows
+      - name: Commit verified repairs
         shell: bash
         run: |
           set -euo pipefail
-          rm .github/workflows/address-pr61-review.yml
-          rm .github/workflows/address-pr61-review-launcher.yml
+          rm -f pr61-repair-diagnostics.log pr61-repair-diagnostics.status
+          rm -f pr61-test-diagnostics.log pr61-test-diagnostics.status
+          rm -f pr61-clippy-diagnostics.log pr61-clippy-diagnostics.status
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -A
