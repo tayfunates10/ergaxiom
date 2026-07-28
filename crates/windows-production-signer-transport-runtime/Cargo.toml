@@ -1,0 +1,37 @@
+[package]
+name = "ergaxiom-windows-production-signer-transport-runtime"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+publish = false
+
+[dependencies]
+ergaxiom-proof-kernel = { path = "../proof-kernel" }
+ergaxiom-windows-production-signer-protocol-runtime = { path = "../windows-production-signer-protocol-runtime" }
+ergaxiom-windows-production-signer-runtime = { path = "../windows-production-signer-runtime" }
+ergaxiom-windows-production-signer-service-runtime = { path = "../windows-production-signer-service-runtime" }
+ergaxiom-windows-production-trust-state-runtime = { path = "../windows-production-trust-state-runtime" }
+ergaxiom-windows-signer-service-identity-runtime = { path = "../windows-signer-service-identity-runtime" }
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = ">=0.59, <=0.61", features = [
+  "Win32_Foundation",
+  "Win32_Security",
+  "Win32_Security_Authorization",
+  "Win32_Storage_FileSystem",
+  "Win32_System_IO",
+  "Win32_System_Pipes",
+  "Win32_System_Threading"
+] }
+
+[lints.rust]
+unsafe_code = "allow"
+unsafe_op_in_unsafe_fn = "deny"
+
+[lints.clippy]
+unwrap_used = "deny"
+expect_used = "deny"

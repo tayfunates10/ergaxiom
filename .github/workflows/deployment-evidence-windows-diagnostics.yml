@@ -1,0 +1,55 @@
+name: Deployment evidence Windows diagnostics
+
+on:
+  pull_request:
+    paths:
+      - "apps/windows-production-signer-service/**"
+      - "crates/windows-production-deployment-evidence-runtime/**"
+      - "crates/windows-production-installation-evidence-runtime/**"
+      - "crates/windows-sys-registry-shim/**"
+      - ".github/workflows/deployment-evidence-windows-diagnostics.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  windows-diagnostics:
+    runs-on: windows-2025
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - name: Capture formatting diagnostics
+        shell: bash
+        run: |
+          set +e
+          cargo fmt --all -- --check > deployment-evidence-format.txt 2>&1
+          echo "$?" > deployment-evidence-format.status
+          exit 0
+      - name: Capture Windows Clippy diagnostics
+        shell: bash
+        run: |
+          set +e
+          cargo clippy \
+            -p ergaxiom-windows-production-installation-evidence-runtime \
+            -p ergaxiom-windows-production-deployment-evidence-runtime \
+            -p ergaxiom-windows-production-signer-service \
+            -p ergaxiom-windows-sys-registry-shim \
+            --all-targets --all-features -- -D warnings \
+            > deployment-evidence-windows-clippy.txt 2>&1
+          echo "$?" > deployment-evidence-windows-clippy.status
+          exit 0
+      - uses: actions/upload-artifact@v4
+        with:
+          name: deployment-evidence-windows-diagnostics
+          path: |
+            deployment-evidence-format.txt
+            deployment-evidence-format.status
+            deployment-evidence-windows-clippy.txt
+            deployment-evidence-windows-clippy.status
+      - name: Fail on diagnostics
+        shell: bash
+        run: |
+          test "$(cat deployment-evidence-format.status)" = "0"
+          test "$(cat deployment-evidence-windows-clippy.status)" = "0"

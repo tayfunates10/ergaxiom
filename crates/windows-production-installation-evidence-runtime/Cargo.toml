@@ -1,0 +1,35 @@
+[package]
+name = "ergaxiom-windows-production-installation-evidence-runtime"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+publish = false
+
+[lib]
+path = "src/lib_wrapper.rs"
+
+[dependencies]
+ergaxiom-key-governance-runtime = { path = "../key-governance-runtime" }
+ergaxiom-proof-kernel = { path = "../proof-kernel" }
+ergaxiom-windows-cng-key-provider-runtime = { path = "../windows-cng-key-provider-runtime" }
+ergaxiom-windows-production-key-governance-runtime = { path = "../windows-production-key-governance-runtime" }
+ergaxiom-windows-production-signer-host-runtime = { path = "../windows-production-signer-host-runtime" }
+ergaxiom-windows-production-signer-runtime = { path = "../windows-production-signer-runtime" }
+ergaxiom-windows-production-signer-transport-runtime = { path = "../windows-production-signer-transport-runtime" }
+ergaxiom-windows-production-trust-state-runtime = { path = "../windows-production-trust-state-runtime" }
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+thiserror.workspace = true
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { package = "ergaxiom-windows-sys-registry-shim", path = "../windows-sys-registry-shim" }
+
+[lints.rust]
+unsafe_code = "allow"
+unsafe_op_in_unsafe_fn = "deny"
+
+[lints.clippy]
+unwrap_used = "deny"
+expect_used = "deny"

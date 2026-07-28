@@ -1,5 +1,7 @@
 [workspace]
 members = [
+  "apps/windows-production-signer-provisioner",
+  "apps/windows-production-signer-service",
   "apps/windows-signer",
   "crates/attestation-issuance-runtime",
   "crates/attestation-runtime",
@@ -37,8 +39,22 @@ members = [
   "crates/svg-approved-copy-runtime",
   "crates/typed-planner-runtime",
   "crates/windows-bridge-runtime",
+  "crates/windows-cng-key-provider-runtime",
+  "crates/windows-production-deployment-evidence-runtime",
+  "crates/windows-production-governed-issuance-runtime",
+  "crates/windows-production-installation-evidence-runtime",
+  "crates/windows-production-key-governance-runtime",
+  "crates/windows-production-signer-host-runtime",
+  "crates/windows-production-signer-protocol-runtime",
+  "crates/windows-production-signer-provisioning-runtime",
+  "crates/windows-production-signer-runtime",
+  "crates/windows-production-signer-service-runtime",
+  "crates/windows-production-signer-transport-runtime",
+  "crates/windows-production-trust-state-runtime",
   "crates/windows-signer-client-runtime",
   "crates/windows-signer-protocol-runtime",
+  "crates/windows-signer-service-identity-runtime",
+  "crates/windows-sys-registry-shim",
   "crates/windows-uia-client-runtime"
 ]
 resolver = "2"
@@ -52,6 +68,7 @@ repository = "https://github.com/tayfunates10/ergaxiom"
 base64 = "0.22"
 ed25519-dalek = "2.1"
 flate2 = "1"
+p256 = { version = "0.13", features = ["ecdsa"] }
 rand_core = { version = "0.6", features = ["getrandom"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"

@@ -10,6 +10,10 @@ publish = false
 ergaxiom-capability-runtime = { path = "../capability-runtime" }
 ergaxiom-key-governance-runtime = { path = "../key-governance-runtime" }
 ergaxiom-proof-kernel = { path = "../proof-kernel" }
+ergaxiom-windows-production-signer-protocol-runtime = { path = "../windows-production-signer-protocol-runtime" }
+ergaxiom-windows-production-signer-runtime = { path = "../windows-production-signer-runtime" }
+ergaxiom-windows-production-signer-service-runtime = { path = "../windows-production-signer-service-runtime" }
+ergaxiom-windows-production-signer-transport-runtime = { path = "../windows-production-signer-transport-runtime" }
 ergaxiom-windows-signer-client-runtime = { path = "../windows-signer-client-runtime" }
 ergaxiom-windows-signer-protocol-runtime = { path = "../windows-signer-protocol-runtime" }
 serde.workspace = true
@@ -20,6 +24,9 @@ thiserror.workspace = true
 base64.workspace = true
 ed25519-dalek = { workspace = true, features = ["rand_core"] }
 ergaxiom-contract-runtime = { path = "../contract-runtime" }
+ergaxiom-windows-signer-service-identity-runtime = { path = "../windows-signer-service-identity-runtime" }
+p256.workspace = true
+sha2.workspace = true
 
 [lints]
 workspace = true

@@ -1,0 +1,34 @@
+[package]
+name = "ergaxiom-windows-production-governed-issuance-runtime"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+publish = false
+
+[dependencies]
+ergaxiom-attestation-issuance-runtime = { path = "../attestation-issuance-runtime" }
+ergaxiom-attestation-runtime = { path = "../attestation-runtime" }
+ergaxiom-capability-issuance-runtime = { path = "../capability-issuance-runtime" }
+ergaxiom-capability-runtime = { path = "../capability-runtime" }
+ergaxiom-contract-runtime = { path = "../contract-runtime" }
+ergaxiom-operator-plan-runtime = { path = "../operator-plan-runtime" }
+ergaxiom-proof-kernel = { path = "../proof-kernel" }
+ergaxiom-windows-production-key-governance-runtime = { path = "../windows-production-key-governance-runtime" }
+ergaxiom-windows-production-signer-runtime = { path = "../windows-production-signer-runtime" }
+ergaxiom-windows-production-signer-service-runtime = { path = "../windows-production-signer-service-runtime" }
+serde_json.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+base64.workspace = true
+ed25519-dalek.workspace = true
+ergaxiom-key-governance-runtime = { path = "../key-governance-runtime" }
+ergaxiom-windows-production-signer-protocol-runtime = { path = "../windows-production-signer-protocol-runtime" }
+ergaxiom-windows-signer-protocol-runtime = { path = "../windows-signer-protocol-runtime" }
+ergaxiom-windows-signer-service-identity-runtime = { path = "../windows-signer-service-identity-runtime" }
+p256.workspace = true
+sha2.workspace = true
+
+[lints]
+workspace = true

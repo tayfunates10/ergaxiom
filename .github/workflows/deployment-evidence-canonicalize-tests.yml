@@ -1,0 +1,30 @@
+name: Canonicalize deployment evidence tests
+
+on:
+  pull_request:
+    paths:
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "crates/windows-production-deployment-evidence-runtime/**"
+      - "crates/windows-production-installation-evidence-runtime/**"
+      - "crates/windows-sys-registry-shim/**"
+      - ".github/workflows/deployment-evidence-canonicalize-tests.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  canonicalize:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+      - name: Check canonical Rust formatting
+        run: cargo fmt --all -- --check
+      - name: Check canonical lockfile
+        shell: bash
+        run: |
+          cargo generate-lockfile
+          git diff --exit-code -- Cargo.lock
