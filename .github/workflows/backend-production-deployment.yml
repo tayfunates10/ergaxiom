@@ -67,6 +67,6 @@ jobs:
           cargo test
           -p ergaxiom-backend-issuance-runtime
           --all-features
-          deployment::tests
+          production::tests
           --
           --nocapture
