@@ -50,10 +50,9 @@ mod windows {
         ConvertSidToStringSidW, GetNamedSecurityInfoW, SE_FILE_OBJECT,
     };
     use windows_sys::Win32::Security::{
-        ACCESS_ALLOWED_ACE, ACCESS_ALLOWED_ACE_TYPE, ACCESS_DENIED_ACE_TYPE, ACE_HEADER,
-        ACL_SIZE_INFORMATION, AclSizeInformation, DACL_SECURITY_INFORMATION, GetAce,
-        GetAclInformation, GetSecurityDescriptorControl, IsValidSid, OWNER_SECURITY_INFORMATION,
-        SE_DACL_PROTECTED, SECURITY_DESCRIPTOR_CONTROL,
+        ACCESS_ALLOWED_ACE, ACE_HEADER, ACL_SIZE_INFORMATION, AclSizeInformation,
+        DACL_SECURITY_INFORMATION, GetAce, GetAclInformation, GetSecurityDescriptorControl,
+        IsValidSid, OWNER_SECURITY_INFORMATION, SE_DACL_PROTECTED, SECURITY_DESCRIPTOR_CONTROL,
     };
     use windows_sys::Win32::Storage::FileSystem::FILE_ATTRIBUTE_REPARSE_POINT;
 
@@ -61,6 +60,10 @@ mod windows {
 
     const LOCAL_SYSTEM_SID: &str = "S-1-5-18";
     const BUILTIN_ADMINISTRATORS_SID: &str = "S-1-5-32-544";
+    // WinNT.h ACE_HEADER::AceType values. windows-sys exposes the ACE layouts but does not export
+    // these two byte constants for every supported crate version.
+    const ACCESS_ALLOWED_ACE_KIND: u8 = 0x00;
+    const ACCESS_DENIED_ACE_KIND: u8 = 0x01;
 
     const FILE_WRITE_DATA_OR_ADD_FILE: u32 = 0x0000_0002;
     const FILE_APPEND_DATA_OR_ADD_SUBDIRECTORY: u32 = 0x0000_0004;
@@ -214,7 +217,7 @@ mod windows {
             // SAFETY: GetAce returned a pointer to at least an ACE_HEADER within the live ACL.
             let header = unsafe { &*(raw_ace.cast::<ACE_HEADER>()) };
             match header.AceType {
-                ACCESS_ALLOWED_ACE_TYPE => {
+                ACCESS_ALLOWED_ACE_KIND => {
                     if usize::from(header.AceSize) < size_of::<ACCESS_ALLOWED_ACE>() {
                         return Err(
                             ProductionSignerHostError::AdministratorControlledAceUnsupported,
@@ -233,7 +236,7 @@ mod windows {
                         );
                     }
                 }
-                ACCESS_DENIED_ACE_TYPE => {}
+                ACCESS_DENIED_ACE_KIND => {}
                 _ => {
                     return Err(ProductionSignerHostError::AdministratorControlledAceUnsupported);
                 }
@@ -243,7 +246,7 @@ mod windows {
     }
 
     fn is_administrator_sid(value: &str) -> bool {
-        matches!(value, LOCAL_SYSTEM_SID | BUILTIN_ADMINISTRATORS_SID)
+        value == LOCAL_SYSTEM_SID || value == BUILTIN_ADMINISTRATORS_SID
     }
 
     fn sid_text(sid: *mut c_void) -> Result<String, ProductionSignerHostError> {
