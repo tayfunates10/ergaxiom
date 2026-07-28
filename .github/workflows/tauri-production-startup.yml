@@ -55,21 +55,43 @@ jobs:
         run: cargo fmt --manifest-path apps/desktop/src-tauri/Cargo.toml --all -- --check
 
       - name: Lint production startup boundary
-        run: >-
-          cargo clippy
-          --locked
-          --manifest-path apps/desktop/src-tauri/Cargo.toml
-          --all-targets
-          --all-features
-          --
-          -D warnings
+        shell: bash
+        run: |
+          set -o pipefail
+          cargo clippy \
+            --locked \
+            --manifest-path apps/desktop/src-tauri/Cargo.toml \
+            --all-targets \
+            --all-features \
+            -- \
+            -D warnings 2>&1 | tee "$RUNNER_TEMP/tauri-production-startup-clippy.log"
+
+      - name: Upload startup lint diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: tauri-production-startup-clippy-${{ matrix.os }}
+          path: ${{ runner.temp }}/tauri-production-startup-clippy.log
+          if-no-files-found: warn
+          retention-days: 7
 
       - name: Run production startup attacks
-        run: >-
-          cargo test
-          --locked
-          --manifest-path apps/desktop/src-tauri/Cargo.toml
-          --all-targets
-          production_startup::tests
-          --
-          --nocapture
+        shell: bash
+        run: |
+          set -o pipefail
+          cargo test \
+            --locked \
+            --manifest-path apps/desktop/src-tauri/Cargo.toml \
+            --all-targets \
+            production_startup::tests \
+            -- \
+            --nocapture 2>&1 | tee "$RUNNER_TEMP/tauri-production-startup-tests.log"
+
+      - name: Upload startup test diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: tauri-production-startup-tests-${{ matrix.os }}
+          path: ${{ runner.temp }}/tauri-production-startup-tests.log
+          if-no-files-found: warn
+          retention-days: 7
