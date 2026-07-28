@@ -76,6 +76,36 @@ jobs:
               raise SystemExit(f"expected one match in {path}, found 0: {old[:120]!r}")
           '''
           script = script[:helper_start] + textwrap.dedent(tolerant_helper) + script[helper_end:]
+          script = script.replace(
+              ''''''                recovery.verify(governance_policy, trusted_now_epoch_s)?;
+                      Some(recovery)
+          '''''',
+              ''''''                recovery.verify(governance_policy, trusted_now_epoch_s)?;
+                              Some(recovery)
+          '''''',
+              1,
+          )
+          script = script.replace(
+              ''''''                recovery.verify_persisted(governance_policy)?;
+                      if recovery.body.deployment_id != checkpoint.deployment_id
+                          || recovery.body.replacement_state_digest != checkpoint.state_digest
+                          || recovery.body.recovery_sequence != checkpoint.last_recovery_sequence
+                      {
+                          return Err(ProductionTrustStoreError::RecoveryFileStateMismatch);
+                      }
+                      Some(recovery)
+          '''''',
+              ''''''                recovery.verify_persisted(governance_policy)?;
+                              if recovery.body.deployment_id != checkpoint.deployment_id
+                                  || recovery.body.replacement_state_digest != checkpoint.state_digest
+                                  || recovery.body.recovery_sequence != checkpoint.last_recovery_sequence
+                              {
+                                  return Err(ProductionTrustStoreError::RecoveryFileStateMismatch);
+                              }
+                              Some(recovery)
+          '''''',
+              1,
+          )
           Path("/tmp/address_pr61_review.py").write_text(script, encoding="utf-8")
           PY
           set +e
