@@ -1,0 +1,75 @@
+name: Tauri production startup
+
+on:
+  pull_request:
+    paths:
+      - "apps/desktop/**"
+      - "crates/backend-issuance-runtime/**"
+      - "crates/windows-production-signer-host-runtime/**"
+      - "crates/windows-production-key-governance-runtime/**"
+      - "crates/windows-production-signer-runtime/**"
+      - "docs/architecture/47-tauri-production-startup-boundary.md"
+      - ".github/workflows/tauri-production-startup.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "apps/desktop/**"
+      - "crates/backend-issuance-runtime/**"
+      - "crates/windows-production-signer-host-runtime/**"
+      - "crates/windows-production-key-governance-runtime/**"
+      - "crates/windows-production-signer-runtime/**"
+      - "docs/architecture/47-tauri-production-startup-boundary.md"
+      - ".github/workflows/tauri-production-startup.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  startup-boundary:
+    name: Verify Tauri production startup (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-24.04
+          - windows-2025
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Install Linux Tauri dependencies
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Check Tauri formatting
+        run: cargo fmt --manifest-path apps/desktop/src-tauri/Cargo.toml --all -- --check
+
+      - name: Lint production startup boundary
+        run: >-
+          cargo clippy
+          --locked
+          --manifest-path apps/desktop/src-tauri/Cargo.toml
+          --all-targets
+          --all-features
+          --
+          -D warnings
+
+      - name: Run production startup attacks
+        run: >-
+          cargo test
+          --locked
+          --manifest-path apps/desktop/src-tauri/Cargo.toml
+          --all-targets
+          production_startup::tests
+          --
+          --nocapture
