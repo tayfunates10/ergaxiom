@@ -107,6 +107,45 @@ jobs:
           set +e
           python /tmp/address_pr61_review.py 2>&1 | tee pr61-repair-diagnostics.log
           status=${PIPESTATUS[0]}
+          if [ "$status" = "0" ]; then
+            python - <<'PY' 2>&1 | tee -a pr61-repair-diagnostics.log
+          from pathlib import Path
+
+          host = Path("crates/windows-production-signer-host-runtime/src/lib.rs")
+          value = host.read_text(encoding="utf-8")
+          old = "    PRODUCTION_SIGNER_HOST_RESPONSE_SCHEMA, ProductionSignerHostResponse,\n"
+          new = (
+              "    PRODUCTION_SIGNER_HOST_RESPONSE_SCHEMA, ProductionSignerHostResponse,\n"
+              "    ProductionSignerPipeClient,\n"
+          )
+          if value.count(old) != 1:
+              raise SystemExit("expected one host transport re-export")
+          value = value.replace(old, new, 1)
+          old = (
+              "    DeployedAuthorizedProductionSignerPackage, DeployedProductionSignerError,\n"
+          )
+          new = "    DeployedProductionSignerError,\n"
+          if value.count(old) != 1:
+              raise SystemExit("expected one obsolete deployed-package import")
+          host.write_text(value.replace(old, new, 1), encoding="utf-8")
+
+          tests = Path("crates/windows-production-signer-host-runtime/src/tests.rs")
+          value = tests.read_text(encoding="utf-8")
+          old = "#[test]\nfn transport_failures_are_scoped_to_one_connection()"
+          new = (
+              "#[cfg(windows)]\n"
+              "#[test]\n"
+              "fn transport_failures_are_scoped_to_one_connection()"
+          )
+          if value.count(old) != 1:
+              raise SystemExit("expected one Windows connection-isolation test")
+          tests.write_text(value.replace(old, new, 1), encoding="utf-8")
+          PY
+            cleanup_status=${PIPESTATUS[0]}
+            if [ "$cleanup_status" != "0" ]; then
+              status="$cleanup_status"
+            fi
+          fi
           echo "$status" > pr61-repair-diagnostics.status
           exit 0
       - name: Upload repair diagnostics
