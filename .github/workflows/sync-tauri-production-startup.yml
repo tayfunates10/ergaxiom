@@ -4,6 +4,13 @@ on:
   push:
     branches:
       - agent/tauri-production-startup-v1
+  pull_request:
+    paths:
+      - "apps/desktop/**"
+      - "crates/backend-issuance-runtime/**"
+      - "crates/windows-production-signer-host-runtime/**"
+      - "docs/architecture/47-tauri-production-startup-boundary.md"
+      - ".github/workflows/sync-tauri-production-startup.yml"
   workflow_dispatch:
 
 permissions:
