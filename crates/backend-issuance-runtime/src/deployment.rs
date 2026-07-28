@@ -4,8 +4,7 @@ use std::path::{Path, PathBuf};
 
 use ergaxiom_proof_kernel::{HashingError, canonical_json_sha256};
 use ergaxiom_windows_production_key_governance_runtime::{
-    PRODUCTION_KEY_TRUST_BINDING_SCHEMA, ProductionKeyGovernanceError,
-    ProductionKeyTrustBinding,
+    ProductionKeyGovernanceError, ProductionKeyTrustBinding,
 };
 use ergaxiom_windows_production_signer_host_runtime::{
     LoadedProductionSignerHostConfig, ProductionSignerHostError,
@@ -326,8 +325,6 @@ impl BackendProductionDeploymentEvidence {
         validate_absolute_path_text(signer_service_manifest_path)?;
         validate_sha256(backend_executable_sha256)?;
         signer.manifest.validate_seal()?;
-        signer.caller_allowlist.validate()?;
-        signer.deployment_policy.validate_seal()?;
 
         let matching: Vec<_> = signer
             .caller_allowlist
@@ -492,7 +489,9 @@ fn read_stable_file(
     let before_modified = before.modified().ok();
     let mut file = File::open(&path)?;
     let mut bytes = Vec::with_capacity(before.len() as usize);
-    file.by_ref().take(max_bytes + 1).read_to_end(&mut bytes)?;
+    Read::by_ref(&mut file)
+        .take(max_bytes + 1)
+        .read_to_end(&mut bytes)?;
     if bytes.is_empty() || bytes.len() as u64 > max_bytes {
         return Err(BackendProductionDeploymentError::FileSizeInvalid);
     }
@@ -596,6 +595,8 @@ mod tests {
     use std::error::Error;
     use std::sync::atomic::{AtomicU64, Ordering};
     use std::time::{SystemTime, UNIX_EPOCH};
+
+    use ergaxiom_windows_production_key_governance_runtime::PRODUCTION_KEY_TRUST_BINDING_SCHEMA;
 
     use super::*;
 

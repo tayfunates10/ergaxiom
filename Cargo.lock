@@ -472,6 +472,7 @@ dependencies = [
  "ergaxiom-proof-kernel",
  "ergaxiom-windows-production-governed-issuance-runtime",
  "ergaxiom-windows-production-key-governance-runtime",
+ "ergaxiom-windows-production-signer-host-runtime",
  "ergaxiom-windows-production-signer-protocol-runtime",
  "ergaxiom-windows-production-signer-runtime",
  "ergaxiom-windows-production-signer-service-runtime",
