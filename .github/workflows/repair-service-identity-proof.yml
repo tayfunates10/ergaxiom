@@ -1,0 +1,142 @@
+name: Repair service identity proof
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/repair-service-identity-proof.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  validate-and-sync:
+    runs-on: windows-2025
+    steps:
+      - name: Check out branch
+        uses: actions/checkout@v4
+        with:
+          ref: agent/tauri-service-identity-proof-v1
+          fetch-depth: 0
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Generate and repair source boundary
+        shell: python
+        run: |
+          from pathlib import Path
+          import re
+          import textwrap
+
+          workflow_path = Path(".github/workflows/sync-service-identity-proof.yml")
+          workflow = workflow_path.read_text()
+          step_marker = "      - name: Wire identity proof protocol\n        shell: python\n        run: |\n"
+          start = workflow.index(step_marker) + len(step_marker)
+          end = workflow.index("\n      - name: Validate proof foundation", start)
+          base_script = textwrap.dedent(workflow[start:end])
+          exec(compile(base_script, "wire-identity-proof", "exec"), {})
+
+          transport_path = Path("crates/windows-production-signer-transport-runtime/src/lib.rs")
+          text = transport_path.read_text()
+
+          def method_segment(source: str, start_marker: str, end_marker: str) -> tuple[int, int, str]:
+              start_index = source.index(start_marker)
+              end_index = source.index(end_marker, start_index)
+              return start_index, end_index, source[start_index:end_index]
+
+          def replace_segment(source: str, start_marker: str, end_marker: str, segment: str) -> str:
+              start_index = source.index(start_marker)
+              end_index = source.index(end_marker, start_index)
+              return source[:start_index] + segment + source[end_index:]
+
+          start_marker = "    pub fn validate_seal(&self)"
+          end_marker = "    pub fn into_deployed_package("
+          _, _, segment = method_segment(text, start_marker, end_marker)
+          if "Self::IdentityProof" not in segment:
+              match = re.search(r"(?m)^(\s*)\|\s*Self::Rejected\s*\{", segment)
+              if match is None:
+                  raise SystemExit("validate_seal rejected arm missing")
+              indent = match.group(1)
+              insertion = (
+                  f"{indent}| Self::IdentityProof {{\n"
+                  f"{indent}    schema_version,\n"
+                  f"{indent}    response_digest,\n"
+                  f"{indent}    ..\n"
+                  f"{indent}}}\n"
+              )
+              segment = segment[:match.start()] + insertion + segment[match.start():]
+              text = replace_segment(text, start_marker, end_marker, segment)
+
+          start_marker = "    pub fn into_deployed_package("
+          end_marker = "    pub fn into_identity_proof("
+          _, _, segment = method_segment(text, start_marker, end_marker)
+          if "Self::IdentityProof" not in segment:
+              match = re.search(r"(?m)^(\s*)Self::Rejected\s*\{", segment)
+              if match is None:
+                  raise SystemExit("into_deployed_package rejected arm missing")
+              indent = match.group(1)
+              insertion = (
+                  f"{indent}Self::IdentityProof {{ .. }} => {{\n"
+                  f"{indent}    Err(ProductionSignerTransportError::UnexpectedHostResponse)\n"
+                  f"{indent}}}\n"
+              )
+              segment = segment[:match.start()] + insertion + segment[match.start():]
+              text = replace_segment(text, start_marker, end_marker, segment)
+
+          start_marker = "    fn set_digest(&mut self)"
+          end_marker = "    fn expected_digest(&self)"
+          _, _, segment = method_segment(text, start_marker, end_marker)
+          if "Self::IdentityProof" not in segment:
+              match = re.search(r"(?m)^(\s*)\|\s*Self::Rejected\s*\{", segment)
+              if match is None:
+                  raise SystemExit("set_digest rejected arm missing")
+              indent = match.group(1)
+              insertion = (
+                  f"{indent}| Self::IdentityProof {{\n"
+                  f"{indent}    response_digest, ..\n"
+                  f"{indent}}}\n"
+              )
+              segment = segment[:match.start()] + insertion + segment[match.start():]
+              text = replace_segment(text, start_marker, end_marker, segment)
+
+          transport_path.write_text(text)
+
+      - name: Validate proof foundation
+        shell: pwsh
+        run: |
+          cargo fmt --all
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          cargo fmt --all -- --check
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          cargo clippy -p ergaxiom-windows-production-trust-state-runtime --all-targets --all-features -- -D warnings
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          cargo clippy -p ergaxiom-windows-production-signer-transport-runtime --all-targets --all-features -- -D warnings
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          cargo clippy -p ergaxiom-windows-production-signer-host-runtime --all-targets --all-features -- -D warnings
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          cargo test -p ergaxiom-windows-production-trust-state-runtime --all-targets
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          cargo test -p ergaxiom-windows-production-signer-transport-runtime --all-targets
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          cargo test -p ergaxiom-windows-production-signer-host-runtime --all-targets
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Commit validated source boundary
+        shell: pwsh
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add crates/windows-production-trust-state-runtime/src/lib.rs crates/windows-production-trust-state-runtime/src/service.rs crates/windows-production-trust-state-runtime/src/identity_proof.rs crates/windows-production-signer-transport-runtime/src/lib.rs crates/windows-production-signer-host-runtime/src/lib.rs docs/architecture/49-purpose-locked-service-identity-proof.md
+          git diff --cached --quiet
+          if ($LASTEXITCODE -eq 0) { exit 0 }
+          git commit -m "Add purpose-locked live signer identity proof"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          git fetch origin agent/tauri-service-identity-proof-v1
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          git rebase origin/agent/tauri-service-identity-proof-v1
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          git push origin HEAD:agent/tauri-service-identity-proof-v1
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
