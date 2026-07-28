@@ -5,7 +5,10 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use ergaxiom_backend_issuance_runtime::{
     BackendProductionDeploymentManifest, LoadedBackendProductionDeployment,
 };
-use ergaxiom_windows_production_signer_host_runtime::ProductionSignerPipeClient;
+use ergaxiom_windows_production_signer_host_runtime::{
+    ProductionSignerPipeClient, validate_administrator_controlled_directory,
+    validate_administrator_controlled_file,
+};
 use serde::Serialize;
 
 const MANIFEST_PATH: Option<&str> = option_env!("ERGAXIOM_BACKEND_PRODUCTION_MANIFEST_PATH");
@@ -27,6 +30,7 @@ pub struct ProductionSignerStatus {
     pub phase: ProductionSignerStartupPhase,
     pub code: &'static str,
     pub configuration_verified: bool,
+    pub configuration_acl_verified: bool,
     pub pipe_clients_initialized: bool,
     pub production_issuance_enabled: bool,
     pub deployment_id: Option<String>,
@@ -95,6 +99,14 @@ impl ProductionStartupState {
                 "production_configuration_path_rejected",
             ));
         };
+        if validate_administrator_controlled_file(&manifest_path).is_err()
+            || validate_administrator_controlled_file(&pin_path).is_err()
+        {
+            return Self::without_runtime(status_without_configuration(
+                ProductionSignerStartupPhase::Rejected,
+                "production_configuration_acl_rejected",
+            ));
+        }
         let Ok(expected_manifest_digest) = read_stable_manifest_pin(&pin_path) else {
             return Self::without_runtime(status_without_configuration(
                 ProductionSignerStartupPhase::Rejected,
@@ -107,6 +119,12 @@ impl ProductionStartupState {
                 "production_backend_identity_unavailable",
             ));
         };
+        if validate_administrator_controlled_file(&current_executable).is_err() {
+            return Self::without_runtime(status_without_configuration(
+                ProductionSignerStartupPhase::Rejected,
+                "production_backend_acl_rejected",
+            ));
+        }
         let Ok(trusted_now_epoch_s) = current_epoch_s() else {
             return Self::without_runtime(status_without_configuration(
                 ProductionSignerStartupPhase::Rejected,
@@ -124,6 +142,12 @@ impl ProductionStartupState {
                 "production_configuration_rejected",
             ));
         };
+        if validate_loaded_configuration_acl(&deployment).is_err() {
+            return Self::without_runtime(status_without_configuration(
+                ProductionSignerStartupPhase::Rejected,
+                "production_signer_configuration_acl_rejected",
+            ));
+        }
 
         let runtime = ProductionStartupRuntime::new(deployment);
         let status = runtime.public_status();
@@ -164,6 +188,7 @@ fn configured_status(
         phase: ProductionSignerStartupPhase::Configured,
         code: "production_configuration_verified",
         configuration_verified: true,
+        configuration_acl_verified: true,
         pipe_clients_initialized,
         // Enabling issuance remains a separate gate. This slice only proves startup configuration
         // and retains real pipe clients inside the Rust backend.
@@ -188,6 +213,7 @@ fn status_without_configuration(
         phase,
         code,
         configuration_verified: false,
+        configuration_acl_verified: false,
         pipe_clients_initialized: false,
         production_issuance_enabled: false,
         deployment_id: None,
@@ -200,6 +226,23 @@ fn status_without_configuration(
         capability_generation: None,
         attestation_generation: None,
     }
+}
+
+fn validate_loaded_configuration_acl(
+    deployment: &LoadedBackendProductionDeployment,
+) -> Result<(), ()> {
+    let signer_manifest = &deployment.signer.manifest;
+    for path in [
+        deployment.manifest.signer_service_manifest_path.as_str(),
+        signer_manifest.executable_path.as_str(),
+        signer_manifest.governance_policy_path.as_str(),
+        signer_manifest.caller_allowlist_path.as_str(),
+        signer_manifest.deployment_policy_path.as_str(),
+    ] {
+        validate_administrator_controlled_file(Path::new(path)).map_err(|_| ())?;
+    }
+    validate_administrator_controlled_directory(Path::new(&signer_manifest.trust_store_root))
+        .map_err(|_| ())
 }
 
 fn fixed_absolute_path(value: &str) -> Option<PathBuf> {
@@ -331,6 +374,7 @@ mod tests {
         let status = configured_status(&public_manifest(), true);
         assert_eq!(status.phase, ProductionSignerStartupPhase::Configured);
         assert!(status.configuration_verified);
+        assert!(status.configuration_acl_verified);
         assert!(status.pipe_clients_initialized);
         assert!(!status.production_issuance_enabled);
         assert_eq!(status.trust_state_revision, Some(5));
@@ -354,6 +398,7 @@ mod tests {
             ProductionSignerStartupPhase::UnsupportedPlatform
         );
         assert!(!status.configuration_verified);
+        assert!(!status.configuration_acl_verified);
         assert!(!status.pipe_clients_initialized);
         assert!(!status.production_issuance_enabled);
     }
