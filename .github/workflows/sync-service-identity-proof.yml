@@ -1,0 +1,487 @@
+name: Sync service identity proof
+
+on:
+  pull_request:
+    paths:
+      - "crates/windows-production-trust-state-runtime/**"
+      - "crates/windows-production-signer-transport-runtime/**"
+      - "crates/windows-production-signer-host-runtime/**"
+      - "docs/architecture/49-purpose-locked-service-identity-proof.md"
+      - ".github/workflows/sync-service-identity-proof.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  validate-and-sync:
+    runs-on: windows-2025
+    steps:
+      - name: Check out branch
+        uses: actions/checkout@v4
+        with:
+          ref: agent/tauri-service-identity-proof-v1
+          fetch-depth: 0
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Wire identity proof protocol
+        shell: python
+        run: |
+          from pathlib import Path
+
+          lib = Path("crates/windows-production-trust-state-runtime/src/lib.rs")
+          text = lib.read_text()
+          text = text.replace("mod model;\n", "mod identity_proof;\nmod model;\n", 1)
+          text = text.replace("pub use model::*;\n", "pub use identity_proof::*;\npub use model::*;\n", 1)
+          lib.write_text(text)
+
+          service = Path("crates/windows-production-trust-state-runtime/src/service.rs")
+          text = service.read_text()
+          text = text.replace(
+              '''use crate::{ProductionTrustStateBinding, ProductionTrustStateError, VerifiedProductionTrustState};''',
+              '''use crate::{
+              DeployedProductionSignerIdentityProof, ProductionSignerIdentityChallenge,
+              ProductionSignerIdentityProofError, ProductionSignerIdentityProofPayload,
+              ProductionTrustStateBinding, ProductionTrustStateError, VerifiedProductionTrustState,
+          };''',
+              1,
+          )
+          text = text.replace(
+              '''    fn build(
+                  base: &SignerServiceIdentity,''',
+              '''    pub(crate) fn build(
+                  base: &SignerServiceIdentity,''',
+              1,
+          )
+          marker = '''    #[must_use]
+              pub const fn accepted_trust_state(&self) -> &VerifiedProductionTrustState {'''
+          method = '''    pub fn handle_identity_challenge(
+                  &mut self,
+                  challenge: &ProductionSignerIdentityChallenge,
+                  caller: &AuthenticatedCallerIdentity,
+                  trusted_now_epoch_s: u64,
+              ) -> Result<DeployedProductionSignerIdentityProof, ProductionSignerIdentityProofError> {
+                  let base_service_identity = self.inner.service_identity().clone();
+                  let bound_service_identity = self.service_identity.clone();
+                  let accepted = self.accepted.clone();
+                  let deployment_policy = self.deployment_policy.clone();
+                  let payload = ProductionSignerIdentityProofPayload::build(
+                      challenge,
+                      caller,
+                      &base_service_identity,
+                      &bound_service_identity,
+                      &accepted,
+                      &deployment_policy,
+                      trusted_now_epoch_s,
+                  )?;
+                  let policy = ProductionKeyPolicy::attestation();
+                  let request = ProductionSignerRequest::sign_digest(
+                      challenge.request_id.clone(),
+                      &policy,
+                      payload.payload_digest.clone(),
+                  )?;
+                  let signed_package =
+                      self.handle_authenticated(&request, caller, trusted_now_epoch_s)?;
+                  DeployedProductionSignerIdentityProof::build(payload, signed_package)
+              }
+
+              #[must_use]
+              pub const fn accepted_trust_state(&self) -> &VerifiedProductionTrustState {'''
+          if marker not in text:
+              raise SystemExit("trust-bound service insertion marker missing")
+          text = text.replace(marker, method, 1)
+          service.write_text(text)
+
+          transport = Path("crates/windows-production-signer-transport-runtime/src/lib.rs")
+          text = transport.read_text()
+          text = text.replace(
+              '''use ergaxiom_windows_production_trust_state_runtime::{
+              DeployedAuthorizedProductionSignerPackage, DeployedProductionSignerError,
+          };''',
+              '''use ergaxiom_windows_production_trust_state_runtime::{
+              DeployedAuthorizedProductionSignerPackage, DeployedProductionSignerError,
+              DeployedProductionSignerIdentityProof, ProductionSignerIdentityChallenge,
+              ProductionSignerIdentityProofError,
+          };''',
+              1,
+          )
+          request_enum = '''
+
+          #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+          #[serde(tag = "operation", rename_all = "SCREAMING_SNAKE_CASE")]
+          pub enum ProductionSignerHostRequest {
+              Sign { request: ProductionSignerRequest },
+              ProveIdentity { challenge: ProductionSignerIdentityChallenge },
+          }
+
+          impl ProductionSignerHostRequest {
+              #[must_use]
+              pub fn sign(request: ProductionSignerRequest) -> Self {
+                  Self::Sign { request }
+              }
+
+              #[must_use]
+              pub fn prove_identity(challenge: ProductionSignerIdentityChallenge) -> Self {
+                  Self::ProveIdentity { challenge }
+              }
+
+              #[must_use]
+              pub fn request_id(&self) -> &str {
+                  match self {
+                      Self::Sign { request } => &request.request_id,
+                      Self::ProveIdentity { challenge } => &challenge.request_id,
+                  }
+              }
+          }
+          '''
+          text = text.replace(
+              'pub const PRODUCTION_SIGNER_HOST_RESPONSE_SCHEMA: &str = "0.1.0";\n',
+              'pub const PRODUCTION_SIGNER_HOST_RESPONSE_SCHEMA: &str = "0.1.0";\n' + request_enum,
+              1,
+          )
+          text = text.replace(
+              '''    Success {
+                  schema_version: String,
+                  package: Box<DeployedAuthorizedProductionSignerPackage>,
+                  response_digest: String,
+              },
+              Rejected {''',
+              '''    Success {
+                  schema_version: String,
+                  package: Box<DeployedAuthorizedProductionSignerPackage>,
+                  response_digest: String,
+              },
+              IdentityProof {
+                  schema_version: String,
+                  request_id: String,
+                  proof: Box<DeployedProductionSignerIdentityProof>,
+                  response_digest: String,
+              },
+              Rejected {''',
+              1,
+          )
+          marker = '''    pub fn rejected(
+                  request_id: Option<String>,'''
+          constructor = '''    pub fn identity_proof(
+                  request_id: impl Into<String>,
+                  proof: DeployedProductionSignerIdentityProof,
+              ) -> Result<Self, ProductionSignerTransportError> {
+                  proof.validate_seal()?;
+                  let mut response = Self::IdentityProof {
+                      schema_version: PRODUCTION_SIGNER_HOST_RESPONSE_SCHEMA.to_owned(),
+                      request_id: request_id.into(),
+                      proof: Box::new(proof),
+                      response_digest: String::new(),
+                  };
+                  response.set_digest()?;
+                  Ok(response)
+              }
+
+              pub fn rejected(
+                  request_id: Option<String>,'''
+          if marker not in text:
+              raise SystemExit("host response constructor marker missing")
+          text = text.replace(marker, constructor, 1)
+          text = text.replace(
+              '''            Self::Success {
+                      schema_version,
+                      response_digest,
+                      ..
+                  }
+                  | Self::Rejected {''',
+              '''            Self::Success {
+                      schema_version,
+                      response_digest,
+                      ..
+                  }
+                  | Self::IdentityProof {
+                      schema_version,
+                      response_digest,
+                      ..
+                  }
+                  | Self::Rejected {''',
+              1,
+          )
+          text = text.replace(
+              '''            Self::Rejected {
+                      request_id, code, ..
+                  } => {''',
+              '''            Self::IdentityProof { .. } => {
+                      Err(ProductionSignerTransportError::UnexpectedHostResponse)
+                  }
+                  Self::Rejected {
+                      request_id, code, ..
+                  } => {''',
+              1,
+          )
+          marker = '''    fn set_digest(&mut self) -> Result<(), ProductionSignerTransportError> {'''
+          proof_method = '''    pub fn into_identity_proof(
+                  self,
+                  expected_request_id: &str,
+              ) -> Result<DeployedProductionSignerIdentityProof, ProductionSignerTransportError> {
+                  self.validate_seal()?;
+                  match self {
+                      Self::IdentityProof {
+                          request_id, proof, ..
+                      } => {
+                          if request_id != expected_request_id
+                              || proof.payload.request_id != expected_request_id
+                          {
+                              return Err(
+                                  ProductionSignerTransportError::HostResponseRequestIdMismatch,
+                              );
+                          }
+                          proof.validate_seal()?;
+                          Ok(*proof)
+                      }
+                      Self::Rejected {
+                          request_id, code, ..
+                      } => {
+                          if request_id
+                              .as_deref()
+                              .is_some_and(|request_id| request_id != expected_request_id)
+                          {
+                              return Err(
+                                  ProductionSignerTransportError::HostResponseRequestIdMismatch,
+                              );
+                          }
+                          Err(ProductionSignerTransportError::HostRejected { request_id, code })
+                      }
+                      Self::Success { .. } => {
+                          Err(ProductionSignerTransportError::UnexpectedHostResponse)
+                      }
+                  }
+              }
+
+              fn set_digest(&mut self) -> Result<(), ProductionSignerTransportError> {'''
+          if marker not in text:
+              raise SystemExit("host response set digest marker missing")
+          text = text.replace(marker, proof_method, 1)
+          text = text.replace(
+              '''            Self::Success {
+                      response_digest, ..
+                  }
+                  | Self::Rejected {''',
+              '''            Self::Success {
+                      response_digest, ..
+                  }
+                  | Self::IdentityProof {
+                      response_digest, ..
+                  }
+                  | Self::Rejected {''',
+              1,
+          )
+          text = text.replace(
+              '''        let response: ProductionSignerHostResponse =
+                      self.exchange(request, 64 * 1024, 128 * 1024)?;''',
+              '''        let host_request = ProductionSignerHostRequest::sign(request.clone());
+                  let response: ProductionSignerHostResponse =
+                      self.exchange(&host_request, 64 * 1024, 128 * 1024)?;''',
+              1,
+          )
+          marker = '''    pub fn decode_host_response(
+                  &self,'''
+          client_method = '''    pub fn prove_identity(
+                  &self,
+                  challenge: &ProductionSignerIdentityChallenge,
+              ) -> Result<DeployedProductionSignerIdentityProof, ProductionSignerTransportError> {
+                  let request = ProductionSignerHostRequest::prove_identity(challenge.clone());
+                  let response: ProductionSignerHostResponse =
+                      self.exchange(&request, 64 * 1024, 128 * 1024)?;
+                  response.into_identity_proof(&challenge.request_id)
+              }
+
+              pub fn decode_host_response(
+                  &self,'''
+          if marker not in text:
+              raise SystemExit("pipe client decode marker missing")
+          text = text.replace(marker, client_method, 1)
+          text = text.replace(
+              '''    #[error("production signer host response canonical object is invalid")]
+              InvalidHostResponseObject,''',
+              '''    #[error("production signer host response canonical object is invalid")]
+              InvalidHostResponseObject,
+              #[error("production signer host returned a response for a different operation")]
+              UnexpectedHostResponse,''',
+              1,
+          )
+          text = text.replace(
+              '''    #[error(transparent)]
+              Deployed(#[from] DeployedProductionSignerError),''',
+              '''    #[error(transparent)]
+              Deployed(#[from] DeployedProductionSignerError),
+              #[error(transparent)]
+              IdentityProof(#[from] ProductionSignerIdentityProofError),''',
+              1,
+          )
+          transport.write_text(text)
+
+          host = Path("crates/windows-production-signer-host-runtime/src/lib.rs")
+          text = host.read_text()
+          text = text.replace(
+              '''use ergaxiom_windows_production_signer_transport_runtime::{
+              AuthenticatedPipeConnection, ProductionSignerTransportError,
+          };''',
+              '''use ergaxiom_windows_production_signer_transport_runtime::{
+              AuthenticatedPipeConnection, ProductionSignerHostRequest,
+              ProductionSignerTransportError,
+          };''',
+              1,
+          )
+          old = '''    pub fn serve_connection(
+                  &mut self,
+                  connection: &mut AuthenticatedPipeConnection,
+                  trusted_now_epoch_s: u64,
+              ) -> Result<(), ProductionSignerHostError> {
+                  let request = match connection.read_request() {
+                      Ok(request) => request,
+                      Err(_) => {
+                          let response = ProductionSignerHostResponse::rejected(None, "REQUEST_REJECTED")?;
+                          connection.write_json(&response, self.pipe_contract.max_response_bytes)?;
+                          return Ok(());
+                      }
+                  };
+                  let caller = connection.caller()?.clone();
+                  let response =
+                      match self
+                          .service
+                          .handle_authenticated(&request, &caller, trusted_now_epoch_s)
+                      {
+                          Ok(package) => ProductionSignerHostResponse::success(package)?,
+                          Err(_) => ProductionSignerHostResponse::rejected(
+                              Some(request.request_id.clone()),
+                              "SIGNING_REJECTED",
+                          )?,
+                      };
+                  connection.write_json(&response, self.pipe_contract.max_response_bytes)?;
+                  Ok(())
+              }'''
+          new = '''    pub fn serve_connection(
+                  &mut self,
+                  connection: &mut AuthenticatedPipeConnection,
+                  trusted_now_epoch_s: u64,
+              ) -> Result<(), ProductionSignerHostError> {
+                  let request: ProductionSignerHostRequest =
+                      match connection.read_json(self.pipe_contract.max_request_bytes) {
+                          Ok(request) => request,
+                          Err(_) => {
+                              let response = ProductionSignerHostResponse::rejected(
+                                  None,
+                                  "REQUEST_REJECTED",
+                              )?;
+                              connection
+                                  .write_json(&response, self.pipe_contract.max_response_bytes)?;
+                              return Ok(());
+                          }
+                      };
+                  let caller = connection.caller()?.clone();
+                  let request_id = request.request_id().to_owned();
+                  let response = match request {
+                      ProductionSignerHostRequest::Sign { request } => {
+                          match self.service.handle_authenticated(
+                              &request,
+                              &caller,
+                              trusted_now_epoch_s,
+                          ) {
+                              Ok(package) => ProductionSignerHostResponse::success(package)?,
+                              Err(_) => ProductionSignerHostResponse::rejected(
+                                  Some(request_id),
+                                  "SIGNING_REJECTED",
+                              )?,
+                          }
+                      }
+                      ProductionSignerHostRequest::ProveIdentity { challenge } => {
+                          match self.service.handle_identity_challenge(
+                              &challenge,
+                              &caller,
+                              trusted_now_epoch_s,
+                          ) {
+                              Ok(proof) => ProductionSignerHostResponse::identity_proof(
+                                  request_id,
+                                  proof,
+                              )?,
+                              Err(_) => ProductionSignerHostResponse::rejected(
+                                  Some(request_id),
+                                  "IDENTITY_PROOF_REJECTED",
+                              )?,
+                          }
+                      }
+                  };
+                  connection.write_json(&response, self.pipe_contract.max_response_bytes)?;
+                  Ok(())
+              }'''
+          if old not in text:
+              raise SystemExit("host serve_connection block missing")
+          text = text.replace(old, new, 1)
+          host.write_text(text)
+
+          doc = Path("docs/architecture/49-purpose-locked-service-identity-proof.md")
+          doc.write_text('''# Purpose-Locked Live Signer-Service Identity Proof
+
+          ## Goal
+
+          Authenticate the live installed `ErgaxiomProductionSigner` instance before the desktop backend treats the configured production boundary as reachable. The client never supplies an arbitrary digest to be signed.
+
+          ## Challenge
+
+          The backend creates a cryptographically random 32-byte nonce and a challenge valid for at most 30 seconds. The challenge is sealed and binds:
+
+          - request ID and nonce;
+          - deployment and service IDs;
+          - signer executable digest;
+          - deployment-policy revision/digest;
+          - accepted trust-state revision/binding digest;
+          - registry revision/digest; and
+          - active Attestation generation/public-key digest.
+
+          ## Service behavior
+
+          The named-pipe host authenticates the caller first. For `PROVE_IDENTITY`, the service validates the challenge against its in-memory accepted trust state, constructs the proof payload internally, hashes the canonical typed payload and only then invokes the existing governed Attestation signing path. There is no wire field that lets the caller choose the digest.
+
+          The payload binds the challenge, authenticated caller digest, base process identity, trust-bound service identity, accepted trust-state binding, deployment policy and active Attestation key binding.
+
+          ## Client verification
+
+          The client verifies the response seal, nonce and lifetime; reconstructs the expected trust-bound service identity; verifies the deployed signed package against the accepted registry and Attestation key; and requires the signed request digest to equal the typed payload digest.
+
+          ## Claim boundary
+
+          A valid proof authenticates one live signer process instance for one caller and one short-lived challenge. It does not authorize a Capability request and does not enable production issuance. Replay, nonce substitution, expiry, service restart, trust-state divergence or Attestation rotation invalidate the proof.
+          ''')
+
+      - name: Validate proof foundation
+        shell: pwsh
+        run: |
+          cargo fmt --all
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          cargo fmt --all -- --check
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          cargo clippy -p ergaxiom-windows-production-trust-state-runtime --all-targets --all-features -- -D warnings
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          cargo clippy -p ergaxiom-windows-production-signer-transport-runtime --all-targets --all-features -- -D warnings
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          cargo clippy -p ergaxiom-windows-production-signer-host-runtime --all-targets --all-features -- -D warnings
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          cargo test -p ergaxiom-windows-production-trust-state-runtime --all-targets
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          cargo test -p ergaxiom-windows-production-signer-transport-runtime --all-targets
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          cargo test -p ergaxiom-windows-production-signer-host-runtime --all-targets
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Commit validated proof foundation
+        shell: pwsh
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add crates/windows-production-trust-state-runtime/src/lib.rs crates/windows-production-trust-state-runtime/src/service.rs crates/windows-production-trust-state-runtime/src/identity_proof.rs crates/windows-production-signer-transport-runtime/src/lib.rs crates/windows-production-signer-host-runtime/src/lib.rs docs/architecture/49-purpose-locked-service-identity-proof.md
+          git diff --cached --quiet
+          if ($LASTEXITCODE -eq 0) { exit 0 }
+          git commit -m "Add purpose-locked live signer identity proof"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          git push origin HEAD:agent/tauri-service-identity-proof-v1
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
