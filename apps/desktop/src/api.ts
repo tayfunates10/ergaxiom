@@ -39,6 +39,7 @@ export async function loadProductionSignerStatus(): Promise<ProductionSignerStat
       phase: 'rejected',
       code: 'production_status_unavailable',
       configuration_verified: false,
+      configuration_acl_verified: false,
       pipe_clients_initialized: false,
       production_issuance_enabled: false,
       deployment_id: null,
@@ -93,12 +94,7 @@ export function cancelDesktopJob(
 export function rollbackDesktopJob(
   response: DesktopSnapshotResponse,
 ): Promise<DesktopSnapshotResponse> {
-  const approval = response.control.approval;
-  if (!response.verified || !approval) {
-    return Promise.resolve(unavailableResponse('Rollback için backend onay kaydı yok.'));
-  }
   return invokeVerified('rollback_desktop_job', {
     expected_snapshot_digest: response.snapshot.snapshot_digest,
-    approval_digest: approval.approval_digest,
   });
 }

@@ -3,6 +3,7 @@
 #[cfg(windows)]
 mod windows;
 
+mod protected_path;
 #[cfg(test)]
 mod tests;
 
@@ -46,6 +47,10 @@ use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 use thiserror::Error;
+
+pub use protected_path::{
+    validate_administrator_controlled_directory, validate_administrator_controlled_file,
+};
 
 pub const PRODUCTION_SIGNER_SERVICE_MANIFEST_SCHEMA: &str = "0.1.0";
 pub const PRODUCTION_SIGNER_SERVICE_NAME: &str = "ErgaxiomProductionSigner";
@@ -775,6 +780,26 @@ pub enum ProductionSignerHostError {
     ActiveGenerationUnavailable,
     #[error("production signer host canonical object is invalid")]
     InvalidCanonicalObject,
+    #[error("administrator-controlled production path parent is unavailable")]
+    AdministratorControlledParentUnavailable,
+    #[error("administrator-controlled production path type does not match")]
+    AdministratorControlledPathTypeMismatch,
+    #[error("administrator-controlled production path owner was rejected")]
+    AdministratorControlledOwnerRejected,
+    #[error("administrator-controlled production path DACL is missing")]
+    AdministratorControlledDaclMissing,
+    #[error("administrator-controlled production path DACL is not protected")]
+    AdministratorControlledDaclNotProtected,
+    #[error("administrator-controlled production path contains an unsupported ACE")]
+    AdministratorControlledAceUnsupported,
+    #[error(
+        "administrator-controlled production path grants mutating access to a non-administrator"
+    )]
+    AdministratorControlledWriteAccessRejected,
+    #[error("administrator-controlled production path contains an invalid SID")]
+    AdministratorControlledSidInvalid,
+    #[error("production signer Windows security operation failed: {0}")]
+    WindowsSecurity(#[source] std::io::Error),
     #[error("production signer service SCM operation failed: {0}")]
     WindowsService(#[source] std::io::Error),
     #[error("production signer host I/O failed: {0}")]

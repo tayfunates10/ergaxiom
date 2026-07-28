@@ -30,6 +30,7 @@ export interface ProductionSignerStatus {
   phase: ProductionSignerStartupPhase;
   code: string;
   configuration_verified: boolean;
+  configuration_acl_verified: boolean;
   pipe_clients_initialized: boolean;
   production_issuance_enabled: boolean;
   deployment_id: string | null;
