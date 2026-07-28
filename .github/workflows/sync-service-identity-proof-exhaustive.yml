@@ -32,6 +32,7 @@ jobs:
         shell: python
         run: |
           from pathlib import Path
+          import re
           import textwrap
 
           workflow = Path(".github/workflows/sync-service-identity-proof.yml").read_text()
@@ -46,75 +47,72 @@ jobs:
           path = Path("crates/windows-production-signer-transport-runtime/src/lib.rs")
           text = path.read_text()
 
-          def repair_segment(text, start_marker, end_marker, repair):
-              start = text.index(start_marker)
-              end = text.index(end_marker, start)
-              segment = text[start:end]
-              repaired = repair(segment)
-              if repaired == segment:
-                  raise SystemExit(f"segment repair made no change: {start_marker}")
-              return text[:start] + repaired + text[end:]
+          def method_segment(source, start_marker, end_marker):
+              start = source.index(start_marker)
+              end = source.index(end_marker, start)
+              return start, end, source[start:end]
 
-          def add_identity_to_schema_match(segment):
-              if "Self::IdentityProof" in segment:
-                  return segment
-              needle = "            | Self::Rejected {"
-              replacement = '''            | Self::IdentityProof {
-                  schema_version,
-                  response_digest,
-                  ..
-              }
-              | Self::Rejected {'''
-              if needle not in segment:
-                  raise SystemExit("schema match rejection arm missing")
-              return segment.replace(needle, replacement, 1)
+          def replace_once(segment, pattern, replacement, label):
+              repaired, count = re.subn(pattern, replacement, segment, count=1, flags=re.MULTILINE)
+              if count != 1:
+                  raise SystemExit(f"{label}: expected one replacement, got {count}")
+              return repaired
 
-          def add_identity_to_deployed_match(segment):
-              if "Self::IdentityProof" in segment:
-                  return segment
-              needle = '''            Self::Rejected {
-                  request_id, code, ..
-              } => {'''
-              replacement = '''            Self::IdentityProof { .. } => {
-                  Err(ProductionSignerTransportError::UnexpectedHostResponse)
-              }
-              Self::Rejected {
-                  request_id, code, ..
-              } => {'''
-              if needle not in segment:
-                  raise SystemExit("deployed response rejection arm missing")
-              return segment.replace(needle, replacement, 1)
-
-          def add_identity_to_digest_match(segment):
-              if "Self::IdentityProof" in segment:
-                  return segment
-              needle = "            | Self::Rejected {"
-              replacement = '''            | Self::IdentityProof {
-                  response_digest, ..
-              }
-              | Self::Rejected {'''
-              if needle not in segment:
-                  raise SystemExit("set-digest rejection arm missing")
-              return segment.replace(needle, replacement, 1)
-
-          text = repair_segment(
+          start, end, segment = method_segment(
               text,
               "    pub fn validate_seal(&self)",
               "    pub fn into_deployed_package(",
-              add_identity_to_schema_match,
           )
-          text = repair_segment(
+          if "Self::IdentityProof" not in segment:
+              segment = replace_once(
+                  segment,
+                  r'(?m)^(\s*)\|\s*Self::Rejected\s*\{',
+                  r'''\1| Self::IdentityProof {
+\1    schema_version,
+\1    response_digest,
+\1    ..
+\1}
+\1| Self::Rejected {''',
+                  "validate_seal identity arm",
+              )
+              text = text[:start] + segment + text[end:]
+
+          start, end, segment = method_segment(
               text,
               "    pub fn into_deployed_package(",
               "    pub fn into_identity_proof(",
-              add_identity_to_deployed_match,
           )
-          text = repair_segment(
+          if "Self::IdentityProof" not in segment:
+              segment = replace_once(
+                  segment,
+                  r'(?ms)^(\s*)Self::Rejected\s*\{\s*request_id\s*,\s*code\s*,\s*\.\.\s*\}\s*=>\s*\{',
+                  r'''\1Self::IdentityProof { .. } => {
+\1    Err(ProductionSignerTransportError::UnexpectedHostResponse)
+\1}
+\1Self::Rejected {
+\1    request_id, code, ..
+\1} => {''',
+                  "into_deployed_package identity arm",
+              )
+              text = text[:start] + segment + text[end:]
+
+          start, end, segment = method_segment(
               text,
               "    fn set_digest(&mut self)",
               "    fn expected_digest(&self)",
-              add_identity_to_digest_match,
           )
+          if "Self::IdentityProof" not in segment:
+              segment = replace_once(
+                  segment,
+                  r'(?m)^(\s*)\|\s*Self::Rejected\s*\{',
+                  r'''\1| Self::IdentityProof {
+\1    response_digest, ..
+\1}
+\1| Self::Rejected {''',
+                  "set_digest identity arm",
+              )
+              text = text[:start] + segment + text[end:]
+
           path.write_text(text)
 
       - name: Validate proof foundation
