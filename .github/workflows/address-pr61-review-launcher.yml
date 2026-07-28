@@ -77,33 +77,29 @@ jobs:
           '''
           script = script[:helper_start] + textwrap.dedent(tolerant_helper) + script[helper_end:]
           script = script.replace(
-              ''''''                recovery.verify(governance_policy, trusted_now_epoch_s)?;
-                      Some(recovery)
-          '''''',
-              ''''''                recovery.verify(governance_policy, trusted_now_epoch_s)?;
-                              Some(recovery)
-          '''''',
+              "                recovery.verify(governance_policy, trusted_now_epoch_s)?;\n"
+              "            Some(recovery)\n",
+              "                recovery.verify(governance_policy, trusted_now_epoch_s)?;\n"
+              "                Some(recovery)\n",
               1,
           )
           script = script.replace(
-              ''''''                recovery.verify_persisted(governance_policy)?;
-                      if recovery.body.deployment_id != checkpoint.deployment_id
-                          || recovery.body.replacement_state_digest != checkpoint.state_digest
-                          || recovery.body.recovery_sequence != checkpoint.last_recovery_sequence
-                      {
-                          return Err(ProductionTrustStoreError::RecoveryFileStateMismatch);
-                      }
-                      Some(recovery)
-          '''''',
-              ''''''                recovery.verify_persisted(governance_policy)?;
-                              if recovery.body.deployment_id != checkpoint.deployment_id
-                                  || recovery.body.replacement_state_digest != checkpoint.state_digest
-                                  || recovery.body.recovery_sequence != checkpoint.last_recovery_sequence
-                              {
-                                  return Err(ProductionTrustStoreError::RecoveryFileStateMismatch);
-                              }
-                              Some(recovery)
-          '''''',
+              "                recovery.verify_persisted(governance_policy)?;\n"
+              "            if recovery.body.deployment_id != checkpoint.deployment_id\n"
+              "                || recovery.body.replacement_state_digest != checkpoint.state_digest\n"
+              "                || recovery.body.recovery_sequence != checkpoint.last_recovery_sequence\n"
+              "            {\n"
+              "                return Err(ProductionTrustStoreError::RecoveryFileStateMismatch);\n"
+              "            }\n"
+              "            Some(recovery)\n",
+              "                recovery.verify_persisted(governance_policy)?;\n"
+              "                if recovery.body.deployment_id != checkpoint.deployment_id\n"
+              "                    || recovery.body.replacement_state_digest != checkpoint.state_digest\n"
+              "                    || recovery.body.recovery_sequence != checkpoint.last_recovery_sequence\n"
+              "                {\n"
+              "                    return Err(ProductionTrustStoreError::RecoveryFileStateMismatch);\n"
+              "                }\n"
+              "                Some(recovery)\n",
               1,
           )
           Path("/tmp/address_pr61_review.py").write_text(script, encoding="utf-8")
