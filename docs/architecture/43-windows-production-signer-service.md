@@ -87,6 +87,14 @@ A completed malformed message is rejected immediately as invalid JSON rather tha
 
 Stop, shutdown and preshutdown controls set a process-wide stop state and wake a blocked named-pipe accept with a local connection. A worker blocked on accepted-client I/O is released by the bounded deadline, after which the service exits the request loop and reports the stopped state within the SCM preshutdown boundary.
 
+## Cryptographic authority separation
+
+Deployment-evidence reviewers and trust-governance authorities both use Ed25519 records with canonical 32-byte public-key encodings. Exact public-key digest reuse across those two authorities is rejected before installation or recovery evidence can be accepted.
+
+Production Capability and Attestation issuer keys use ECDSA P-256 with canonical uncompressed SEC1 public-key encodings. Their identity and digest are validated in the P-256 production registry and must not be approximated by extracting a coordinate and treating it as an Ed25519 key. Cross-algorithm separation therefore relies on each authority's complete canonical public-key encoding, algorithm, role, issuer and key identity rather than a lossy byte projection.
+
+Tests construct only cryptographically valid keys for the authority type being exercised. A fixture that cannot pass its own key parser is not evidence of authority reuse and must fail during fixture construction rather than being reported as a successful separation attack.
+
 ## Attack coverage
 
 Permanent tests cover:
@@ -104,11 +112,12 @@ Permanent tests cover:
 - immediate rejection of a completed malformed message,
 - connection cleanup while the client deliberately does not read the response,
 - successful protected-pipe rebinding after timeout or rejection,
+- exact Ed25519 deployment-reviewer versus trust-governance key reuse,
 - Windows SCM FFI compilation,
 - Windows service executable release compilation, and
 - all existing production signer, trust-state, generation, Capability and Attestation attacks.
 
-The permanent workflow uses `permissions: contents: read` and passes on Ubuntu 24.04 and Windows Server 2025.
+The permanent workflow retains read-only repository permissions and runs the matrix on Ubuntu 24.04 and Windows Server 2025.
 
 ## Operational boundary
 
