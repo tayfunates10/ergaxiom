@@ -4,6 +4,7 @@ mod commands;
 mod pipeline;
 mod production_startup;
 
+#[cfg(windows)]
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let control_state = match commands::DesktopControlState::new() {
@@ -31,4 +32,32 @@ pub fn run() {
         eprintln!("ergaxiom desktop runtime failed: {error}");
         std::process::exit(1);
     }
+}
+
+#[cfg(not(windows))]
+#[cfg_attr(mobile, tauri::mobile_entry_point)]
+pub fn run() {
+    let control_state = match commands::DesktopControlState::new() {
+        Ok(state) => state,
+        Err(error) => {
+            eprintln!("ergaxiom desktop control authority failed to initialize: {error}");
+            return;
+        }
+    };
+    let production_state = production_startup::ProductionStartupState::initialize();
+
+    // Ergaxiom Product Alpha is Windows-first. Constructing the complete command boundary keeps
+    // non-Windows compilation and fail-closed startup tests honest without generating a runnable
+    // platform bundle or requiring Windows release assets on Linux CI.
+    let _builder = tauri::Builder::default()
+        .manage(control_state)
+        .manage(production_state)
+        .invoke_handler(tauri::generate_handler![
+            commands::get_desktop_shell_snapshot,
+            commands::approve_desktop_job,
+            commands::start_desktop_job_execution,
+            commands::cancel_desktop_job,
+            commands::rollback_desktop_job,
+            production_startup::get_production_signer_status
+        ]);
 }
