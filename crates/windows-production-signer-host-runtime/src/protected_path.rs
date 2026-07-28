@@ -47,15 +47,17 @@ mod windows {
 
     use windows_sys::Win32::Foundation::LocalFree;
     use windows_sys::Win32::Security::Authorization::{
-        ConvertSidToStringSidW, ConvertStringSecurityDescriptorToSecurityDescriptorW,
-        GetNamedSecurityInfoW, SE_FILE_OBJECT,
+        ConvertSidToStringSidW, GetNamedSecurityInfoW, SE_FILE_OBJECT,
     };
+    #[cfg(test)]
+    use windows_sys::Win32::Security::Authorization::ConvertStringSecurityDescriptorToSecurityDescriptorW;
     use windows_sys::Win32::Security::{
         ACCESS_ALLOWED_ACE, ACE_HEADER, ACL_SIZE_INFORMATION, AclSizeInformation,
         DACL_SECURITY_INFORMATION, GetAce, GetAclInformation, GetSecurityDescriptorControl,
-        GetSecurityDescriptorDacl, GetSecurityDescriptorOwner, IsValidSid,
-        OWNER_SECURITY_INFORMATION, SE_DACL_PROTECTED, SECURITY_DESCRIPTOR_CONTROL,
+        IsValidSid, OWNER_SECURITY_INFORMATION, SE_DACL_PROTECTED, SECURITY_DESCRIPTOR_CONTROL,
     };
+    #[cfg(test)]
+    use windows_sys::Win32::Security::{GetSecurityDescriptorDacl, GetSecurityDescriptorOwner};
     use windows_sys::Win32::Storage::FileSystem::FILE_ATTRIBUTE_REPARSE_POINT;
 
     use crate::ProductionSignerHostError;
