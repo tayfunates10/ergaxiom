@@ -121,9 +121,7 @@ jobs:
           if value.count(old) != 1:
               raise SystemExit("expected one host transport re-export")
           value = value.replace(old, new, 1)
-          old = (
-              "    DeployedAuthorizedProductionSignerPackage, DeployedProductionSignerError,\n"
-          )
+          old = "    DeployedAuthorizedProductionSignerPackage, DeployedProductionSignerError,\n"
           new = "    DeployedProductionSignerError,\n"
           if value.count(old) != 1:
               raise SystemExit("expected one obsolete deployed-package import")
@@ -131,15 +129,24 @@ jobs:
 
           tests = Path("crates/windows-production-signer-host-runtime/src/tests.rs")
           value = tests.read_text(encoding="utf-8")
-          old = "#[test]\nfn transport_failures_are_scoped_to_one_connection()"
-          new = (
-              "#[cfg(windows)]\n"
-              "#[test]\n"
-              "fn transport_failures_are_scoped_to_one_connection()"
+          marker = "fn transport_failures_are_scoped_to_one_connection()"
+          if value.count(marker) != 1:
+              raise SystemExit("expected one Windows connection-isolation function")
+          marker_position = value.index(marker)
+          attribute_position = value.rfind("#[test]", 0, marker_position)
+          if attribute_position < 0:
+              raise SystemExit("connection-isolation test attribute not found")
+          line_start = value.rfind("\n", 0, attribute_position) + 1
+          indentation = value[line_start:attribute_position]
+          if value[line_start:marker_position].count("#[cfg(windows)]") != 0:
+              raise SystemExit("connection-isolation test already gated")
+          value = (
+              value[:line_start]
+              + indentation
+              + "#[cfg(windows)]\n"
+              + value[line_start:]
           )
-          if value.count(old) != 1:
-              raise SystemExit("expected one Windows connection-isolation test")
-          tests.write_text(value.replace(old, new, 1), encoding="utf-8")
+          tests.write_text(value, encoding="utf-8")
           PY
             cleanup_status=${PIPESTATUS[0]}
             if [ "$cleanup_status" != "0" ]; then
