@@ -5,6 +5,9 @@ use ergaxiom_windows_production_signer_transport_runtime::{
 use ergaxiom_windows_signer_service_identity_runtime::NamedPipeSecurityContract;
 use serde::{Deserialize, Serialize};
 
+#[cfg(windows)]
+static PIPE_TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
 #[test]
 fn production_sddl_uses_individual_client_rights_not_generic_write()
 -> Result<(), Box<dyn std::error::Error>> {
@@ -56,6 +59,7 @@ struct TestResponse {
 #[test]
 fn real_local_message_pipe_reads_before_deriving_connected_process_identity()
 -> Result<(), Box<dyn std::error::Error>> {
+    let _pipe_test_guard = lock_pipe_test()?;
     let contract = NamedPipeSecurityContract::production("S-1-1-0")?;
     let mut server = ProductionSignerPipeServer::bind(contract)?;
     let client = std::thread::spawn(|| -> Result<TestResponse, ProductionSignerTransportError> {
@@ -97,6 +101,7 @@ fn idle_connected_client_is_disconnected_after_bounded_read_deadline()
 -> Result<(), Box<dyn std::error::Error>> {
     use std::time::{Duration, Instant};
 
+    let _pipe_test_guard = lock_pipe_test()?;
     let contract = NamedPipeSecurityContract::production("S-1-1-0")?;
     let mut server = ProductionSignerPipeServer::bind(contract.clone())?;
     let client = spawn_raw_client(None, Duration::from_millis(500));
@@ -124,6 +129,7 @@ fn malformed_complete_message_is_rejected_without_waiting_for_deadline()
 -> Result<(), Box<dyn std::error::Error>> {
     use std::time::{Duration, Instant};
 
+    let _pipe_test_guard = lock_pipe_test()?;
     let contract = NamedPipeSecurityContract::production("S-1-1-0")?;
     let mut server = ProductionSignerPipeServer::bind(contract.clone())?;
     let client = spawn_raw_client(Some(b"{".to_vec()), Duration::from_millis(250));
@@ -150,6 +156,7 @@ fn malformed_complete_message_is_rejected_without_waiting_for_deadline()
 fn connection_drop_does_not_wait_for_nonreading_client() -> Result<(), Box<dyn std::error::Error>> {
     use std::time::{Duration, Instant};
 
+    let _pipe_test_guard = lock_pipe_test()?;
     let contract = NamedPipeSecurityContract::production("S-1-1-0")?;
     let mut server = ProductionSignerPipeServer::bind(contract.clone())?;
     let request = serde_json::to_vec(&TestRequest {
@@ -175,6 +182,13 @@ fn connection_drop_does_not_wait_for_nonreading_client() -> Result<(), Box<dyn s
     let replacement = ProductionSignerPipeServer::bind(contract)?;
     drop(replacement);
     Ok(())
+}
+
+#[cfg(windows)]
+fn lock_pipe_test() -> Result<std::sync::MutexGuard<'static, ()>, Box<dyn std::error::Error>> {
+    PIPE_TEST_LOCK
+        .lock()
+        .map_err(|_| std::io::Error::other("production pipe test lock is poisoned").into())
 }
 
 #[cfg(windows)]
