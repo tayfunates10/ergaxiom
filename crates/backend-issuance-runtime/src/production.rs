@@ -38,7 +38,6 @@ pub struct AuthorizedProductionAttestationIssuance {
     pub package: ProductionSignerBoundAttestationPackage,
 }
 
-#[derive(Debug)]
 pub struct BackendAuthorizedProductionIssuanceAuthority<C, A> {
     policy: BackendIssuancePolicy,
     capability_authority: GovernedProductionCapabilityIssuanceAuthority<C>,
