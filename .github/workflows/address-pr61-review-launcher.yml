@@ -154,15 +154,34 @@ jobs:
       - name: Fail when repaired boundary tests failed
         shell: bash
         run: test "$(cat pr61-test-diagnostics.status)" = "0"
-      - name: Lint repaired boundaries
+      - name: Lint repaired boundaries and capture diagnostics
+        shell: bash
         run: |
+          set +e
           cargo clippy \
             -p ergaxiom-windows-production-trust-state-runtime \
             -p ergaxiom-windows-production-signer-transport-runtime \
             -p ergaxiom-windows-production-signer-host-runtime \
             -p ergaxiom-capability-issuance-runtime \
             -p ergaxiom-attestation-issuance-runtime \
-            --all-targets --all-features -- -D warnings
+            --all-targets --all-features -- -D warnings \
+            2>&1 | tee pr61-clippy-diagnostics.log
+          status=${PIPESTATUS[0]}
+          echo "$status" > pr61-clippy-diagnostics.status
+          exit 0
+      - name: Upload Clippy diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pr61-clippy-diagnostics
+          retention-days: 7
+          if-no-files-found: error
+          path: |
+            pr61-clippy-diagnostics.log
+            pr61-clippy-diagnostics.status
+      - name: Fail when Clippy failed
+        shell: bash
+        run: test "$(cat pr61-clippy-diagnostics.status)" = "0"
       - name: Commit verified repairs and remove temporary workflows
         shell: bash
         run: |
