@@ -95,22 +95,94 @@ fn real_local_message_pipe_reads_before_deriving_connected_process_identity()
 #[test]
 fn idle_connected_client_is_disconnected_after_bounded_read_deadline()
 -> Result<(), Box<dyn std::error::Error>> {
-    assert_stalled_connection_times_out(false)
+    use std::time::{Duration, Instant};
+
+    let contract = NamedPipeSecurityContract::production("S-1-1-0")?;
+    let mut server = ProductionSignerPipeServer::bind(contract.clone())?;
+    let client = spawn_raw_client(None, Duration::from_millis(500));
+
+    let mut connection = server.accept()?;
+    let started = Instant::now();
+    let result: Result<TestRequest, ProductionSignerTransportError> =
+        connection.read_json_with_timeout(1024, 100);
+    assert!(matches!(
+        result,
+        Err(ProductionSignerTransportError::IoTimedOut)
+    ));
+    assert!(started.elapsed() < Duration::from_secs(2));
+    drop(connection);
+    join_raw_client(client)?;
+
+    let replacement = ProductionSignerPipeServer::bind(contract)?;
+    drop(replacement);
+    Ok(())
 }
 
 #[cfg(windows)]
 #[test]
-fn partial_message_client_is_disconnected_after_bounded_read_deadline()
+fn malformed_complete_message_is_rejected_without_waiting_for_deadline()
 -> Result<(), Box<dyn std::error::Error>> {
-    assert_stalled_connection_times_out(true)
+    use std::time::{Duration, Instant};
+
+    let contract = NamedPipeSecurityContract::production("S-1-1-0")?;
+    let mut server = ProductionSignerPipeServer::bind(contract.clone())?;
+    let client = spawn_raw_client(Some(b"{".to_vec()), Duration::from_millis(250));
+
+    let mut connection = server.accept()?;
+    let started = Instant::now();
+    let result: Result<TestRequest, ProductionSignerTransportError> =
+        connection.read_json_with_timeout(1024, 1_000);
+    assert!(matches!(
+        result,
+        Err(ProductionSignerTransportError::Json(_))
+    ));
+    assert!(started.elapsed() < Duration::from_millis(500));
+    drop(connection);
+    join_raw_client(client)?;
+
+    let replacement = ProductionSignerPipeServer::bind(contract)?;
+    drop(replacement);
+    Ok(())
 }
 
 #[cfg(windows)]
-fn assert_stalled_connection_times_out(
-    write_partial_message: bool,
-) -> Result<(), Box<dyn std::error::Error>> {
-    use std::ptr::{null, null_mut};
+#[test]
+fn connection_drop_does_not_wait_for_nonreading_client() -> Result<(), Box<dyn std::error::Error>> {
     use std::time::{Duration, Instant};
+
+    let contract = NamedPipeSecurityContract::production("S-1-1-0")?;
+    let mut server = ProductionSignerPipeServer::bind(contract.clone())?;
+    let request = serde_json::to_vec(&TestRequest {
+        value: "request".to_owned(),
+    })?;
+    let client = spawn_raw_client(Some(request), Duration::from_millis(1_500));
+
+    let mut connection = server.accept()?;
+    let request: TestRequest = connection.read_json_with_timeout(1024, 1_000)?;
+    assert_eq!(request.value, "request");
+    connection.write_json_with_timeout(
+        &TestResponse {
+            value: "response".to_owned(),
+        },
+        1024,
+        1_000,
+    )?;
+    let started = Instant::now();
+    drop(connection);
+    assert!(started.elapsed() < Duration::from_millis(500));
+    join_raw_client(client)?;
+
+    let replacement = ProductionSignerPipeServer::bind(contract)?;
+    drop(replacement);
+    Ok(())
+}
+
+#[cfg(windows)]
+fn spawn_raw_client(
+    message: Option<Vec<u8>>,
+    hold_open: std::time::Duration,
+) -> std::thread::JoinHandle<Result<(), String>> {
+    use std::ptr::{null, null_mut};
 
     use ergaxiom_windows_signer_service_identity_runtime::PRODUCTION_PIPE_NAME;
     use windows_sys::Win32::Foundation::{CloseHandle, INVALID_HANDLE_VALUE};
@@ -122,13 +194,8 @@ fn assert_stalled_connection_times_out(
     const OPEN_EXISTING: u32 = 3;
     const FILE_ATTRIBUTE_NORMAL: u32 = 0x0000_0080;
 
-    let contract = NamedPipeSecurityContract::production("S-1-1-0")?;
-    let mut server = ProductionSignerPipeServer::bind(contract.clone())?;
-    let client = std::thread::spawn(move || -> Result<(), String> {
-        let pipe_name: Vec<u16> = PRODUCTION_PIPE_NAME
-            .encode_utf16()
-            .chain(Some(0))
-            .collect();
+    std::thread::spawn(move || -> Result<(), String> {
+        let pipe_name: Vec<u16> = PRODUCTION_PIPE_NAME.encode_utf16().chain(Some(0)).collect();
         // SAFETY: pipe_name is a live NUL-terminated fixed local pipe name and the
         // wait is bounded for this real Windows regression.
         if unsafe { WaitNamedPipeW(pipe_name.as_ptr(), 5_000) } == 0 {
@@ -150,52 +217,44 @@ fn assert_stalled_connection_times_out(
         if handle == INVALID_HANDLE_VALUE {
             return Err(std::io::Error::last_os_error().to_string());
         }
-        if write_partial_message {
-            let partial = b"{";
+        if let Some(message) = message {
             let mut written = 0_u32;
-            // SAFETY: handle is live and partial is readable for exactly one byte.
+            // SAFETY: handle is live and message is readable for its exact length.
             if unsafe {
                 WriteFile(
                     handle,
-                    partial.as_ptr().cast(),
-                    partial.len() as u32,
+                    message.as_ptr().cast(),
+                    message.len() as u32,
                     &mut written,
                     null_mut(),
                 )
             } == 0
-                || written != partial.len() as u32
+                || written != message.len() as u32
             {
+                let error = std::io::Error::last_os_error().to_string();
+                // SAFETY: handle is the one owned live client handle created above.
                 unsafe {
                     let _ = CloseHandle(handle);
                 }
-                return Err(std::io::Error::last_os_error().to_string());
+                return Err(error);
             }
         }
-        std::thread::sleep(Duration::from_millis(500));
+        std::thread::sleep(hold_open);
         // SAFETY: handle is the one owned live client handle created above.
         unsafe {
             let _ = CloseHandle(handle);
         }
         Ok(())
-    });
+    })
+}
 
-    let mut connection = server.accept()?;
-    let started = Instant::now();
-    let result: Result<TestRequest, ProductionSignerTransportError> =
-        connection.read_json_with_timeout(1024, 100);
-    assert!(matches!(
-        result,
-        Err(ProductionSignerTransportError::IoTimedOut)
-    ));
-    assert!(started.elapsed() < Duration::from_secs(2));
-    drop(connection);
-
-    let client_result = client
+#[cfg(windows)]
+fn join_raw_client(
+    client: std::thread::JoinHandle<Result<(), String>>,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let result = client
         .join()
-        .map_err(|_| std::io::Error::other("stalled client thread panicked"))?;
-    client_result.map_err(std::io::Error::other)?;
-
-    let replacement = ProductionSignerPipeServer::bind(contract)?;
-    drop(replacement);
+        .map_err(|_| std::io::Error::other("raw client thread panicked"))?;
+    result.map_err(std::io::Error::other)?;
     Ok(())
 }

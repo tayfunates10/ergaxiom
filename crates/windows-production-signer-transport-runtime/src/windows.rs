@@ -16,13 +16,13 @@ use windows_sys::Win32::Foundation::{
 use windows_sys::Win32::Security::Authorization::ConvertStringSecurityDescriptorToSecurityDescriptorW;
 use windows_sys::Win32::Security::SECURITY_ATTRIBUTES;
 use windows_sys::Win32::Storage::FileSystem::{CreateFileW, ReadFile, WriteFile};
+use windows_sys::Win32::System::IO::CancelSynchronousIo;
 use windows_sys::Win32::System::Pipes::{
     ConnectNamedPipe, CreateNamedPipeW, DisconnectNamedPipe, SetNamedPipeHandleState,
     WaitNamedPipeW,
 };
 use windows_sys::Win32::System::Threading::{
-    CancelSynchronousIo, CreateEventW, GetCurrentProcess, GetCurrentThread, SetEvent,
-    WaitForSingleObject,
+    CreateEventW, GetCurrentProcess, GetCurrentThread, SetEvent, WaitForSingleObject,
 };
 
 use crate::{PIPE_CONNECT_TIMEOUT_MS, ProductionSignerTransportError};
