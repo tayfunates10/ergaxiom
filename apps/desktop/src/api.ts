@@ -6,6 +6,7 @@ import type {
   DesktopApprovalRequest,
   DesktopSnapshotRequest,
   DesktopSnapshotResponse,
+  ProductionSignerStatus,
 } from './types';
 
 async function invokeVerified(
@@ -28,6 +29,29 @@ async function invokeVerified(
 
 export function loadDesktopSnapshot(): Promise<DesktopSnapshotResponse> {
   return invokeVerified('get_desktop_shell_snapshot');
+}
+
+export async function loadProductionSignerStatus(): Promise<ProductionSignerStatus> {
+  try {
+    return await invoke<ProductionSignerStatus>('get_production_signer_status');
+  } catch {
+    return {
+      phase: 'rejected',
+      code: 'production_status_unavailable',
+      configuration_verified: false,
+      pipe_clients_initialized: false,
+      production_issuance_enabled: false,
+      deployment_id: null,
+      backend_id: null,
+      manifest_digest: null,
+      trust_state_revision: null,
+      trust_state_binding_digest: null,
+      registry_revision: null,
+      registry_digest: null,
+      capability_generation: null,
+      attestation_generation: null,
+    };
+  }
 }
 
 export function approveDesktopJob(
