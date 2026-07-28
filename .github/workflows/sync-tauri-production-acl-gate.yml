@@ -4,6 +4,12 @@ on:
   push:
     branches:
       - agent/tauri-production-acl-gate-v1
+  pull_request:
+    paths:
+      - "crates/windows-production-signer-host-runtime/**"
+      - "apps/desktop/**"
+      - "docs/architecture/48-tauri-production-acl-gate.md"
+      - ".github/workflows/sync-tauri-production-acl-gate.yml"
   workflow_dispatch:
 
 permissions:
@@ -38,18 +44,20 @@ jobs:
 
           lib = Path("crates/windows-production-signer-host-runtime/src/lib.rs")
           text = lib.read_text()
-          text = text.replace(
-              "#[cfg(test)]\nmod tests;\n",
-              "#[cfg(test)]\nmod tests;\nmod protected_path;\n",
-              1,
-          )
-          text = text.replace(
-              "use thiserror::Error;\n",
-              "use thiserror::Error;\n\npub use protected_path::{\n    validate_administrator_controlled_directory, validate_administrator_controlled_file,\n};\n",
-              1,
-          )
+          if "mod protected_path;" not in text:
+              text = text.replace(
+                  "#[cfg(test)]\nmod tests;\n",
+                  "#[cfg(test)]\nmod tests;\nmod protected_path;\n",
+                  1,
+              )
+          if "validate_administrator_controlled_directory" not in text:
+              text = text.replace(
+                  "use thiserror::Error;\n",
+                  "use thiserror::Error;\n\npub use protected_path::{\n    validate_administrator_controlled_directory, validate_administrator_controlled_file,\n};\n",
+                  1,
+              )
           marker = '''    #[error("production signer service SCM operation failed: {0}")]
-          WindowsService(#[source] std::io::Error),'''
+              WindowsService(#[source] std::io::Error),'''
           replacement = '''    #[error("administrator-controlled production path parent is unavailable")]
               AdministratorControlledParentUnavailable,
               #[error("administrator-controlled production path type does not match")]
@@ -70,9 +78,10 @@ jobs:
               WindowsSecurity(#[source] std::io::Error),
               #[error("production signer service SCM operation failed: {0}")]
               WindowsService(#[source] std::io::Error),'''
-          if marker not in text:
-              raise SystemExit("host error insertion marker missing")
-          text = text.replace(marker, replacement, 1)
+          if "AdministratorControlledParentUnavailable" not in text:
+              if marker not in text:
+                  raise SystemExit("host error insertion marker missing")
+              text = text.replace(marker, replacement, 1)
           lib.write_text(text)
 
           startup = Path("apps/desktop/src-tauri/src/production_startup.rs")
@@ -100,9 +109,10 @@ jobs:
                   ));
               }
               let Ok(expected_manifest_digest) = read_stable_manifest_pin(&pin_path) else {'''
-          if marker not in text:
-              raise SystemExit("startup ACL marker missing")
-          text = text.replace(marker, replacement, 1)
+          if "production_configuration_acl_rejected" not in text:
+              if marker not in text:
+                  raise SystemExit("startup ACL marker missing")
+              text = text.replace(marker, replacement, 1)
           marker = '''        let Ok(trusted_now_epoch_s) = current_epoch_s() else {'''
           replacement = '''        if validate_administrator_controlled_file(&current_executable).is_err() {
                   return Self::without_runtime(status_without_configuration(
@@ -111,7 +121,8 @@ jobs:
                   ));
               }
               let Ok(trusted_now_epoch_s) = current_epoch_s() else {'''
-          text = text.replace(marker, replacement, 1)
+          if "production_backend_acl_rejected" not in text:
+              text = text.replace(marker, replacement, 1)
           marker = '''        let runtime = ProductionStartupRuntime::new(deployment);'''
           replacement = '''        if validate_loaded_configuration_acl(&deployment).is_err() {
                   return Self::without_runtime(status_without_configuration(
@@ -121,7 +132,8 @@ jobs:
               }
 
               let runtime = ProductionStartupRuntime::new(deployment);'''
-          text = text.replace(marker, replacement, 1)
+          if "production_signer_configuration_acl_rejected" not in text:
+              text = text.replace(marker, replacement, 1)
           text = text.replace(
               "        configuration_verified: true,\n        pipe_clients_initialized,",
               "        configuration_verified: true,\n        configuration_acl_verified: true,\n        pipe_clients_initialized,",
@@ -153,7 +165,8 @@ jobs:
           }
 
           fn fixed_absolute_path(value: &str) -> Option<PathBuf> {'''
-          text = text.replace(marker, helper, 1)
+          if "fn validate_loaded_configuration_acl" not in text:
+              text = text.replace(marker, helper, 1)
           text = text.replace(
               "        assert!(status.configuration_verified);\n        assert!(status.pipe_clients_initialized);",
               "        assert!(status.configuration_verified);\n        assert!(status.configuration_acl_verified);\n        assert!(status.pipe_clients_initialized);",
@@ -199,38 +212,38 @@ jobs:
           doc = Path("docs/architecture/48-tauri-production-acl-gate.md")
           doc.write_text('''# Tauri Production ACL Gate
 
-## Status
+          ## Status
 
-This gate extends the pinned Tauri production startup boundary with independent Windows owner and DACL verification. It does not enable production issuance.
+          This gate extends the pinned Tauri production startup boundary with independent Windows owner and DACL verification. It does not enable production issuance.
 
-## Protected inputs
+          ## Protected inputs
 
-Before any production configuration is accepted, the backend verifies:
+          Before any production configuration is accepted, the backend verifies:
 
-- the backend deployment manifest and external digest pin;
-- the running desktop executable;
-- the signer service manifest and executable;
-- the governance policy, caller allowlist and deployment policy; and
-- the production trust-store root.
+          - the backend deployment manifest and external digest pin;
+          - the running desktop executable;
+          - the signer service manifest and executable;
+          - the governance policy, caller allowlist and deployment policy; and
+          - the production trust-store root.
 
-Each file or directory and its immediate parent must be an absolute, existing, non-reparse path. The owner must be LocalSystem (`S-1-5-18`) or Builtin Administrators (`S-1-5-32-544`). The DACL must be protected from inheritance. Standard allow ACEs may grant read or execute access to other principals, but any write, append, child creation, deletion, DACL change, owner change, generic write, generic all or maximum-allowed grant is accepted only for LocalSystem or Builtin Administrators. Unknown ACE layouts fail closed.
+          Each file or directory and its immediate parent must be an absolute, existing, non-reparse path. The owner must be LocalSystem (`S-1-5-18`) or Builtin Administrators (`S-1-5-32-544`). The DACL must be protected from inheritance. Standard allow ACEs may grant read or execute access to other principals, but any write, append, child creation, deletion, DACL change, owner change, generic write, generic all or maximum-allowed grant is accepted only for LocalSystem or Builtin Administrators. Unknown ACE layouts fail closed.
 
-## Renderer boundary
+          ## Renderer boundary
 
-The renderer receives only the boolean `configuration_acl_verified` and bounded public status codes. It receives no owner SID, ACE, filesystem path or security descriptor.
+          The renderer receives only the boolean `configuration_acl_verified` and bounded public status codes. It receives no owner SID, ACE, filesystem path or security descriptor.
 
-## Failure behavior
+          ## Failure behavior
 
-A missing, malformed, reparse, user-owned, inheritance-enabled or user-writable path leaves `production_issuance_enabled` false and reports one of these bounded states:
+          A missing, malformed, reparse, user-owned, inheritance-enabled or user-writable path leaves `production_issuance_enabled` false and reports one of these bounded states:
 
-- `production_configuration_acl_rejected`;
-- `production_backend_acl_rejected`; or
-- `production_signer_configuration_acl_rejected`.
+          - `production_configuration_acl_rejected`;
+          - `production_backend_acl_rejected`; or
+          - `production_signer_configuration_acl_rejected`.
 
-## Remaining gate
+          ## Remaining gate
 
-ACL verification proves that the installed public configuration cannot be modified through an ordinary non-administrator file grant. It does not authenticate a live signer-service instance. The next slice must add a purpose-locked service identity proof that cannot be repurposed into arbitrary digest signing, then bind its trust-state and deployment identity to the already verified startup configuration.
-''')
+          ACL verification proves that the installed public configuration cannot be modified through an ordinary non-administrator file grant. It does not authenticate a live signer-service instance. The next slice must add a purpose-locked service identity proof that cannot be repurposed into arbitrary digest signing, then bind its trust-state and deployment identity to the already verified startup configuration.
+          ''')
 
       - name: Refresh formatting and lockfiles
         shell: pwsh
