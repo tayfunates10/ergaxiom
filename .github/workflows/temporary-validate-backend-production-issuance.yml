@@ -1,24 +1,25 @@
-name: Temporary production backend issuance validation
+name: One-shot commit verified production backend issuance
 
 on:
-  pull_request:
-    paths:
-      - "crates/backend-issuance-runtime/**"
-      - "Cargo.lock"
-      - ".github/workflows/temporary-validate-backend-production-issuance.yml"
+  push:
+    branches:
+      - agent/desktop-production-issuance-v1
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
-  validate:
+  commit-verified-slice:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: agent/desktop-production-issuance-v1
+          fetch-depth: 0
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
-      - name: Export and format production backend module
+      - name: Reproduce verified working tree
         shell: bash
         run: |
           python - <<'PY'
@@ -35,42 +36,19 @@ jobs:
           path.write_text(source)
           PY
           cargo fmt --all
-      - name: Run production backend validation
-        shell: bash
-        run: |
-          set +e
-          cargo fmt --all -- --check > backend-format.log 2>&1
-          format_status=$?
+          cargo fmt --all -- --check
           cargo clippy \
             -p ergaxiom-backend-issuance-runtime \
-            --all-targets --all-features -- -D warnings > backend-clippy.log 2>&1
-          clippy_status=$?
+            --all-targets --all-features -- -D warnings
           cargo test \
             -p ergaxiom-backend-issuance-runtime \
-            --all-features -- --nocapture > backend-tests.log 2>&1
-          test_status=$?
-          printf '%s\n' "$format_status" "$clippy_status" "$test_status" > backend-status.txt
-          exit 0
-      - name: Upload formatted sources and diagnostics
-        uses: actions/upload-artifact@v4
-        with:
-          name: backend-production-issuance-validation
-          if-no-files-found: error
-          retention-days: 1
-          path: |
-            Cargo.lock
-            crates/backend-issuance-runtime/Cargo.toml
-            crates/backend-issuance-runtime/src/lib.rs
-            crates/backend-issuance-runtime/src/production.rs
-            crates/backend-issuance-runtime/tests/production_authorization.rs
-            backend-format.log
-            backend-clippy.log
-            backend-tests.log
-            backend-status.txt
-      - name: Fail on validation mismatch
+            --all-features -- --nocapture
+      - name: Commit verified working tree and remove workflow
         shell: bash
         run: |
-          readarray -t statuses < backend-status.txt
-          if [[ "${statuses[0]}" != "0" || "${statuses[1]}" != "0" || "${statuses[2]}" != "0" ]]; then
-            exit 1
-          fi
+          rm .github/workflows/temporary-validate-backend-production-issuance.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Cargo.lock crates/backend-issuance-runtime .github/workflows/temporary-validate-backend-production-issuance.yml
+          git commit -m "Authorize governed production backend issuance"
+          git push origin HEAD:agent/desktop-production-issuance-v1
