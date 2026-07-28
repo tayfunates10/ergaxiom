@@ -1,6 +1,9 @@
 name: Sync ACL SDDL tests
 
 on:
+  push:
+    branches:
+      - agent/tauri-production-acl-gate-v1
   pull_request:
     paths:
       - "crates/windows-production-signer-host-runtime/**"
