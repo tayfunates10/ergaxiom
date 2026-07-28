@@ -14,6 +14,7 @@ use thiserror::Error;
 
 pub const CLIENT_PIPE_RIGHTS: u32 = 0x0012_0183;
 pub const PIPE_CONNECT_TIMEOUT_MS: u32 = 5_000;
+pub const PIPE_IO_TIMEOUT_MS: u32 = 5_000;
 
 pub fn production_pipe_sddl(
     contract: &NamedPipeSecurityContract,
@@ -58,9 +59,17 @@ impl AuthenticatedPipeConnection {
         &mut self,
         max_bytes: u32,
     ) -> Result<T, ProductionSignerTransportError> {
+        self.read_json_with_timeout(max_bytes, PIPE_IO_TIMEOUT_MS)
+    }
+
+    pub fn read_json_with_timeout<T: DeserializeOwned>(
+        &mut self,
+        max_bytes: u32,
+        timeout_ms: u32,
+    ) -> Result<T, ProductionSignerTransportError> {
         #[cfg(windows)]
         {
-            let bytes = self.inner.read_message(max_bytes)?;
+            let bytes = self.inner.read_message(max_bytes, timeout_ms)?;
             if self.caller.is_none() {
                 self.caller = Some(self.inner.derive_authenticated_caller()?);
             }
@@ -68,7 +77,7 @@ impl AuthenticatedPipeConnection {
         }
         #[cfg(not(windows))]
         {
-            let _ = max_bytes;
+            let _ = (max_bytes, timeout_ms);
             Err(ProductionSignerTransportError::UnsupportedPlatform)
         }
     }
@@ -78,16 +87,26 @@ impl AuthenticatedPipeConnection {
         value: &T,
         max_bytes: u32,
     ) -> Result<(), ProductionSignerTransportError> {
+        self.write_json_with_timeout(value, max_bytes, PIPE_IO_TIMEOUT_MS)
+    }
+
+    pub fn write_json_with_timeout<T: Serialize>(
+        &mut self,
+        value: &T,
+        max_bytes: u32,
+        timeout_ms: u32,
+    ) -> Result<(), ProductionSignerTransportError> {
         let bytes = serde_json::to_vec(value)?;
         if bytes.is_empty() || bytes.len() > max_bytes as usize {
             return Err(ProductionSignerTransportError::MessageSizeInvalid);
         }
         #[cfg(windows)]
         {
-            self.inner.write_message(&bytes)
+            self.inner.write_message(&bytes, timeout_ms)
         }
         #[cfg(not(windows))]
         {
+            let _ = timeout_ms;
             Err(ProductionSignerTransportError::UnsupportedPlatform)
         }
     }
@@ -164,18 +183,37 @@ impl ProductionSignerPipeClient {
         Request: Serialize,
         Response: DeserializeOwned,
     {
+        self.exchange_with_timeout(
+            request,
+            max_request_bytes,
+            max_response_bytes,
+            PIPE_IO_TIMEOUT_MS,
+        )
+    }
+
+    pub fn exchange_with_timeout<Request, Response>(
+        &self,
+        request: &Request,
+        max_request_bytes: u32,
+        max_response_bytes: u32,
+        timeout_ms: u32,
+    ) -> Result<Response, ProductionSignerTransportError>
+    where
+        Request: Serialize,
+        Response: DeserializeOwned,
+    {
         let bytes = serde_json::to_vec(request)?;
         if bytes.is_empty() || bytes.len() > max_request_bytes as usize {
             return Err(ProductionSignerTransportError::MessageSizeInvalid);
         }
         #[cfg(windows)]
         {
-            let response = windows::client_exchange(&bytes, max_response_bytes)?;
+            let response = windows::client_exchange(&bytes, max_response_bytes, timeout_ms)?;
             serde_json::from_slice(&response).map_err(ProductionSignerTransportError::Json)
         }
         #[cfg(not(windows))]
         {
-            let _ = max_response_bytes;
+            let _ = (max_response_bytes, timeout_ms);
             Err(ProductionSignerTransportError::UnsupportedPlatform)
         }
     }
@@ -189,6 +227,14 @@ pub enum ProductionSignerTransportError {
     CallerIdentityUnavailable,
     #[error("production signer named-pipe message size is invalid")]
     MessageSizeInvalid,
+    #[error("production signer named-pipe I/O timeout is invalid")]
+    IoTimeoutInvalid,
+    #[error("production signer named-pipe I/O timed out")]
+    IoTimedOut,
+    #[error("production signer named-pipe I/O deadline setup failed: {0}")]
+    IoDeadlineSetupFailed(#[source] std::io::Error),
+    #[error("production signer named-pipe I/O deadline worker failed")]
+    IoDeadlineWorkerFailed,
     #[error("production signer named-pipe SDDL conversion failed: {0}")]
     SecurityDescriptorConversionFailed(#[source] std::io::Error),
     #[error("production signer named-pipe server creation failed: {0}")]

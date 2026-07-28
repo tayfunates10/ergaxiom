@@ -1,20 +1,28 @@
 use std::ffi::c_void;
 use std::mem::size_of;
 use std::ptr::{null, null_mut};
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::thread::{self, JoinHandle};
 
 use ergaxiom_windows_production_signer_runtime::AuthenticatedCallerIdentity;
 use ergaxiom_windows_signer_service_identity_runtime::{
     NamedPipeSecurityContract, derive_authenticated_caller_from_named_pipe,
 };
 use windows_sys::Win32::Foundation::{
-    CloseHandle, ERROR_MORE_DATA, ERROR_PIPE_CONNECTED, HANDLE, INVALID_HANDLE_VALUE, LocalFree,
+    CloseHandle, DUPLICATE_SAME_ACCESS, DuplicateHandle, ERROR_MORE_DATA, ERROR_PIPE_CONNECTED,
+    HANDLE, INVALID_HANDLE_VALUE, LocalFree, WAIT_TIMEOUT,
 };
 use windows_sys::Win32::Security::Authorization::ConvertStringSecurityDescriptorToSecurityDescriptorW;
 use windows_sys::Win32::Security::SECURITY_ATTRIBUTES;
-use windows_sys::Win32::Storage::FileSystem::{CreateFileW, FlushFileBuffers, ReadFile, WriteFile};
+use windows_sys::Win32::Storage::FileSystem::{CreateFileW, ReadFile, WriteFile};
 use windows_sys::Win32::System::Pipes::{
     ConnectNamedPipe, CreateNamedPipeW, DisconnectNamedPipe, SetNamedPipeHandleState,
     WaitNamedPipeW,
+};
+use windows_sys::Win32::System::Threading::{
+    CancelSynchronousIo, CreateEventW, GetCurrentProcess, GetCurrentThread, SetEvent,
+    WaitForSingleObject,
 };
 
 use crate::{PIPE_CONNECT_TIMEOUT_MS, ProductionSignerTransportError};
@@ -112,8 +120,9 @@ impl PipeConnection {
     pub fn read_message(
         &mut self,
         max_bytes: u32,
+        timeout_ms: u32,
     ) -> Result<Vec<u8>, ProductionSignerTransportError> {
-        read_message(self.handle, max_bytes)
+        read_message(self.handle, max_bytes, timeout_ms)
     }
 
     pub fn derive_authenticated_caller(
@@ -123,18 +132,22 @@ impl PipeConnection {
             .map_err(ProductionSignerTransportError::Identity)
     }
 
-    pub fn write_message(&mut self, bytes: &[u8]) -> Result<(), ProductionSignerTransportError> {
-        write_message(self.handle, bytes)
+    pub fn write_message(
+        &mut self,
+        bytes: &[u8],
+        timeout_ms: u32,
+    ) -> Result<(), ProductionSignerTransportError> {
+        write_message(self.handle, bytes, timeout_ms)
     }
 }
 
 impl Drop for PipeConnection {
     fn drop(&mut self) {
         if !self.handle.is_null() && self.handle != INVALID_HANDLE_VALUE {
-            // SAFETY: handle is a connected server pipe. Flushing and disconnecting
-            // are best-effort cleanup before the owned handle is closed.
+            // SAFETY: handle is a connected server pipe. Disconnecting is best-effort
+            // cleanup. FlushFileBuffers is deliberately not called because it can wait
+            // indefinitely for a client that has stopped reading the response.
             unsafe {
-                let _ = FlushFileBuffers(self.handle);
                 let _ = DisconnectNamedPipe(self.handle);
             }
         }
@@ -145,6 +158,7 @@ impl Drop for PipeConnection {
 pub fn client_exchange(
     request: &[u8],
     max_response_bytes: u32,
+    timeout_ms: u32,
 ) -> Result<Vec<u8>, ProductionSignerTransportError> {
     let pipe_name = wide(ergaxiom_windows_signer_service_identity_runtime::PRODUCTION_PIPE_NAME)?;
     // SAFETY: pipe_name is a live NUL-terminated UTF-16 string. The wait is bounded.
@@ -180,84 +194,216 @@ pub fn client_exchange(
             std::io::Error::last_os_error(),
         ));
     }
-    write_message(handle.raw, request)?;
-    read_message(handle.raw, max_response_bytes)
+    write_message(handle.raw, request, timeout_ms)?;
+    read_message(handle.raw, max_response_bytes, timeout_ms)
 }
 
-fn read_message(handle: HANDLE, max_bytes: u32) -> Result<Vec<u8>, ProductionSignerTransportError> {
+fn read_message(
+    handle: HANDLE,
+    max_bytes: u32,
+    timeout_ms: u32,
+) -> Result<Vec<u8>, ProductionSignerTransportError> {
     if max_bytes == 0 {
         return Err(ProductionSignerTransportError::MessageSizeInvalid);
     }
-    let mut output = Vec::new();
-    loop {
-        let remaining = max_bytes as usize - output.len();
-        if remaining == 0 {
-            return Err(ProductionSignerTransportError::MessageSizeInvalid);
-        }
-        let chunk_len = remaining.min(READ_CHUNK_BYTES);
-        let mut chunk = vec![0_u8; chunk_len];
-        let mut read = 0_u32;
-        // SAFETY: handle is a live synchronous pipe, chunk is writable for chunk_len
-        // bytes, read points to writable result storage, and no OVERLAPPED is used.
-        let success = unsafe {
-            ReadFile(
-                handle,
-                chunk.as_mut_ptr().cast(),
-                chunk_len as u32,
-                &mut read,
-                null_mut(),
-            )
-        };
-        if read > chunk_len as u32 {
-            return Err(ProductionSignerTransportError::IncompleteMessage);
-        }
-        output.extend_from_slice(&chunk[..read as usize]);
-        if output.len() > max_bytes as usize {
-            return Err(ProductionSignerTransportError::MessageSizeInvalid);
-        }
-        if success != 0 {
-            if output.is_empty() {
+    with_io_deadline(timeout_ms, || {
+        let mut output = Vec::new();
+        loop {
+            let remaining = max_bytes as usize - output.len();
+            if remaining == 0 {
+                return Err(ProductionSignerTransportError::MessageSizeInvalid);
+            }
+            let chunk_len = remaining.min(READ_CHUNK_BYTES);
+            let mut chunk = vec![0_u8; chunk_len];
+            let mut read = 0_u32;
+            // SAFETY: handle is a live synchronous pipe, chunk is writable for chunk_len
+            // bytes, read points to writable result storage, and no OVERLAPPED is used.
+            let success = unsafe {
+                ReadFile(
+                    handle,
+                    chunk.as_mut_ptr().cast(),
+                    chunk_len as u32,
+                    &mut read,
+                    null_mut(),
+                )
+            };
+            if read > chunk_len as u32 {
                 return Err(ProductionSignerTransportError::IncompleteMessage);
             }
-            return Ok(output);
+            output.extend_from_slice(&chunk[..read as usize]);
+            if output.len() > max_bytes as usize {
+                return Err(ProductionSignerTransportError::MessageSizeInvalid);
+            }
+            if success != 0 {
+                if output.is_empty() {
+                    return Err(ProductionSignerTransportError::IncompleteMessage);
+                }
+                return Ok(output);
+            }
+            let error = std::io::Error::last_os_error();
+            if error.raw_os_error() != Some(ERROR_MORE_DATA as i32) {
+                return Err(ProductionSignerTransportError::PipeReadFailed(error));
+            }
         }
-        let error = std::io::Error::last_os_error();
-        if error.raw_os_error() != Some(ERROR_MORE_DATA as i32) {
-            return Err(ProductionSignerTransportError::PipeReadFailed(error));
-        }
-    }
+    })
 }
 
-fn write_message(handle: HANDLE, bytes: &[u8]) -> Result<(), ProductionSignerTransportError> {
+fn write_message(
+    handle: HANDLE,
+    bytes: &[u8],
+    timeout_ms: u32,
+) -> Result<(), ProductionSignerTransportError> {
     if bytes.is_empty() || bytes.len() > u32::MAX as usize {
         return Err(ProductionSignerTransportError::MessageSizeInvalid);
     }
-    let mut written_total = 0_usize;
-    while written_total < bytes.len() {
-        let remaining = &bytes[written_total..];
-        let mut written = 0_u32;
-        // SAFETY: handle is a live synchronous pipe, remaining is readable for its
-        // length, written is writable, and no OVERLAPPED structure is used.
-        let success = unsafe {
-            WriteFile(
-                handle,
-                remaining.as_ptr().cast(),
-                remaining.len() as u32,
-                &mut written,
-                null_mut(),
-            )
-        };
-        if success == 0 {
-            return Err(ProductionSignerTransportError::PipeWriteFailed(
+    with_io_deadline(timeout_ms, || {
+        let mut written_total = 0_usize;
+        while written_total < bytes.len() {
+            let remaining = &bytes[written_total..];
+            let mut written = 0_u32;
+            // SAFETY: handle is a live synchronous pipe, remaining is readable for its
+            // length, written is writable, and no OVERLAPPED structure is used.
+            let success = unsafe {
+                WriteFile(
+                    handle,
+                    remaining.as_ptr().cast(),
+                    remaining.len() as u32,
+                    &mut written,
+                    null_mut(),
+                )
+            };
+            if success == 0 {
+                return Err(ProductionSignerTransportError::PipeWriteFailed(
+                    std::io::Error::last_os_error(),
+                ));
+            }
+            if written == 0 || written as usize > remaining.len() {
+                return Err(ProductionSignerTransportError::IncompleteMessage);
+            }
+            written_total += written as usize;
+        }
+        Ok(())
+    })
+}
+
+fn with_io_deadline<T>(
+    timeout_ms: u32,
+    operation: impl FnOnce() -> Result<T, ProductionSignerTransportError>,
+) -> Result<T, ProductionSignerTransportError> {
+    let deadline = SynchronousIoDeadline::start(timeout_ms)?;
+    let result = operation();
+    let timed_out = deadline.finish()?;
+    if timed_out {
+        Err(ProductionSignerTransportError::IoTimedOut)
+    } else {
+        result
+    }
+}
+
+struct SynchronousIoDeadline {
+    completion: OwnedHandle,
+    timed_out: Arc<AtomicBool>,
+    failed: Arc<AtomicBool>,
+    watchdog: JoinHandle<()>,
+}
+
+impl SynchronousIoDeadline {
+    fn start(timeout_ms: u32) -> Result<Self, ProductionSignerTransportError> {
+        if timeout_ms == 0 {
+            return Err(ProductionSignerTransportError::IoTimeoutInvalid);
+        }
+        // SAFETY: no custom security attributes or name are supplied. The returned
+        // manual-reset event is owned by this deadline object.
+        let completion = unsafe { CreateEventW(null(), 1, 0, null()) };
+        if completion.is_null() {
+            return Err(ProductionSignerTransportError::IoDeadlineSetupFailed(
                 std::io::Error::last_os_error(),
             ));
         }
-        if written == 0 || written as usize > remaining.len() {
-            return Err(ProductionSignerTransportError::IncompleteMessage);
-        }
-        written_total += written as usize;
+        let completion = OwnedHandle { raw: completion };
+        let worker_thread = duplicate_current_thread_handle()?;
+        let timed_out = Arc::new(AtomicBool::new(false));
+        let failed = Arc::new(AtomicBool::new(false));
+        let timed_out_worker = Arc::clone(&timed_out);
+        let failed_worker = Arc::clone(&failed);
+        let completion_raw = completion.raw as usize;
+        let worker_thread_raw = worker_thread as usize;
+        let watchdog = thread::spawn(move || {
+            let completion = completion_raw as HANDLE;
+            let worker_thread = worker_thread_raw as HANDLE;
+            // SAFETY: both handles remain valid until this watchdog exits. The event
+            // is signaled by finish(), or the bounded wait expires.
+            let wait = unsafe { WaitForSingleObject(completion, timeout_ms) };
+            if wait == WAIT_TIMEOUT {
+                timed_out_worker.store(true, Ordering::SeqCst);
+                // SAFETY: worker_thread is a real duplicated handle for the thread that
+                // issued the synchronous pipe I/O. Cancellation is best-effort because
+                // the operation may have completed at the deadline boundary.
+                unsafe {
+                    let _ = CancelSynchronousIo(worker_thread);
+                }
+            } else if wait != 0 {
+                failed_worker.store(true, Ordering::SeqCst);
+            }
+            close_handle(worker_thread);
+        });
+        Ok(Self {
+            completion,
+            timed_out,
+            failed,
+            watchdog,
+        })
     }
-    Ok(())
+
+    fn finish(self) -> Result<bool, ProductionSignerTransportError> {
+        let Self {
+            completion,
+            timed_out,
+            failed,
+            watchdog,
+        } = self;
+        // SAFETY: completion is a live event owned by this object and remains valid
+        // until the watchdog has joined.
+        let signal_failed = unsafe { SetEvent(completion.raw) } == 0;
+        if watchdog.join().is_err() {
+            return Err(ProductionSignerTransportError::IoDeadlineWorkerFailed);
+        }
+        if signal_failed {
+            return Err(ProductionSignerTransportError::IoDeadlineSetupFailed(
+                std::io::Error::last_os_error(),
+            ));
+        }
+        if failed.load(Ordering::SeqCst) {
+            return Err(ProductionSignerTransportError::IoDeadlineWorkerFailed);
+        }
+        Ok(timed_out.load(Ordering::SeqCst))
+    }
+}
+
+fn duplicate_current_thread_handle() -> Result<HANDLE, ProductionSignerTransportError> {
+    // SAFETY: the process and thread pseudo-handles are valid in the current process;
+    // the output receives one owned real thread handle for the watchdog.
+    let process = unsafe { GetCurrentProcess() };
+    let thread = unsafe { GetCurrentThread() };
+    let mut duplicate = null_mut();
+    if unsafe {
+        DuplicateHandle(
+            process,
+            thread,
+            process,
+            &mut duplicate,
+            0,
+            0,
+            DUPLICATE_SAME_ACCESS,
+        )
+    } == 0
+        || duplicate.is_null()
+    {
+        return Err(ProductionSignerTransportError::IoDeadlineSetupFailed(
+            std::io::Error::last_os_error(),
+        ));
+    }
+    Ok(duplicate)
 }
 
 fn wide(value: &str) -> Result<Vec<u16>, ProductionSignerTransportError> {
