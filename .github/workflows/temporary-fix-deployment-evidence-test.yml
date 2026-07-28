@@ -1,0 +1,90 @@
+name: One-shot deployment evidence fixture repair
+
+on:
+  push:
+    branches:
+      - agent/tpm-cng-signer-service-v1
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    if: github.actor == 'tayfunates10'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/tpm-cng-signer-service-v1
+          fetch-depth: 0
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - name: Remove invalid cross-algorithm fixture
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('crates/windows-production-deployment-evidence-runtime/tests/evidence_attacks.rs')
+          source = path.read_text()
+          source = source.replace(
+              'fn reviewer_authority_cannot_reuse_trust_governance_or_issuer_keys() {',
+              'fn reviewer_authority_cannot_reuse_trust_governance_keys() {',
+              1,
+          )
+          invalid_block = '''
+
+              let issuer_public = decode_public_key(&fixture.record.public_key_base64url);
+              let issuer_policy = must(DeploymentEvidencePolicy::new(
+                  1,
+                  1,
+                  vec![must(DeploymentEvidenceKeyRecord::new_active(
+                      "reused-issuer-key",
+                      issuer_public,
+                      NOW - 100,
+                      NOW + 1_000,
+                  ))],
+              ));
+              assert!(matches!(
+                  issuer_policy.validate_cryptographic_separation(&fixture.trust_policy, &fixture.accepted,),
+                  Err(DeploymentEvidenceError::AuthorityKeyReuse)
+              ));
+          '''
+          if invalid_block not in source:
+              raise SystemExit('invalid issuer-key fixture block not found')
+          source = source.replace(invalid_block, '', 1)
+          helper = '''
+          fn decode_public_key(value: &str) -> [u8; 32] {
+              let bytes = must(URL_SAFE_NO_PAD.decode(value));
+              let x = &bytes[1..33];
+              x.try_into()
+                  .unwrap_or_else(|_| panic!("P-256 x-coordinate length is invalid"))
+          }
+
+          '''
+          if helper not in source:
+              raise SystemExit('obsolete P-256 coordinate helper not found')
+          source = source.replace(helper, '', 1)
+          path.write_text(source)
+          PY
+      - name: Verify corrected fixture
+        shell: bash
+        run: |
+          cargo fmt --all
+          cargo fmt --all -- --check
+          cargo clippy \
+            -p ergaxiom-windows-production-deployment-evidence-runtime \
+            --all-targets --all-features -- -D warnings
+          cargo test \
+            -p ergaxiom-windows-production-deployment-evidence-runtime \
+            --test evidence_attacks -- --nocapture
+      - name: Commit verified fixture repair and remove workflow
+        shell: bash
+        run: |
+          rm .github/workflows/temporary-fix-deployment-evidence-test.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add crates/windows-production-deployment-evidence-runtime/tests/evidence_attacks.rs .github/workflows/temporary-fix-deployment-evidence-test.yml
+          git commit -m "Correct deployment evidence separation fixture"
+          git push origin HEAD:agent/tpm-cng-signer-service-v1
