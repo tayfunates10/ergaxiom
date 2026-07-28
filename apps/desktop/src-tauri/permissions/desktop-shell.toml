@@ -4,6 +4,11 @@ description = "Allows the main window to read one digest-verified desktop contro
 commands.allow = ["get_desktop_shell_snapshot"]
 
 [[permission]]
+identifier = "allow-get-production-signer-status"
+description = "Allows the main window to read a bounded public production signer startup status without configuration paths or identities."
+commands.allow = ["get_production_signer_status"]
+
+[[permission]]
 identifier = "allow-approve-desktop-job"
 description = "Allows the main window to request a backend-generated approval over the exact displayed digest tuple."
 commands.allow = ["approve_desktop_job"]

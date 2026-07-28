@@ -20,6 +20,29 @@ export type DesktopControlStatus =
   | 'cancelled'
   | 'rolled_back';
 
+export type ProductionSignerStartupPhase =
+  | 'unconfigured'
+  | 'unsupported_platform'
+  | 'configured'
+  | 'rejected';
+
+export interface ProductionSignerStatus {
+  phase: ProductionSignerStartupPhase;
+  code: string;
+  configuration_verified: boolean;
+  pipe_clients_initialized: boolean;
+  production_issuance_enabled: boolean;
+  deployment_id: string | null;
+  backend_id: string | null;
+  manifest_digest: string | null;
+  trust_state_revision: number | null;
+  trust_state_binding_digest: string | null;
+  registry_revision: number | null;
+  registry_digest: string | null;
+  capability_generation: number | null;
+  attestation_generation: number | null;
+}
+
 export type DesktopCommandAction = 'approve' | 'execute' | 'cancel' | 'rollback';
 
 export interface DigestItem {

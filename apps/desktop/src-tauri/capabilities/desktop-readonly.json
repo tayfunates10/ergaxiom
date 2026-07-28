@@ -6,6 +6,7 @@
   "permissions": [
     "core:default",
     "allow-get-desktop-shell-snapshot",
+    "allow-get-production-signer-status",
     "allow-approve-desktop-job",
     "allow-start-desktop-job-execution",
     "allow-cancel-desktop-job",
