@@ -17,6 +17,8 @@ Both values must be absolute paths. They are compiled into the backend binary an
 
 The pin file must be a regular non-symbolic-link file containing exactly one lowercase 64-character SHA-256 digest with no whitespace. The backend performs a bounded stable read and rejects a changed, malformed or substituted pin.
 
+The installer must place the manifest and pin below an administrator-controlled directory. This slice validates path fixation, direct symbolic-link rejection, stable file reads and the complete digest-bound trust chain. It deliberately does not claim an independently audited Windows DACL until the controlled installer/provisioning ceremony is implemented. Production issuance therefore remains disabled even when configuration verification succeeds.
+
 The manifest digest is deliberately stored outside the executable. Embedding the digest inside the executable would create a circular identity dependency because the deployment manifest already binds the final backend executable SHA-256.
 
 ## Startup verification
@@ -59,6 +61,6 @@ The response excludes:
 
 ## Claim boundary
 
-`configured` means that the installed public configuration and current backend image verified and that real pipe client objects were initialized. It does not claim that the Windows service is currently reachable and it does not enable production issuance.
+`configured` means that the installed public configuration and current backend image verified and that real pipe client objects were initialized. It does not claim that the Windows service is currently reachable, independently prove the installer directory DACL or enable production issuance.
 
-The next gate must construct the deployed trust snapshots from an authenticated service exchange, route the exact approved Capability request through the installed service and preserve the deployed trust binding. Until that gate passes, `production_issuance_enabled` remains `false` and the existing local deterministic execution cannot claim production Capability or Acceptance Certificate output.
+The next gate must verify the controlled installation protection, construct the deployed trust snapshots from an authenticated service exchange, route the exact approved Capability request through the installed service and preserve the deployed trust binding. Until that gate passes, `production_issuance_enabled` remains `false` and the existing local deterministic execution cannot claim production Capability or Acceptance Certificate output.
