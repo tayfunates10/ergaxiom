@@ -47,7 +47,7 @@ fn service_account_mutation_fails_even_after_resealing() {
 #[test]
 fn receipt_machine_identity_mutation_without_review_fails_seal() {
     let mut receipt = valid_receipt();
-    receipt.machine_identity_digest = DIGEST_E.to_owned();
+    receipt.machine_identity_digest = DIGEST_A.to_owned();
     assert!(matches!(
         receipt.validate_seal(),
         Err(InstallationEvidenceError::InstallationReceiptDigestMismatch)
