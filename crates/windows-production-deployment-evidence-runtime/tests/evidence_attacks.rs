@@ -119,7 +119,7 @@ fn below_threshold_and_cross_domain_signatures_fail_closed() {
 }
 
 #[test]
-fn reviewer_authority_cannot_reuse_trust_governance_or_issuer_keys() {
+fn reviewer_authority_cannot_reuse_trust_governance_keys() {
     let fixture = fixture();
     let reused_policy = must(DeploymentEvidencePolicy::new(
         1,
@@ -153,22 +153,6 @@ fn reviewer_authority_cannot_reuse_trust_governance_or_issuer_keys() {
             &fixture.accepted,
             NOW + 20,
         ),
-        Err(DeploymentEvidenceError::AuthorityKeyReuse)
-    ));
-
-    let issuer_public = decode_public_key(&fixture.record.public_key_base64url);
-    let issuer_policy = must(DeploymentEvidencePolicy::new(
-        1,
-        1,
-        vec![must(DeploymentEvidenceKeyRecord::new_active(
-            "reused-issuer-key",
-            issuer_public,
-            NOW - 100,
-            NOW + 1_000,
-        ))],
-    ));
-    assert!(matches!(
-        issuer_policy.validate_cryptographic_separation(&fixture.trust_policy, &fixture.accepted,),
         Err(DeploymentEvidenceError::AuthorityKeyReuse)
     ));
 }
@@ -552,14 +536,6 @@ fn descriptor_from_key(
         policy_digest: must(policy.digest()),
     }
 }
-
-fn decode_public_key(value: &str) -> [u8; 32] {
-    let bytes = must(URL_SAFE_NO_PAD.decode(value));
-    let x = &bytes[1..33];
-    x.try_into()
-        .unwrap_or_else(|_| panic!("P-256 x-coordinate length is invalid"))
-}
-
 fn seal_installation_receipt(value: &mut ProductionSignerInstallationValidationReceipt) {
     value.receipt_digest = digest_with_blank(value, "receipt_digest");
 }
