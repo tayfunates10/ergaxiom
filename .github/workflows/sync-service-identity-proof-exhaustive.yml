@@ -1,6 +1,9 @@
 name: Sync exhaustive service identity proof
 
 on:
+  push:
+    branches:
+      - agent/tauri-service-identity-proof-v1
   pull_request:
     paths:
       - "crates/windows-production-trust-state-runtime/**"
