@@ -1,3 +1,5 @@
+include!("deployment.rs");
+
 use ergaxiom_attestation_issuance_runtime::{
     AttestationCertificateDraft, ProductionAttestationSignerTransport,
 };
