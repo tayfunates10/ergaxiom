@@ -7,7 +7,7 @@ on:
       - ".github/workflows/address-pr61-review.yml"
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   repair:
@@ -228,12 +228,14 @@ jobs:
       - name: Fail when Clippy failed
         shell: bash
         run: test "$(cat pr61-clippy-diagnostics.status)" = "0"
-      - name: Package verified repaired sources
+      - name: Commit verified non-workflow repairs
         shell: bash
         run: |
-          tar -czf /tmp/pr61-repaired-sources.tar.gz \
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add \
             Cargo.lock \
-            .github/workflows/deployment-evidence-canonicalize-tests.yml \
             crates/windows-production-signer-transport-runtime/Cargo.toml \
             crates/windows-production-signer-transport-runtime/src/lib.rs \
             crates/windows-production-trust-state-runtime/src/service.rs \
@@ -244,10 +246,5 @@ jobs:
             crates/windows-production-signer-host-runtime/src/tests.rs \
             crates/windows-production-trust-state-runtime/tests/deployed_service.rs \
             crates/windows-production-trust-state-runtime/tests/model_store.rs
-      - name: Upload verified repaired sources
-        uses: actions/upload-artifact@v4
-        with:
-          name: pr61-repaired-sources
-          retention-days: 7
-          if-no-files-found: error
-          path: /tmp/pr61-repaired-sources.tar.gz
+          git commit -m "Address production signer review findings"
+          git push origin HEAD:${{ github.event.pull_request.head.ref }}
