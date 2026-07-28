@@ -31,30 +31,36 @@ jobs:
       - name: Remove denied expect calls
         shell: python
         run: |
+          import re
           from pathlib import Path
+
           path = Path("crates/windows-production-signer-host-runtime/src/protected_path.rs")
           text = path.read_text()
-          text = text.replace(
-              '''            validate_sddl("O:BAD:P(A;;FA;;;SY)(A;;FA;;;BA)(A;;FR;;;BU)")
-                  .expect("protected administrator descriptor must pass");''',
-              '''            assert!(
+          text, first = re.subn(
+              r'\s*validate_sddl\("O:BAD:P\(A;;FA;;;SY\)\(A;;FA;;;BA\)\(A;;FR;;;BU\)"\)\s*\.expect\("protected administrator descriptor must pass"\);',
+              '''
+              assert!(
                   validate_sddl("O:BAD:P(A;;FA;;;SY)(A;;FA;;;BA)(A;;FR;;;BU)").is_ok(),
                   "protected administrator descriptor must pass"
               );''',
-              1,
+              text,
+              count=1,
           )
-          text = text.replace(
-              '''            validate_sddl("O:BAD:P(D;;FW;;;BU)(A;;FA;;;SY)(A;;FA;;;BA)(A;;FR;;;BU)")
-                  .expect("deny ACE must not weaken the administrator boundary");''',
-              '''            assert!(
+          text, second = re.subn(
+              r'\s*validate_sddl\("O:BAD:P\(D;;FW;;;BU\)\(A;;FA;;;SY\)\(A;;FA;;;BA\)\(A;;FR;;;BU\)"\)\s*\.expect\("deny ACE must not weaken the administrator boundary"\);',
+              '''
+              assert!(
                   validate_sddl(
                       "O:BAD:P(D;;FW;;;BU)(A;;FA;;;SY)(A;;FA;;;BA)(A;;FR;;;BU)"
                   )
                   .is_ok(),
                   "deny ACE must not weaken the administrator boundary"
               );''',
-              1,
+              text,
+              count=1,
           )
+          if first != 1 or second != 1:
+              raise SystemExit(f"expected two ACL test rewrites, got first={first}, second={second}")
           path.write_text(text)
 
       - name: Validate ACL tests
