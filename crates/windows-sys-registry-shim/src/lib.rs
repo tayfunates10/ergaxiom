@@ -28,6 +28,7 @@ pub mod Win32 {
             /// the native `RegGetValueW` lifetime, alignment, readability and writability
             /// requirements for the requested operation. `data_size` must point to writable
             /// storage and any provided output buffer must remain valid for the full call.
+            #[cfg(windows)]
             #[allow(clippy::too_many_arguments)]
             pub unsafe fn RegGetValueW(
                 hkey: *mut core::ffi::c_void,
