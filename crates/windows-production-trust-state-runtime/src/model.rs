@@ -821,6 +821,26 @@ impl ProductionTrustRecoveryEnvelope {
         governance_policy: &TrustGovernancePolicy,
         trusted_now_epoch_s: u64,
     ) -> Result<(), ProductionTrustStateError> {
+        self.verify_internal(governance_policy, trusted_now_epoch_s, true)
+    }
+
+    pub fn verify_persisted(
+        &self,
+        governance_policy: &TrustGovernancePolicy,
+    ) -> Result<(), ProductionTrustStateError> {
+        self.verify_internal(
+            governance_policy,
+            self.body.expires_at_epoch_s.saturating_sub(1),
+            false,
+        )
+    }
+
+    fn verify_internal(
+        &self,
+        governance_policy: &TrustGovernancePolicy,
+        verification_epoch_s: u64,
+        enforce_expiry: bool,
+    ) -> Result<(), ProductionTrustStateError> {
         if self.schema_version != PRODUCTION_TRUST_RECOVERY_ENVELOPE_SCHEMA {
             return Err(ProductionTrustStateError::UnsupportedRecoveryEnvelopeSchema);
         }
@@ -829,13 +849,13 @@ impl ProductionTrustRecoveryEnvelope {
         if self.governance_policy_digest != governance_policy.policy_digest {
             return Err(ProductionTrustStateError::GovernancePolicyDigestMismatch);
         }
-        if trusted_now_epoch_s >= self.body.expires_at_epoch_s {
+        if enforce_expiry && verification_epoch_s >= self.body.expires_at_epoch_s {
             return Err(ProductionTrustStateError::RecoveryExpired);
         }
         governance_policy.verify_signatures(
             TRUST_RECOVERY_SIGNATURE_DOMAIN,
             &self.body.body_digest,
-            trusted_now_epoch_s,
+            verification_epoch_s,
             &self.signatures,
         )?;
         if self.envelope_digest != self.expected_digest()? {

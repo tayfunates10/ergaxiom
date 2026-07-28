@@ -3,18 +3,26 @@
 #[cfg(windows)]
 mod windows;
 
-use ergaxiom_windows_production_signer_protocol_runtime::ProductionSignerRequest;
+use ergaxiom_proof_kernel::{HashingError, canonical_json_sha256};
+use ergaxiom_windows_production_signer_protocol_runtime::{
+    ProductionSignerRequest, ProductionSignerResponse,
+};
 use ergaxiom_windows_production_signer_runtime::AuthenticatedCallerIdentity;
 use ergaxiom_windows_production_signer_service_runtime::AuthorizedProductionSignerPackage;
+use ergaxiom_windows_production_trust_state_runtime::{
+    DeployedAuthorizedProductionSignerPackage, DeployedProductionSignerError,
+};
 use ergaxiom_windows_signer_service_identity_runtime::{
     NamedPipeSecurityContract, SignerIdentityError,
 };
-use serde::{Serialize, de::DeserializeOwned};
+use serde::{Deserialize, Serialize, de::DeserializeOwned};
+use serde_json::Value;
 use thiserror::Error;
 
 pub const CLIENT_PIPE_RIGHTS: u32 = 0x0012_0183;
 pub const PIPE_CONNECT_TIMEOUT_MS: u32 = 5_000;
 pub const PIPE_IO_TIMEOUT_MS: u32 = 5_000;
+pub const PRODUCTION_SIGNER_HOST_RESPONSE_SCHEMA: &str = "0.1.0";
 
 pub fn production_pipe_sddl(
     contract: &NamedPipeSecurityContract,
@@ -162,6 +170,128 @@ impl ProductionSignerPipeServer {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "status", rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum ProductionSignerHostResponse {
+    Success {
+        schema_version: String,
+        package: Box<DeployedAuthorizedProductionSignerPackage>,
+        response_digest: String,
+    },
+    Rejected {
+        schema_version: String,
+        request_id: Option<String>,
+        code: String,
+        response_digest: String,
+    },
+}
+
+impl ProductionSignerHostResponse {
+    pub fn success(
+        package: DeployedAuthorizedProductionSignerPackage,
+    ) -> Result<Self, ProductionSignerTransportError> {
+        package.validate_seal()?;
+        let mut response = Self::Success {
+            schema_version: PRODUCTION_SIGNER_HOST_RESPONSE_SCHEMA.to_owned(),
+            package: Box::new(package),
+            response_digest: String::new(),
+        };
+        response.set_digest()?;
+        Ok(response)
+    }
+
+    pub fn rejected(
+        request_id: Option<String>,
+        code: impl Into<String>,
+    ) -> Result<Self, ProductionSignerTransportError> {
+        let mut response = Self::Rejected {
+            schema_version: PRODUCTION_SIGNER_HOST_RESPONSE_SCHEMA.to_owned(),
+            request_id,
+            code: code.into(),
+            response_digest: String::new(),
+        };
+        response.set_digest()?;
+        Ok(response)
+    }
+
+    pub fn validate_seal(&self) -> Result<(), ProductionSignerTransportError> {
+        let (schema_version, response_digest) = match self {
+            Self::Success {
+                schema_version,
+                response_digest,
+                ..
+            }
+            | Self::Rejected {
+                schema_version,
+                response_digest,
+                ..
+            } => (schema_version, response_digest),
+        };
+        if schema_version != PRODUCTION_SIGNER_HOST_RESPONSE_SCHEMA {
+            return Err(ProductionSignerTransportError::UnsupportedHostResponseSchema);
+        }
+        if response_digest != &self.expected_digest()? {
+            return Err(ProductionSignerTransportError::HostResponseDigestMismatch);
+        }
+        Ok(())
+    }
+
+    pub fn into_deployed_package(
+        self,
+        expected_request_id: &str,
+    ) -> Result<DeployedAuthorizedProductionSignerPackage, ProductionSignerTransportError> {
+        self.validate_seal()?;
+        match self {
+            Self::Success { package, .. } => {
+                package.validate_seal()?;
+                let actual_request_id = match &package.signer_package.signer_response {
+                    ProductionSignerResponse::Success { request_id, .. } => {
+                        Some(request_id.as_str())
+                    }
+                    ProductionSignerResponse::Error { request_id, .. } => request_id.as_deref(),
+                };
+                if actual_request_id != Some(expected_request_id) {
+                    return Err(ProductionSignerTransportError::HostResponseRequestIdMismatch);
+                }
+                Ok(*package)
+            }
+            Self::Rejected {
+                request_id, code, ..
+            } => {
+                if request_id
+                    .as_deref()
+                    .is_some_and(|request_id| request_id != expected_request_id)
+                {
+                    return Err(ProductionSignerTransportError::HostResponseRequestIdMismatch);
+                }
+                Err(ProductionSignerTransportError::HostRejected { request_id, code })
+            }
+        }
+    }
+
+    fn set_digest(&mut self) -> Result<(), ProductionSignerTransportError> {
+        let digest = self.expected_digest()?;
+        match self {
+            Self::Success {
+                response_digest, ..
+            }
+            | Self::Rejected {
+                response_digest, ..
+            } => *response_digest = digest,
+        }
+        self.validate_seal()
+    }
+
+    fn expected_digest(&self) -> Result<String, ProductionSignerTransportError> {
+        let mut value = serde_json::to_value(self)?;
+        let object = value
+            .as_object_mut()
+            .ok_or(ProductionSignerTransportError::InvalidHostResponseObject)?;
+        object.insert("response_digest".to_owned(), Value::String(String::new()));
+        Ok(canonical_json_sha256(&value)?)
+    }
+}
+
 #[derive(Debug, Clone, Copy, Default)]
 pub struct ProductionSignerPipeClient;
 
@@ -170,7 +300,27 @@ impl ProductionSignerPipeClient {
         &self,
         request: &ProductionSignerRequest,
     ) -> Result<AuthorizedProductionSignerPackage, ProductionSignerTransportError> {
-        self.exchange(request, 64 * 1024, 128 * 1024)
+        let deployed = self.invoke_deployed(request)?;
+        deployed.validate_seal()?;
+        Ok(deployed.signer_package)
+    }
+
+    pub fn invoke_deployed(
+        &self,
+        request: &ProductionSignerRequest,
+    ) -> Result<DeployedAuthorizedProductionSignerPackage, ProductionSignerTransportError> {
+        let response: ProductionSignerHostResponse =
+            self.exchange(request, 64 * 1024, 128 * 1024)?;
+        response.into_deployed_package(&request.request_id)
+    }
+
+    pub fn decode_host_response(
+        &self,
+        bytes: &[u8],
+        expected_request_id: &str,
+    ) -> Result<DeployedAuthorizedProductionSignerPackage, ProductionSignerTransportError> {
+        let response: ProductionSignerHostResponse = serde_json::from_slice(bytes)?;
+        response.into_deployed_package(expected_request_id)
     }
 
     pub fn exchange<Request, Response>(
@@ -251,8 +401,25 @@ pub enum ProductionSignerTransportError {
     PipeWriteFailed(#[source] std::io::Error),
     #[error("production signer named-pipe message is incomplete")]
     IncompleteMessage,
+    #[error("production signer host response schema is unsupported")]
+    UnsupportedHostResponseSchema,
+    #[error("production signer host response digest does not match")]
+    HostResponseDigestMismatch,
+    #[error("production signer host response request identity does not match")]
+    HostResponseRequestIdMismatch,
+    #[error("production signer host response canonical object is invalid")]
+    InvalidHostResponseObject,
+    #[error("production signer host rejected request {request_id:?} with code {code}")]
+    HostRejected {
+        request_id: Option<String>,
+        code: String,
+    },
     #[error("production signer named-pipe JSON failed: {0}")]
     Json(#[from] serde_json::Error),
+    #[error(transparent)]
+    Hashing(#[from] HashingError),
+    #[error(transparent)]
+    Deployed(#[from] DeployedProductionSignerError),
     #[error(transparent)]
     Identity(#[from] SignerIdentityError),
 }

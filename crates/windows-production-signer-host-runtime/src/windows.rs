@@ -303,7 +303,12 @@ fn service_worker() -> Result<(), ProductionSignerHostError> {
         if STOP_REQUESTED.load(Ordering::SeqCst) {
             break;
         }
-        host.serve_connection(&mut connection, trusted_now_epoch_s()?)?;
+        let result = host.serve_connection(&mut connection, trusted_now_epoch_s()?);
+        match result {
+            Ok(()) => {}
+            Err(error) if is_recoverable_connection_error(&error) => continue,
+            Err(error) => return Err(error),
+        }
     }
     unsafe {
         let _ = SetEvent(stop_event.raw);
@@ -311,6 +316,10 @@ fn service_worker() -> Result<(), ProductionSignerHostError> {
     let _ = waker.join();
     STOP_EVENT_HANDLE_VALUE.store(0, Ordering::SeqCst);
     Ok(())
+}
+
+fn is_recoverable_connection_error(error: &ProductionSignerHostError) -> bool {
+    matches!(error, ProductionSignerHostError::Transport(_))
 }
 
 fn configure_service(service: &ServiceHandle) -> Result<(), ProductionSignerHostError> {

@@ -19,8 +19,8 @@ use ergaxiom_windows_production_signer_service_runtime::{
 use ergaxiom_windows_production_trust_state_runtime::{
     DeployedProductionSignerError, OfflineBootstrapExpectation, ProductionSignerDeploymentPolicy,
     ProductionTrustStateActivator, ProductionTrustStateBody, ProductionTrustStateEnvelope,
-    TrustBoundProductionSignerService, TrustGovernanceKeyRecord, TrustGovernancePolicy,
-    TrustGovernanceSignature, trust_state_signature_message,
+    ProductionTrustStateError, TrustBoundProductionSignerService, TrustGovernanceKeyRecord,
+    TrustGovernancePolicy, TrustGovernanceSignature, trust_state_signature_message,
 };
 use ergaxiom_windows_signer_service_identity_runtime::{
     AllowedSignerCaller, SignerCallerAllowlist,
@@ -176,6 +176,30 @@ fn deployed_service_selects_generation_two_and_hardware_signature_binds_exact_tr
         envelope.binding.trust_state_binding_digest.as_deref(),
         Some(fixture.accepted.binding().binding_digest.as_str())
     );
+    Ok(())
+}
+
+#[test]
+fn deployed_service_rejects_requests_after_accepted_state_expires() -> Result<(), Box<dyn Error>> {
+    let fixture = Fixture::build(GenerationBackend::production()?)?;
+    let selected_generation = fixture.selected_generation.clone();
+    let mut deployed = TrustBoundProductionSignerService::new(
+        fixture.service,
+        fixture.accepted,
+        fixture.deployment_policy,
+    )?;
+    let request = ProductionSignerRequest::sign_digest(
+        "deployed-request-expired",
+        &ProductionKeyPolicy::capability(),
+        PAYLOAD_DIGEST,
+    )?;
+    assert!(matches!(
+        deployed.handle_authenticated(&request, &fixture.caller, ACTIVATION + 1_000,),
+        Err(DeployedProductionSignerError::TrustState(
+            ProductionTrustStateError::TrustStateOutsideValidityWindow,
+        ))
+    ));
+    assert_eq!(selected_generation.get(), 0);
     Ok(())
 }
 

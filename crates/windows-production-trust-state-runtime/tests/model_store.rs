@@ -293,6 +293,54 @@ fn recovery_is_separate_replay_protected_and_cannot_reactivate_revoked_keys()
 }
 
 #[test]
+fn persisted_recovery_remains_loadable_after_authorization_expiry() -> Result<(), Box<dyn Error>> {
+    let governance = GovernanceFixture::threshold_two()?;
+    let registry = initial_registry()?;
+    let state_one =
+        governance.state_envelope(state_body(1, None, registry.snapshot(), 1, 1, 1)?)?;
+    let expectation = OfflineBootstrapExpectation::new(
+        "ergaxiom-production-a",
+        state_one.envelope_digest.clone(),
+        governance.policy.policy_digest.clone(),
+    )?;
+    let mut activator = ProductionTrustStateActivator::default();
+    activator.bootstrap(&state_one, &governance.policy, &expectation, ACTIVATION)?;
+
+    let replacement = governance.state_envelope(state_body(
+        2,
+        Some(state_one.body.body_digest.clone()),
+        registry.snapshot(),
+        2,
+        2,
+        1,
+    )?)?;
+    let recovery = governance.recovery_envelope(ProductionTrustRecoveryBody::new(
+        "ergaxiom-production-a",
+        "offline-recovery-v1",
+        state_one.body.body_digest.clone(),
+        replacement.body.body_digest.clone(),
+        DIGEST_B,
+        1,
+        1,
+        2,
+        ACTIVATION + 30,
+    )?)?;
+    let recovered =
+        activator.recover(&replacement, &recovery, &governance.policy, ACTIVATION + 20)?;
+
+    let root = unique_temp_directory("trust-store-recovery-expiry")?;
+    let store = ProductionTrustStateStore::new(root.clone())?;
+    store.initialize_protected()?;
+    store.persist_activated(&recovered)?;
+    let loaded = store.load_accepted(&governance.policy, ACTIVATION + 40)?;
+    assert_eq!(loaded.checkpoint.revision, 2);
+    assert_eq!(loaded.checkpoint.last_recovery_sequence, 1);
+    assert!(loaded.recovery.is_some());
+    fs::remove_dir_all(root)?;
+    Ok(())
+}
+
+#[test]
 fn immutable_state_plus_atomic_pointer_preserves_previous_acceptance_on_pre_activation_crash()
 -> Result<(), Box<dyn Error>> {
     let governance = GovernanceFixture::threshold_two()?;

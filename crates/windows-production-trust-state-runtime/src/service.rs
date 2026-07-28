@@ -1,7 +1,7 @@
 use ergaxiom_proof_kernel::canonical_json_sha256;
 use ergaxiom_windows_production_key_governance_runtime::ProductionKeyStatus;
 use ergaxiom_windows_production_signer_protocol_runtime::{
-    ProductionSignerEnvelope, ProductionSignerRequest,
+    ProductionSignerEnvelope, ProductionSignerRequest, ProductionSignerResponse,
 };
 use ergaxiom_windows_production_signer_runtime::{
     AuthenticatedCallerIdentity, HardwareKeyDescriptor, ProductionKeyIdentity, ProductionKeyPolicy,
@@ -214,7 +214,36 @@ impl DeployedAuthorizedProductionSignerPackage {
             package_digest: String::new(),
         };
         package.package_digest = package.expected_digest()?;
+        package.validate_seal()?;
         Ok(package)
+    }
+
+    pub fn validate_seal(&self) -> Result<(), DeployedProductionSignerError> {
+        if self.schema_version != DEPLOYED_PRODUCTION_SIGNER_PACKAGE_SCHEMA {
+            return Err(DeployedProductionSignerError::UnsupportedDeployedPackageSchema);
+        }
+        self.trust_state.validate_seal()?;
+        self.signer_service_identity.validate_seal()?;
+        if self.key_generation == 0 {
+            return Err(DeployedProductionSignerError::KeyGenerationMismatch);
+        }
+        let ProductionSignerResponse::Success { result, .. } = &self.signer_package.signer_response
+        else {
+            return Err(DeployedProductionSignerError::SignedTrustStateBindingMismatch);
+        };
+        if result
+            .envelope
+            .binding
+            .trust_state_binding_digest
+            .as_deref()
+            != Some(self.trust_state.binding_digest.as_str())
+        {
+            return Err(DeployedProductionSignerError::SignedTrustStateBindingMismatch);
+        }
+        if self.package_digest != self.expected_digest()? {
+            return Err(DeployedProductionSignerError::DeployedPackageDigestMismatch);
+        }
+        Ok(())
     }
 
     pub fn verify_deployed(
@@ -225,11 +254,7 @@ impl DeployedAuthorizedProductionSignerPackage {
         governed_trust: &GovernedProductionSignerTrustSnapshot,
         signed_at_epoch_s: u64,
     ) -> Result<ProductionSignerEnvelope, DeployedProductionSignerError> {
-        if self.schema_version != DEPLOYED_PRODUCTION_SIGNER_PACKAGE_SCHEMA {
-            return Err(DeployedProductionSignerError::UnsupportedDeployedPackageSchema);
-        }
-        self.trust_state.validate_seal()?;
-        self.signer_service_identity.validate_seal()?;
+        self.validate_seal()?;
         deployment_policy.validate_seal()?;
         if self.trust_state != *accepted.binding() {
             return Err(DeployedProductionSignerError::TrustStateDivergence);
@@ -322,6 +347,14 @@ where
         caller: &AuthenticatedCallerIdentity,
         trusted_now_epoch_s: u64,
     ) -> Result<DeployedAuthorizedProductionSignerPackage, DeployedProductionSignerError> {
+        let body = self.accepted.body();
+        if trusted_now_epoch_s < body.not_before_epoch_s
+            || trusted_now_epoch_s >= body.not_after_epoch_s
+        {
+            return Err(DeployedProductionSignerError::TrustState(
+                ProductionTrustStateError::TrustStateOutsideValidityWindow,
+            ));
+        }
         if !self.deployment_policy.permits(&request.identity) {
             return Err(DeployedProductionSignerError::IdentityNotEnabled);
         }
