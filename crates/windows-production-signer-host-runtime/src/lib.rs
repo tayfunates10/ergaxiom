@@ -30,10 +30,14 @@ use ergaxiom_windows_production_signer_service_runtime::{
 use ergaxiom_windows_production_signer_transport_runtime::{
     AuthenticatedPipeConnection, ProductionSignerTransportError,
 };
+pub use ergaxiom_windows_production_signer_transport_runtime::{
+    PRODUCTION_SIGNER_HOST_RESPONSE_SCHEMA, ProductionSignerHostResponse,
+    ProductionSignerPipeClient,
+};
 use ergaxiom_windows_production_trust_state_runtime::{
-    DeployedAuthorizedProductionSignerPackage, DeployedProductionSignerError,
-    ProductionSignerDeploymentPolicy, ProductionTrustStateStore, ProductionTrustStoreError,
-    TrustBoundProductionSignerService, TrustGovernancePolicy, VerifiedProductionTrustState,
+    DeployedProductionSignerError, ProductionSignerDeploymentPolicy, ProductionTrustStateStore,
+    ProductionTrustStoreError, TrustBoundProductionSignerService, TrustGovernancePolicy,
+    VerifiedProductionTrustState,
 };
 use ergaxiom_windows_signer_service_identity_runtime::{
     NamedPipeSecurityContract, SignerCallerAllowlist, SignerIdentityError,
@@ -44,7 +48,6 @@ use sha2::{Digest, Sha256};
 use thiserror::Error;
 
 pub const PRODUCTION_SIGNER_SERVICE_MANIFEST_SCHEMA: &str = "0.1.0";
-pub const PRODUCTION_SIGNER_HOST_RESPONSE_SCHEMA: &str = "0.1.0";
 pub const PRODUCTION_SIGNER_SERVICE_NAME: &str = "ErgaxiomProductionSigner";
 pub const PRODUCTION_SIGNER_SERVICE_DISPLAY_NAME: &str = "Ergaxiom Production Signer";
 pub const PRODUCTION_SIGNER_SERVICE_ACCOUNT: &str = "LocalSystem";
@@ -502,91 +505,6 @@ impl PreparedProductionSignerHost {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(tag = "status", rename_all = "SCREAMING_SNAKE_CASE")]
-pub enum ProductionSignerHostResponse {
-    Success {
-        schema_version: String,
-        package: Box<DeployedAuthorizedProductionSignerPackage>,
-        response_digest: String,
-    },
-    Rejected {
-        schema_version: String,
-        request_id: Option<String>,
-        code: String,
-        response_digest: String,
-    },
-}
-
-impl ProductionSignerHostResponse {
-    pub fn success(
-        package: DeployedAuthorizedProductionSignerPackage,
-    ) -> Result<Self, ProductionSignerHostError> {
-        let mut response = Self::Success {
-            schema_version: PRODUCTION_SIGNER_HOST_RESPONSE_SCHEMA.to_owned(),
-            package: Box::new(package),
-            response_digest: String::new(),
-        };
-        response.set_digest()?;
-        Ok(response)
-    }
-
-    pub fn rejected(
-        request_id: Option<String>,
-        code: impl Into<String>,
-    ) -> Result<Self, ProductionSignerHostError> {
-        let mut response = Self::Rejected {
-            schema_version: PRODUCTION_SIGNER_HOST_RESPONSE_SCHEMA.to_owned(),
-            request_id,
-            code: code.into(),
-            response_digest: String::new(),
-        };
-        response.set_digest()?;
-        Ok(response)
-    }
-
-    pub fn validate_seal(&self) -> Result<(), ProductionSignerHostError> {
-        match self {
-            Self::Success {
-                schema_version,
-                response_digest,
-                ..
-            }
-            | Self::Rejected {
-                schema_version,
-                response_digest,
-                ..
-            } => {
-                if schema_version != PRODUCTION_SIGNER_HOST_RESPONSE_SCHEMA {
-                    return Err(ProductionSignerHostError::UnsupportedResponseSchema);
-                }
-                validate_sha256(response_digest)?;
-                if response_digest != &self.expected_digest()? {
-                    return Err(ProductionSignerHostError::ResponseDigestMismatch);
-                }
-            }
-        }
-        Ok(())
-    }
-
-    fn set_digest(&mut self) -> Result<(), ProductionSignerHostError> {
-        let digest = self.expected_digest()?;
-        match self {
-            Self::Success {
-                response_digest, ..
-            }
-            | Self::Rejected {
-                response_digest, ..
-            } => *response_digest = digest,
-        }
-        self.validate_seal()
-    }
-
-    fn expected_digest(&self) -> Result<String, ProductionSignerHostError> {
-        digest_with_blank_field(self, "response_digest")
-    }
-}
-
 #[cfg(windows)]
 pub use windows::{
     install_service, run_service_dispatcher, uninstall_service, validate_installed_service,
@@ -825,12 +743,8 @@ pub enum ProductionSignerHostError {
     UnsupportedPlatform,
     #[error("production signer service manifest schema is unsupported")]
     UnsupportedManifestSchema,
-    #[error("production signer host response schema is unsupported")]
-    UnsupportedResponseSchema,
     #[error("production signer service manifest digest does not match")]
     ManifestDigestMismatch,
-    #[error("production signer host response digest does not match")]
-    ResponseDigestMismatch,
     #[error("production signer service hardening policy was weakened")]
     ServiceHardeningWeakened,
     #[error("production signer service manifest revision is invalid")]

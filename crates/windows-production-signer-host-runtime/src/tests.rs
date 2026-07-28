@@ -137,10 +137,34 @@ fn manifest_write_is_create_new_and_response_is_sealed() -> Result<(), Box<dyn E
     }
     assert!(matches!(
         rejected.validate_seal(),
-        Err(ProductionSignerHostError::ResponseDigestMismatch)
+        Err(ProductionSignerTransportError::HostResponseDigestMismatch)
     ));
     fs::remove_dir_all(root)?;
     Ok(())
+}
+
+#[test]
+fn rejected_host_response_uses_the_client_wire_contract() -> Result<(), Box<dyn Error>> {
+    let response =
+        ProductionSignerHostResponse::rejected(Some("request-1".to_owned()), "SIGNING_REJECTED")?;
+    let bytes = serde_json::to_vec(&response)?;
+    assert!(matches!(
+        ProductionSignerPipeClient.decode_host_response(&bytes, "request-1"),
+        Err(ProductionSignerTransportError::HostRejected { code, .. })
+            if code == "SIGNING_REJECTED"
+    ));
+    Ok(())
+}
+
+#[cfg(windows)]
+#[test]
+fn transport_failures_are_scoped_to_one_connection() {
+    assert!(crate::windows::is_recoverable_connection_error(
+        &ProductionSignerHostError::Transport(ProductionSignerTransportError::MessageSizeInvalid,),
+    ));
+    assert!(!crate::windows::is_recoverable_connection_error(
+        &ProductionSignerHostError::ServiceHardeningWeakened,
+    ));
 }
 
 #[cfg(not(windows))]

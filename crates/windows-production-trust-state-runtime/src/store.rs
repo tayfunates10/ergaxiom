@@ -225,7 +225,13 @@ impl ProductionTrustStateStore {
                 if recovery.envelope_digest != digest {
                     return Err(ProductionTrustStoreError::RecoveryFileDigestMismatch);
                 }
-                recovery.verify(governance_policy, trusted_now_epoch_s)?;
+                recovery.verify_persisted(governance_policy)?;
+                if recovery.body.deployment_id != checkpoint.deployment_id
+                    || recovery.body.replacement_state_digest != checkpoint.state_digest
+                    || recovery.body.recovery_sequence != checkpoint.last_recovery_sequence
+                {
+                    return Err(ProductionTrustStoreError::RecoveryFileStateMismatch);
+                }
                 Some(recovery)
             }
             None => None,
@@ -464,6 +470,8 @@ pub enum ProductionTrustStoreError {
     CheckpointEnvelopeMismatch,
     #[error("production trust recovery file digest does not match")]
     RecoveryFileDigestMismatch,
+    #[error("production trust recovery file does not match the accepted checkpoint")]
+    RecoveryFileStateMismatch,
     #[error("production trust store canonical object is invalid")]
     InvalidCanonicalObject,
     #[error("production trust store Windows security operation failed: {0}")]
