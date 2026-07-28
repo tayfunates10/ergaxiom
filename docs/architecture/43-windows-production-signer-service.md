@@ -81,7 +81,11 @@ Any failure before step 14 prevents the service from reporting a running state. 
 
 Each connection is processed through the existing protected message-mode named-pipe boundary. Caller identity is derived from the connected pipe, authorization and replay are consumed before CNG signing, and responses expose only a sealed deployed package or a generic rejection code.
 
-Stop, shutdown and preshutdown controls set a process-wide stop state and wake a blocked named-pipe accept with a local connection. The service then exits the request loop and reports the stopped state.
+Every complete request read, response write and client exchange is bounded by a fixed five-second synchronous-I/O deadline. A watchdog owns a duplicated handle for the worker thread and invokes `CancelSynchronousIo` if an accepted client connects but does not complete the operation. The resulting cancellation is normalized to a public transport timeout, the active connection is disconnected, and the single protected pipe instance becomes available again.
+
+A completed malformed message is rejected immediately as invalid JSON rather than being treated as an incomplete transport operation. Connection cleanup deliberately does not call `FlushFileBuffers`, because that API can wait for a client that has stopped reading a response; cleanup disconnects and closes the owned pipe handle instead.
+
+Stop, shutdown and preshutdown controls set a process-wide stop state and wake a blocked named-pipe accept with a local connection. A worker blocked on accepted-client I/O is released by the bounded deadline, after which the service exits the request loop and reports the stopped state within the SCM preshutdown boundary.
 
 ## Attack coverage
 
@@ -96,6 +100,10 @@ Permanent tests cover:
 - create-new manifest overwrite attempts,
 - response seal mutation,
 - current executable path and digest binding,
+- an accepted client that connects and sends no request bytes,
+- immediate rejection of a completed malformed message,
+- connection cleanup while the client deliberately does not read the response,
+- successful protected-pipe rebinding after timeout or rejection,
 - Windows SCM FFI compilation,
 - Windows service executable release compilation, and
 - all existing production signer, trust-state, generation, Capability and Attestation attacks.
