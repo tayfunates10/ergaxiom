@@ -8,8 +8,7 @@ use ergaxiom_backend_issuance_runtime::{
 use ergaxiom_windows_production_signer_host_runtime::ProductionSignerPipeClient;
 use serde::Serialize;
 
-const MANIFEST_PATH: Option<&str> =
-    option_env!("ERGAXIOM_BACKEND_PRODUCTION_MANIFEST_PATH");
+const MANIFEST_PATH: Option<&str> = option_env!("ERGAXIOM_BACKEND_PRODUCTION_MANIFEST_PATH");
 const MANIFEST_PIN_PATH: Option<&str> =
     option_env!("ERGAXIOM_BACKEND_PRODUCTION_MANIFEST_PIN_PATH");
 const SHA256_HEX_BYTES: u64 = 64;
@@ -227,7 +226,7 @@ fn read_stable_manifest_pin(path: &Path) -> Result<String, ()> {
         || bytes.len() as u64 != SHA256_HEX_BYTES
         || !bytes
             .iter()
-            .all(|byte| byte.is_ascii_digit() || matches!(byte, b'a'..=b'f'))
+            .all(|byte| byte.is_ascii_digit() || matches!(*byte, b'a'..=b'f'))
     {
         return Err(());
     }
