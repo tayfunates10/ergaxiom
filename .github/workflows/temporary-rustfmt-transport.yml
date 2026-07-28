@@ -20,11 +20,15 @@ jobs:
       - name: Format workspace
         run: cargo fmt --all
       - name: Check Windows transport target
-        run: >-
-          cargo check
-          --target x86_64-pc-windows-msvc
-          -p ergaxiom-windows-production-signer-transport-runtime
-          --all-targets
+        shell: bash
+        run: |
+          set +e
+          cargo check \
+            --target x86_64-pc-windows-msvc \
+            -p ergaxiom-windows-production-signer-transport-runtime \
+            --all-targets 2>&1 | tee transport-compile.log
+          status=${PIPESTATUS[0]}
+          exit "$status"
       - name: Upload formatted transport sources
         if: always()
         uses: actions/upload-artifact@v4
@@ -33,6 +37,7 @@ jobs:
           if-no-files-found: error
           retention-days: 1
           path: |
+            transport-compile.log
             crates/windows-production-signer-transport-runtime/Cargo.toml
             crates/windows-production-signer-transport-runtime/src/lib.rs
             crates/windows-production-signer-transport-runtime/src/windows.rs
