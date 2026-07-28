@@ -33,10 +33,50 @@ jobs:
           marker_end = "\n          PY\n"
           start = workflow.index(marker_start) + len(marker_start)
           end = workflow.index(marker_end, start)
-          Path("/tmp/address_pr61_review.py").write_text(
-              textwrap.dedent(workflow[start:end]),
-              encoding="utf-8",
-          )
+          script = textwrap.dedent(workflow[start:end])
+          helper_start = script.index("def replace_once")
+          helper_end = script.index("\ndef regex_once", helper_start)
+          tolerant_helper = '''def _shift_snippet(value: str, width: int, after_first_only: bool) -> str:
+              lines = value.splitlines(keepends=True)
+              shifted = []
+              for index, line in enumerate(lines):
+                  if after_first_only and index == 0:
+                      shifted.append(line)
+                  elif line.startswith(" " * width):
+                      shifted.append(line[width:])
+                  else:
+                      shifted.append(line)
+              return "".join(shifted)
+
+          def replace_once(path: str, old: str, new: str) -> None:
+              value = read(path)
+              variants = [(old, new)]
+              for width in (4, 8, 12, 16):
+                  variants.append((
+                      _shift_snippet(old, width, True),
+                      _shift_snippet(new, width, True),
+                  ))
+                  variants.append((
+                      _shift_snippet(old, width, False),
+                      _shift_snippet(new, width, False),
+                  ))
+              seen = set()
+              for candidate_old, candidate_new in variants:
+                  if candidate_old in seen:
+                      continue
+                  seen.add(candidate_old)
+                  count = value.count(candidate_old)
+                  if count == 1:
+                      write(path, value.replace(candidate_old, candidate_new, 1))
+                      return
+                  if count > 1:
+                      raise SystemExit(
+                          f"ambiguous match in {path}, found {count}: {candidate_old[:120]!r}"
+                      )
+              raise SystemExit(f"expected one match in {path}, found 0: {old[:120]!r}")
+          '''
+          script = script[:helper_start] + textwrap.dedent(tolerant_helper) + script[helper_end:]
+          Path("/tmp/address_pr61_review.py").write_text(script, encoding="utf-8")
           PY
           set +e
           python /tmp/address_pr61_review.py 2>&1 | tee pr61-repair-diagnostics.log
