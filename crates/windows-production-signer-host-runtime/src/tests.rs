@@ -183,6 +183,14 @@ fn scm_operations_are_unavailable_off_windows() -> Result<(), Box<dyn Error>> {
         uninstall_service(path),
         Err(ProductionSignerHostError::UnsupportedPlatform)
     ));
+    assert!(matches!(
+        validate_administrator_controlled_file(path),
+        Err(ProductionSignerHostError::UnsupportedPlatform)
+    ));
+    assert!(matches!(
+        validate_administrator_controlled_directory(path),
+        Err(ProductionSignerHostError::UnsupportedPlatform)
+    ));
     Ok(())
 }
 
