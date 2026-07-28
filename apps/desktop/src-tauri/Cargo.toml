@@ -19,6 +19,7 @@ path = "src/main.rs"
 tauri-build = { version = "=2.6.3", features = [] }
 
 [dependencies]
+ergaxiom-backend-issuance-runtime = { path = "../../../crates/backend-issuance-runtime" }
 ergaxiom-contract-runtime = { path = "../../../crates/contract-runtime" }
 ergaxiom-desktop-shell-runtime = { path = "../../../crates/desktop-shell-runtime" }
 ergaxiom-graphic-designer-twin-runtime = { path = "../../../crates/graphic-designer-twin-runtime" }
@@ -28,6 +29,9 @@ ergaxiom-operator-plan-runtime = { path = "../../../crates/operator-plan-runtime
 ergaxiom-operator-simulation-runtime = { path = "../../../crates/operator-simulation-runtime" }
 ergaxiom-proof-kernel = { path = "../../../crates/proof-kernel" }
 ergaxiom-typed-planner-runtime = { path = "../../../crates/typed-planner-runtime" }
+ergaxiom-windows-production-key-governance-runtime = { path = "../../../crates/windows-production-key-governance-runtime" }
+ergaxiom-windows-production-signer-host-runtime = { path = "../../../crates/windows-production-signer-host-runtime" }
+ergaxiom-windows-production-signer-runtime = { path = "../../../crates/windows-production-signer-runtime" }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 sha2 = "0.10"
