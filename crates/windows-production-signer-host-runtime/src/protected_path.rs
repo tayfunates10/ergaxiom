@@ -46,11 +46,11 @@ mod windows {
     use std::ptr::{addr_of, null_mut};
 
     use windows_sys::Win32::Foundation::LocalFree;
+    #[cfg(test)]
+    use windows_sys::Win32::Security::Authorization::ConvertStringSecurityDescriptorToSecurityDescriptorW;
     use windows_sys::Win32::Security::Authorization::{
         ConvertSidToStringSidW, GetNamedSecurityInfoW, SE_FILE_OBJECT,
     };
-    #[cfg(test)]
-    use windows_sys::Win32::Security::Authorization::ConvertStringSecurityDescriptorToSecurityDescriptorW;
     use windows_sys::Win32::Security::{
         ACCESS_ALLOWED_ACE, ACE_HEADER, ACL_SIZE_INFORMATION, AclSizeInformation,
         DACL_SECURITY_INFORMATION, GetAce, GetAclInformation, GetSecurityDescriptorControl,
