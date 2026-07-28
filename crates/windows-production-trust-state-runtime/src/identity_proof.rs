@@ -73,9 +73,7 @@ impl ProductionSignerIdentityChallenge {
             client_nonce: client_nonce.into(),
             deployment_id: binding.deployment_id.clone(),
             service_id: deployment_policy.service_id.clone(),
-            signer_service_executable_digest: binding
-                .signer_service_executable_digest
-                .clone(),
+            signer_service_executable_digest: binding.signer_service_executable_digest.clone(),
             deployment_policy_revision: deployment_policy.revision,
             deployment_policy_digest: deployment_policy.policy_digest.clone(),
             trust_state_revision: binding.revision,
@@ -142,8 +140,7 @@ impl ProductionSignerIdentityChallenge {
             || self.deployment_id != deployment_policy.deployment_id
             || self.deployment_id != binding.deployment_id
             || self.service_id != deployment_policy.service_id
-            || self.signer_service_executable_digest
-                != binding.signer_service_executable_digest
+            || self.signer_service_executable_digest != binding.signer_service_executable_digest
             || self.deployment_policy_revision != deployment_policy.revision
             || self.deployment_policy_digest != deployment_policy.policy_digest
             || self.trust_state_revision != binding.revision
@@ -212,8 +209,7 @@ impl ProductionSignerIdentityProofPayload {
         )?;
         if signer_service_identity != &expected_bound_identity
             || base_service_identity.service_id != challenge.service_id
-            || base_service_identity.executable_sha256
-                != challenge.signer_service_executable_digest
+            || base_service_identity.executable_sha256 != challenge.signer_service_executable_digest
         {
             return Err(ProductionSignerIdentityProofError::ServiceIdentityMismatch);
         }
@@ -323,8 +319,7 @@ impl DeployedProductionSignerIdentityProof {
             || result.envelope.request.identity != ProductionKeyIdentity::attestation()
             || result.envelope.request.digest != self.payload.payload_digest
             || self.signed_package.trust_state != self.payload.trust_state
-            || self.signed_package.signer_service_identity
-                != self.payload.signer_service_identity
+            || self.signed_package.signer_service_identity != self.payload.signer_service_identity
             || self.signed_package.key_generation != self.payload.attestation_key.generation
             || self
                 .signed_package

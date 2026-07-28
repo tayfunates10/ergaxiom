@@ -15,7 +15,11 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use thiserror::Error;
 
-use crate::{ProductionTrustStateBinding, ProductionTrustStateError, VerifiedProductionTrustState};
+use crate::{
+    DeployedProductionSignerIdentityProof, ProductionSignerIdentityChallenge,
+    ProductionSignerIdentityProofError, ProductionSignerIdentityProofPayload,
+    ProductionTrustStateBinding, ProductionTrustStateError, VerifiedProductionTrustState,
+};
 
 pub const PRODUCTION_SIGNER_DEPLOYMENT_POLICY_SCHEMA: &str = "0.1.0";
 pub const TRUST_BOUND_SIGNER_SERVICE_IDENTITY_SCHEMA: &str = "0.1.0";
@@ -141,7 +145,7 @@ pub struct TrustBoundSignerServiceIdentity {
 }
 
 impl TrustBoundSignerServiceIdentity {
-    fn build(
+    pub(crate) fn build(
         base: &SignerServiceIdentity,
         trust_state: &ProductionTrustStateBinding,
         deployment_policy: &ProductionSignerDeploymentPolicy,
@@ -377,6 +381,35 @@ where
             record.generation,
             signer_package,
         )
+    }
+
+    pub fn handle_identity_challenge(
+        &mut self,
+        challenge: &ProductionSignerIdentityChallenge,
+        caller: &AuthenticatedCallerIdentity,
+        trusted_now_epoch_s: u64,
+    ) -> Result<DeployedProductionSignerIdentityProof, ProductionSignerIdentityProofError> {
+        let base_service_identity = self.inner.service_identity().clone();
+        let bound_service_identity = self.service_identity.clone();
+        let accepted = self.accepted.clone();
+        let deployment_policy = self.deployment_policy.clone();
+        let payload = ProductionSignerIdentityProofPayload::build(
+            challenge,
+            caller,
+            &base_service_identity,
+            &bound_service_identity,
+            &accepted,
+            &deployment_policy,
+            trusted_now_epoch_s,
+        )?;
+        let policy = ProductionKeyPolicy::attestation();
+        let request = ProductionSignerRequest::sign_digest(
+            challenge.request_id.clone(),
+            &policy,
+            payload.payload_digest.clone(),
+        )?;
+        let signed_package = self.handle_authenticated(&request, caller, trusted_now_epoch_s)?;
+        DeployedProductionSignerIdentityProof::build(payload, signed_package)
     }
 
     #[must_use]

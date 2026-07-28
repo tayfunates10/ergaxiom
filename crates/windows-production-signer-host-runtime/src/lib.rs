@@ -29,7 +29,7 @@ use ergaxiom_windows_production_signer_service_runtime::{
     HardwareSignerBackend, HardwareSignerBackendError, ProductionSignerServiceError,
 };
 use ergaxiom_windows_production_signer_transport_runtime::{
-    AuthenticatedPipeConnection, ProductionSignerTransportError,
+    AuthenticatedPipeConnection, ProductionSignerHostRequest, ProductionSignerTransportError,
 };
 pub use ergaxiom_windows_production_signer_transport_runtime::{
     PRODUCTION_SIGNER_HOST_RESPONSE_SCHEMA, ProductionSignerHostResponse,
@@ -485,7 +485,9 @@ impl PreparedProductionSignerHost {
         connection: &mut AuthenticatedPipeConnection,
         trusted_now_epoch_s: u64,
     ) -> Result<(), ProductionSignerHostError> {
-        let request = match connection.read_request() {
+        let request: ProductionSignerHostRequest = match connection
+            .read_json(self.pipe_contract.max_request_bytes)
+        {
             Ok(request) => request,
             Err(_) => {
                 let response = ProductionSignerHostResponse::rejected(None, "REQUEST_REJECTED")?;
@@ -494,17 +496,34 @@ impl PreparedProductionSignerHost {
             }
         };
         let caller = connection.caller()?.clone();
-        let response =
-            match self
-                .service
-                .handle_authenticated(&request, &caller, trusted_now_epoch_s)
-            {
-                Ok(package) => ProductionSignerHostResponse::success(package)?,
-                Err(_) => ProductionSignerHostResponse::rejected(
-                    Some(request.request_id.clone()),
-                    "SIGNING_REJECTED",
-                )?,
-            };
+        let request_id = request.request_id().to_owned();
+        let response = match request {
+            ProductionSignerHostRequest::Sign { request } => {
+                match self
+                    .service
+                    .handle_authenticated(&request, &caller, trusted_now_epoch_s)
+                {
+                    Ok(package) => ProductionSignerHostResponse::success(package)?,
+                    Err(_) => ProductionSignerHostResponse::rejected(
+                        Some(request_id),
+                        "SIGNING_REJECTED",
+                    )?,
+                }
+            }
+            ProductionSignerHostRequest::ProveIdentity { challenge } => {
+                match self.service.handle_identity_challenge(
+                    &challenge,
+                    &caller,
+                    trusted_now_epoch_s,
+                ) {
+                    Ok(proof) => ProductionSignerHostResponse::identity_proof(request_id, proof)?,
+                    Err(_) => ProductionSignerHostResponse::rejected(
+                        Some(request_id),
+                        "IDENTITY_PROOF_REJECTED",
+                    )?,
+                }
+            }
+        };
         connection.write_json(&response, self.pipe_contract.max_response_bytes)?;
         Ok(())
     }

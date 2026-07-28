@@ -11,6 +11,8 @@ use ergaxiom_windows_production_signer_runtime::AuthenticatedCallerIdentity;
 use ergaxiom_windows_production_signer_service_runtime::AuthorizedProductionSignerPackage;
 use ergaxiom_windows_production_trust_state_runtime::{
     DeployedAuthorizedProductionSignerPackage, DeployedProductionSignerError,
+    DeployedProductionSignerIdentityProof, ProductionSignerIdentityChallenge,
+    ProductionSignerIdentityProofError,
 };
 use ergaxiom_windows_signer_service_identity_runtime::{
     NamedPipeSecurityContract, SignerIdentityError,
@@ -23,6 +25,37 @@ pub const CLIENT_PIPE_RIGHTS: u32 = 0x0012_0183;
 pub const PIPE_CONNECT_TIMEOUT_MS: u32 = 5_000;
 pub const PIPE_IO_TIMEOUT_MS: u32 = 5_000;
 pub const PRODUCTION_SIGNER_HOST_RESPONSE_SCHEMA: &str = "0.1.0";
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "operation", rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum ProductionSignerHostRequest {
+    Sign {
+        request: ProductionSignerRequest,
+    },
+    ProveIdentity {
+        challenge: ProductionSignerIdentityChallenge,
+    },
+}
+
+impl ProductionSignerHostRequest {
+    #[must_use]
+    pub fn sign(request: ProductionSignerRequest) -> Self {
+        Self::Sign { request }
+    }
+
+    #[must_use]
+    pub fn prove_identity(challenge: ProductionSignerIdentityChallenge) -> Self {
+        Self::ProveIdentity { challenge }
+    }
+
+    #[must_use]
+    pub fn request_id(&self) -> &str {
+        match self {
+            Self::Sign { request } => &request.request_id,
+            Self::ProveIdentity { challenge } => &challenge.request_id,
+        }
+    }
+}
 
 pub fn production_pipe_sddl(
     contract: &NamedPipeSecurityContract,
@@ -178,6 +211,12 @@ pub enum ProductionSignerHostResponse {
         package: Box<DeployedAuthorizedProductionSignerPackage>,
         response_digest: String,
     },
+    IdentityProof {
+        schema_version: String,
+        request_id: String,
+        proof: Box<DeployedProductionSignerIdentityProof>,
+        response_digest: String,
+    },
     Rejected {
         schema_version: String,
         request_id: Option<String>,
@@ -194,6 +233,21 @@ impl ProductionSignerHostResponse {
         let mut response = Self::Success {
             schema_version: PRODUCTION_SIGNER_HOST_RESPONSE_SCHEMA.to_owned(),
             package: Box::new(package),
+            response_digest: String::new(),
+        };
+        response.set_digest()?;
+        Ok(response)
+    }
+
+    pub fn identity_proof(
+        request_id: impl Into<String>,
+        proof: DeployedProductionSignerIdentityProof,
+    ) -> Result<Self, ProductionSignerTransportError> {
+        proof.validate_seal()?;
+        let mut response = Self::IdentityProof {
+            schema_version: PRODUCTION_SIGNER_HOST_RESPONSE_SCHEMA.to_owned(),
+            request_id: request_id.into(),
+            proof: Box::new(proof),
             response_digest: String::new(),
         };
         response.set_digest()?;
@@ -217,6 +271,11 @@ impl ProductionSignerHostResponse {
     pub fn validate_seal(&self) -> Result<(), ProductionSignerTransportError> {
         let (schema_version, response_digest) = match self {
             Self::Success {
+                schema_version,
+                response_digest,
+                ..
+            }
+            | Self::IdentityProof {
                 schema_version,
                 response_digest,
                 ..
@@ -255,6 +314,9 @@ impl ProductionSignerHostResponse {
                 }
                 Ok(*package)
             }
+            Self::IdentityProof { .. } => {
+                Err(ProductionSignerTransportError::UnexpectedHostResponse)
+            }
             Self::Rejected {
                 request_id, code, ..
             } => {
@@ -269,10 +331,45 @@ impl ProductionSignerHostResponse {
         }
     }
 
+    pub fn into_identity_proof(
+        self,
+        expected_request_id: &str,
+    ) -> Result<DeployedProductionSignerIdentityProof, ProductionSignerTransportError> {
+        self.validate_seal()?;
+        match self {
+            Self::IdentityProof {
+                request_id, proof, ..
+            } => {
+                if request_id != expected_request_id
+                    || proof.payload.request_id != expected_request_id
+                {
+                    return Err(ProductionSignerTransportError::HostResponseRequestIdMismatch);
+                }
+                proof.validate_seal()?;
+                Ok(*proof)
+            }
+            Self::Rejected {
+                request_id, code, ..
+            } => {
+                if request_id
+                    .as_deref()
+                    .is_some_and(|request_id| request_id != expected_request_id)
+                {
+                    return Err(ProductionSignerTransportError::HostResponseRequestIdMismatch);
+                }
+                Err(ProductionSignerTransportError::HostRejected { request_id, code })
+            }
+            Self::Success { .. } => Err(ProductionSignerTransportError::UnexpectedHostResponse),
+        }
+    }
+
     fn set_digest(&mut self) -> Result<(), ProductionSignerTransportError> {
         let digest = self.expected_digest()?;
         match self {
             Self::Success {
+                response_digest, ..
+            }
+            | Self::IdentityProof {
                 response_digest, ..
             }
             | Self::Rejected {
@@ -309,9 +406,20 @@ impl ProductionSignerPipeClient {
         &self,
         request: &ProductionSignerRequest,
     ) -> Result<DeployedAuthorizedProductionSignerPackage, ProductionSignerTransportError> {
+        let host_request = ProductionSignerHostRequest::sign(request.clone());
         let response: ProductionSignerHostResponse =
-            self.exchange(request, 64 * 1024, 128 * 1024)?;
+            self.exchange(&host_request, 64 * 1024, 128 * 1024)?;
         response.into_deployed_package(&request.request_id)
+    }
+
+    pub fn prove_identity(
+        &self,
+        challenge: &ProductionSignerIdentityChallenge,
+    ) -> Result<DeployedProductionSignerIdentityProof, ProductionSignerTransportError> {
+        let request = ProductionSignerHostRequest::prove_identity(challenge.clone());
+        let response: ProductionSignerHostResponse =
+            self.exchange(&request, 64 * 1024, 128 * 1024)?;
+        response.into_identity_proof(&challenge.request_id)
     }
 
     pub fn decode_host_response(
@@ -409,6 +517,8 @@ pub enum ProductionSignerTransportError {
     HostResponseRequestIdMismatch,
     #[error("production signer host response canonical object is invalid")]
     InvalidHostResponseObject,
+    #[error("production signer host returned a response for a different operation")]
+    UnexpectedHostResponse,
     #[error("production signer host rejected request {request_id:?} with code {code}")]
     HostRejected {
         request_id: Option<String>,
@@ -420,6 +530,8 @@ pub enum ProductionSignerTransportError {
     Hashing(#[from] HashingError),
     #[error(transparent)]
     Deployed(#[from] DeployedProductionSignerError),
+    #[error(transparent)]
+    IdentityProof(#[from] ProductionSignerIdentityProofError),
     #[error(transparent)]
     Identity(#[from] SignerIdentityError),
 }
