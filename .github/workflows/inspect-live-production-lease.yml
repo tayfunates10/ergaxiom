@@ -1,6 +1,11 @@
 name: Inspect live production lease inputs
 
 on:
+  pull_request:
+    paths:
+      - "crates/backend-issuance-runtime/**"
+      - "crates/windows-production-trust-state-runtime/**"
+      - ".github/workflows/inspect-live-production-lease.yml"
   push:
     branches:
       - agent/live-production-trust-lease-v1
