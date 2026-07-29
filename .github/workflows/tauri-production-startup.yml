@@ -10,50 +10,24 @@ on:
       - "crates/windows-production-signer-runtime/**"
       - "docs/architecture/47-tauri-production-startup-boundary.md"
       - ".github/workflows/tauri-production-startup.yml"
-  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - "apps/desktop/**"
+      - "crates/backend-issuance-runtime/**"
+      - "crates/windows-production-signer-host-runtime/**"
+      - "crates/windows-production-key-governance-runtime/**"
+      - "crates/windows-production-signer-runtime/**"
+      - "docs/architecture/47-tauri-production-startup-boundary.md"
+      - ".github/workflows/tauri-production-startup.yml"
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  refresh-lockfile:
-    name: Refresh Tauri lockfile
-    runs-on: windows-2025
-    steps:
-      - name: Check out branch
-        uses: actions/checkout@v4
-        with:
-          ref: agent/persistent-production-capability-v1
-          fetch-depth: 0
-
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          components: rustfmt, clippy
-
-      - name: Refresh and validate lockfile
-        shell: bash
-        run: |
-          set -euo pipefail
-          cargo check --manifest-path apps/desktop/src-tauri/Cargo.toml --all-targets --all-features
-          cargo fmt --manifest-path apps/desktop/src-tauri/Cargo.toml --all -- --check
-          cargo clippy --locked --manifest-path apps/desktop/src-tauri/Cargo.toml --all-targets --all-features -- -D warnings
-          cargo test --locked --manifest-path apps/desktop/src-tauri/Cargo.toml --all-targets production_startup::tests -- --nocapture
-
-      - name: Commit validated lockfile
-        shell: bash
-        run: |
-          set -euo pipefail
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add apps/desktop/src-tauri/Cargo.lock
-          git diff --cached --quiet && exit 0
-          git commit -m "Refresh Tauri lockfile for persistent Capability authority"
-          git push origin HEAD:agent/persistent-production-capability-v1
-
   startup-boundary:
     name: Verify Tauri production startup (${{ matrix.os }})
-    needs: refresh-lockfile
     strategy:
       fail-fast: false
       matrix:
@@ -62,10 +36,8 @@ jobs:
           - windows-2025
     runs-on: ${{ matrix.os }}
     steps:
-      - name: Check out branch
+      - name: Check out repository
         uses: actions/checkout@v4
-        with:
-          ref: agent/persistent-production-capability-v1
 
       - name: Install Linux Tauri dependencies
         if: runner.os == 'Linux'
