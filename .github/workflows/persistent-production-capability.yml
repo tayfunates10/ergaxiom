@@ -1,0 +1,53 @@
+name: Persistent production Capability
+
+on:
+  pull_request:
+    paths:
+      - "Cargo.lock"
+      - "crates/backend-issuance-runtime/**"
+      - "crates/windows-production-trust-state-runtime/**"
+      - "docs/architecture/52-persistent-production-capability-authority.md"
+      - ".github/workflows/persistent-production-capability.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "Cargo.lock"
+      - "crates/backend-issuance-runtime/**"
+      - "crates/windows-production-trust-state-runtime/**"
+      - "docs/architecture/52-persistent-production-capability-authority.md"
+      - ".github/workflows/persistent-production-capability.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  persistent-capability:
+    name: Verify persistent Capability (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-24.04
+          - windows-2025
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Check workspace formatting
+        run: cargo fmt --all -- --check
+
+      - name: Lint persistent Capability boundary
+        run: cargo clippy -p ergaxiom-backend-issuance-runtime --all-targets --all-features -- -D warnings
+
+      - name: Run persistent policy store attacks
+        run: cargo test -p ergaxiom-backend-issuance-runtime persistent -- --nocapture
+
+      - name: Run live lease and restart attacks
+        run: cargo test -p ergaxiom-backend-issuance-runtime --test persistent_production_capability -- --nocapture
