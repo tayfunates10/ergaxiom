@@ -37,6 +37,7 @@ jobs:
         shell: python
         run: |
           from pathlib import Path
+          import re
           import textwrap
 
           workflow = Path('.github/workflows/sync-tauri-live-service-proof.yml').read_text()
@@ -45,6 +46,23 @@ jobs:
           end = workflow.index('\n      - name: Refresh desktop lockfile', start)
           script = textwrap.dedent(workflow[start:end])
           exec(compile(script, 'wire-live-proof', 'exec'), {})
+
+          api = Path('apps/desktop/src/api.ts')
+          api_text = api.read_text()
+          if 'live_service_identity_verified: false' not in api_text:
+              pattern = r'(\s+pipe_clients_initialized: false,\n)(\s+production_issuance_enabled: false,)'
+              replacement = (
+                  r'\1'
+                  '      live_service_identity_verified: false,\n'
+                  '      service_restart_detected: false,\n'
+                  '      recovery_required: false,\n'
+                  '      last_identity_proof_epoch_s: null,\n'
+                  r'\2'
+              )
+              api_text, count = re.subn(pattern, replacement, api_text, count=1)
+              if count != 1:
+                  raise SystemExit('production status fallback marker missing')
+              api.write_text(api_text)
 
       - name: Refresh desktop lockfile
         shell: pwsh
