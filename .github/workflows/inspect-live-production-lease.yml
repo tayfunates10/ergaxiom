@@ -68,6 +68,24 @@ jobs:
           if failing not in script:
               raise SystemExit('generation repair source marker missing')
           script = script.replace(failing, repaired, 1)
+
+          registry_failing = '\n'.join([
+              "if registry_marker not in test:",
+              "    raise SystemExit('registry rotation marker missing')",
+              "test = test.replace(registry_marker, registry_add, 1)",
+          ])
+          registry_repaired = '\n'.join([
+              "if registry_marker not in test:",
+              "    rotation_start = test.index('        registry.rotate_guarded(', test.index('impl Fixture'))",
+              "    rotation_end = test.index('        )?;', rotation_start) + len('        )?;')",
+              "    registry_marker = test[rotation_start:rotation_end] + '\\n'",
+              "    suffix_marker = '        let revision = registry.revision();'",
+              "    registry_add = registry_marker + suffix_marker + registry_add.split(suffix_marker, 1)[1]",
+              "test = test.replace(registry_marker, registry_add, 1)",
+          ])
+          if registry_failing not in script:
+              raise SystemExit('registry repair source marker missing')
+          script = script.replace(registry_failing, registry_repaired, 1)
           exec(compile(script, 'implement-live-trust-lease', 'exec'), {})
 
       - name: Validate trust lease
