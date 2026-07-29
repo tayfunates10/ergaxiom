@@ -41,6 +41,10 @@ export async function loadProductionSignerStatus(): Promise<ProductionSignerStat
       configuration_verified: false,
       configuration_acl_verified: false,
       pipe_clients_initialized: false,
+      live_service_identity_verified: false,
+      service_restart_detected: false,
+      recovery_required: false,
+      last_identity_proof_epoch_s: null,
       production_issuance_enabled: false,
       deployment_id: null,
       backend_id: null,
@@ -53,6 +57,14 @@ export async function loadProductionSignerStatus(): Promise<ProductionSignerStat
       attestation_generation: null,
     };
   }
+}
+
+export async function refreshProductionSignerStatus(): Promise<ProductionSignerStatus> {
+  return invoke<ProductionSignerStatus>('refresh_production_signer_status');
+}
+
+export async function recoverProductionSignerStatus(): Promise<ProductionSignerStatus> {
+  return invoke<ProductionSignerStatus>('recover_production_signer_status');
 }
 
 export function approveDesktopJob(

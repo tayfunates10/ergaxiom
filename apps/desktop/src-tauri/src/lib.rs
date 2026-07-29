@@ -24,7 +24,9 @@ pub fn run() {
             commands::start_desktop_job_execution,
             commands::cancel_desktop_job,
             commands::rollback_desktop_job,
-            production_startup::get_production_signer_status
+            production_startup::get_production_signer_status,
+            production_startup::refresh_production_signer_status,
+            production_startup::recover_production_signer_status
         ])
         .run(tauri::generate_context!());
 
@@ -58,6 +60,8 @@ pub fn run() {
             commands::start_desktop_job_execution,
             commands::cancel_desktop_job,
             commands::rollback_desktop_job,
-            production_startup::get_production_signer_status
+            production_startup::get_production_signer_status,
+            production_startup::refresh_production_signer_status,
+            production_startup::recover_production_signer_status
         ]);
 }

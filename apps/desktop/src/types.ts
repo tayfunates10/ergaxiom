@@ -24,6 +24,10 @@ export type ProductionSignerStartupPhase =
   | 'unconfigured'
   | 'unsupported_platform'
   | 'configured'
+  | 'live_verified'
+  | 'service_unavailable'
+  | 'service_rejected'
+  | 'recovery_required'
   | 'rejected';
 
 export interface ProductionSignerStatus {
@@ -32,6 +36,10 @@ export interface ProductionSignerStatus {
   configuration_verified: boolean;
   configuration_acl_verified: boolean;
   pipe_clients_initialized: boolean;
+  live_service_identity_verified: boolean;
+  service_restart_detected: boolean;
+  recovery_required: boolean;
+  last_identity_proof_epoch_s: number | null;
   production_issuance_enabled: boolean;
   deployment_id: string | null;
   backend_id: string | null;

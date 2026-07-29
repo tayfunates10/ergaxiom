@@ -32,6 +32,8 @@ ergaxiom-typed-planner-runtime = { path = "../../../crates/typed-planner-runtime
 ergaxiom-windows-production-key-governance-runtime = { path = "../../../crates/windows-production-key-governance-runtime" }
 ergaxiom-windows-production-signer-host-runtime = { path = "../../../crates/windows-production-signer-host-runtime" }
 ergaxiom-windows-production-signer-runtime = { path = "../../../crates/windows-production-signer-runtime" }
+ergaxiom-windows-production-trust-state-runtime = { path = "../../../crates/windows-production-trust-state-runtime" }
+getrandom = "0.3"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 sha2 = "0.10"
