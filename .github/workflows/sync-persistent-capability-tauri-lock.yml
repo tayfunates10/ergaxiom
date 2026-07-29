@@ -7,6 +7,9 @@ on:
       - "crates/backend-issuance-runtime/**"
       - "apps/desktop/src-tauri/**"
       - ".github/workflows/sync-persistent-capability-tauri-lock.yml"
+  push:
+    branches:
+      - agent/persistent-production-capability-v1
   workflow_dispatch:
 
 permissions:
