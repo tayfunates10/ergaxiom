@@ -1,0 +1,87 @@
+name: Sync persistent production Capability source
+
+on:
+  pull_request:
+    paths:
+      - "crates/backend-issuance-runtime/**"
+      - ".github/workflows/sync-persistent-production-capability.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  validate-and-sync:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out branch
+        uses: actions/checkout@v4
+        with:
+          ref: agent/persistent-production-capability-v1
+          fetch-depth: 0
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Bind persistent module and test imports
+        shell: python
+        run: |
+          from pathlib import Path
+
+          lib_path = Path("crates/backend-issuance-runtime/src/lib.rs")
+          lib = lib_path.read_text()
+          old = "mod production;\npub use production::*;\n"
+          new = "mod persistent;\nmod production;\npub use persistent::*;\npub use production::*;\n"
+          if old in lib:
+              lib = lib.replace(old, new, 1)
+          elif new not in lib:
+              raise SystemExit("backend module marker missing")
+          lib_path.write_text(lib)
+
+          test_path = Path("crates/backend-issuance-runtime/tests/persistent_production_capability.rs")
+          test = test_path.read_text()
+          old_import = "use std::path::PathBuf;\n"
+          new_import = "use std::fs;\nuse std::path::PathBuf;\n"
+          if old_import in test:
+              test = test.replace(old_import, new_import, 1)
+          elif new_import not in test:
+              raise SystemExit("test import marker missing")
+          test_path.write_text(test)
+
+      - name: Format and refresh lockfile
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo fmt --all
+          cargo check -p ergaxiom-backend-issuance-runtime --all-targets --all-features
+          cargo fmt --all -- --check
+
+      - name: Lint persistent Capability boundary
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo clippy -p ergaxiom-backend-issuance-runtime --all-targets --all-features -- -D warnings
+
+      - name: Run persistent Capability attacks
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo test -p ergaxiom-backend-issuance-runtime persistent -- --nocapture
+          cargo test -p ergaxiom-backend-issuance-runtime --test persistent_production_capability -- --nocapture
+
+      - name: Commit validated source
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Cargo.lock \
+            crates/backend-issuance-runtime/Cargo.toml \
+            crates/backend-issuance-runtime/src/lib.rs \
+            crates/backend-issuance-runtime/src/persistent.rs \
+            crates/backend-issuance-runtime/tests/persistent_production_capability.rs
+          git diff --cached --quiet && exit 0
+          git commit -m "Persist replay-safe production Capability authority"
+          git push origin HEAD:agent/persistent-production-capability-v1
