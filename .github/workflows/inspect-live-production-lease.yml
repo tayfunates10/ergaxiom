@@ -34,13 +34,16 @@ jobs:
         shell: python
         run: |
           from pathlib import Path
-          import textwrap
 
           workflow = Path('.github/workflows/sync-live-production-trust-lease.yml').read_text()
           start_marker = '      - name: Implement verified trust lease\n        shell: python\n        run: |\n'
           start = workflow.index(start_marker) + len(start_marker)
           end = workflow.index('\n      - name: Validate trust lease', start)
-          script = textwrap.dedent(workflow[start:end])
+          lines = workflow[start:end].splitlines()
+          script = '\n'.join(
+              line[10:] if line.startswith('          ') else line
+              for line in lines
+          )
           exec(compile(script, 'implement-live-trust-lease', 'exec'), {})
 
       - name: Validate trust lease
