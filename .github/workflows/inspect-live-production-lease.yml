@@ -1,33 +1,67 @@
-name: Inspect live production lease inputs
+name: Validate live production lease source
 
 on:
   pull_request:
     paths:
-      - "crates/backend-issuance-runtime/**"
       - "crates/windows-production-trust-state-runtime/**"
       - ".github/workflows/inspect-live-production-lease.yml"
+      - ".github/workflows/sync-live-production-trust-lease.yml"
+      - ".github/workflows/retry-live-production-trust-lease.yml"
   push:
     branches:
       - agent/live-production-trust-lease-v1
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
-  inspect:
+  validate-and-sync:
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
-      - name: Inspect relevant source and tests
+      - name: Check out branch
+        uses: actions/checkout@v4
+        with:
+          ref: agent/live-production-trust-lease-v1
+          fetch-depth: 0
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Apply trust lease source transformation
+        shell: python
+        run: |
+          from pathlib import Path
+          import textwrap
+
+          workflow = Path('.github/workflows/sync-live-production-trust-lease.yml').read_text()
+          start_marker = '      - name: Implement verified trust lease\n        shell: python\n        run: |\n'
+          start = workflow.index(start_marker) + len(start_marker)
+          end = workflow.index('\n      - name: Validate trust lease', start)
+          script = textwrap.dedent(workflow[start:end])
+          exec(compile(script, 'implement-live-trust-lease', 'exec'), {})
+
+      - name: Validate trust lease
         shell: bash
         run: |
           set -euo pipefail
-          echo '=== trust-state files ==='
-          find crates/windows-production-trust-state-runtime -maxdepth 3 -type f | sort
-          echo '=== identity proof references ==='
-          grep -RIn "DeployedProductionSignerIdentityProof\|ProductionSignerIdentityChallenge\|prove_identity" crates apps/desktop/src-tauri/src | head -n 300 || true
-          echo '=== capability draft helpers ==='
-          grep -RIn "fn capability_draft\|CapabilityTokenDraft" crates/backend-issuance-runtime apps/desktop/src-tauri/src | head -n 300 || true
-          echo '=== trust snapshot helpers ==='
-          grep -RIn "GovernedProductionSignerTrustSnapshot\|ProductionSignerTrustSnapshot" crates | head -n 300 || true
+          cargo fmt --all
+          cargo fmt --all -- --check
+          cargo clippy -p ergaxiom-windows-production-trust-state-runtime --all-targets --all-features -- -D warnings
+          cargo test -p ergaxiom-windows-production-trust-state-runtime --test deployed_service -- --nocapture
+
+      - name: Commit validated trust lease
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add crates/windows-production-trust-state-runtime/src/identity_proof.rs \
+            crates/windows-production-trust-state-runtime/tests/deployed_service.rs \
+            .github/workflows/live-production-trust-lease.yml \
+            docs/architecture/51-live-production-trust-lease.md
+          git diff --cached --quiet && exit 0
+          git commit -m "Build fresh production signer trust leases"
+          git push origin HEAD:agent/live-production-trust-lease-v1
