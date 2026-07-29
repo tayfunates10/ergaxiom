@@ -44,6 +44,26 @@ jobs:
               line[10:] if line.startswith('          ') else line
               for line in lines
           )
+          failing = """if old_key not in test:
+    raise SystemExit('generation key marker missing')
+test = test.replace(old_key, new_key, 1)"""
+          repaired = """if old_key not in test:
+    match_start = test.index('        match generation {', test.index('fn key_for_generation'))
+    match_end = test.index('        }', match_start) + len('        }')
+    old_key = test[match_start:match_end]
+test = test.replace(old_key, new_key, 1)
+test = test.replace(
+    'fn key_for_generation(\\n        &self,\\n        generation: u64,',
+    'fn key_for_generation(\\n        &self,\\n        policy: &ProductionKeyPolicy,\\n        generation: u64,',
+    1,
+)
+test = test.replace(
+    'self.key_for_generation(generation)?',
+    'self.key_for_generation(policy, generation)?',
+)"""
+          if failing not in script:
+              raise SystemExit('generation repair source marker missing')
+          script = script.replace(failing, repaired, 1)
           exec(compile(script, 'implement-live-trust-lease', 'exec'), {})
 
       - name: Validate trust lease
