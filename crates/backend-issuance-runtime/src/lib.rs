@@ -1,6 +1,8 @@
 #![forbid(unsafe_code)]
 
+mod persistent;
 mod production;
+pub use persistent::*;
 pub use production::*;
 
 use std::collections::{BTreeMap, BTreeSet};

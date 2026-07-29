@@ -896,6 +896,7 @@ dependencies = [
  "ergaxiom-windows-production-signer-host-runtime",
  "ergaxiom-windows-production-signer-runtime",
  "ergaxiom-windows-production-signer-service-runtime",
+ "ergaxiom-windows-production-trust-state-runtime",
  "serde",
  "serde_json",
  "sha2",
