@@ -1,0 +1,123 @@
+name: Tauri live signer proof
+
+on:
+  pull_request:
+    paths:
+      - "apps/desktop/**"
+      - "crates/windows-production-trust-state-runtime/**"
+      - "crates/windows-production-signer-transport-runtime/**"
+      - "docs/architecture/50-tauri-live-signer-proof.md"
+      - ".github/workflows/tauri-live-service-proof.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "apps/desktop/**"
+      - "crates/windows-production-trust-state-runtime/**"
+      - "crates/windows-production-signer-transport-runtime/**"
+      - "docs/architecture/50-tauri-live-signer-proof.md"
+      - ".github/workflows/tauri-live-service-proof.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  frontend-boundary:
+    name: Verify live signer public status
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Install Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: apps/desktop/package-lock.json
+
+      - name: Install frontend dependencies
+        working-directory: apps/desktop
+        run: npm ci
+
+      - name: Check frontend types
+        working-directory: apps/desktop
+        run: npm run check
+
+      - name: Run renderer trust-boundary tests
+        working-directory: apps/desktop
+        run: npm test
+
+      - name: Build production frontend
+        working-directory: apps/desktop
+        run: npm run build
+
+  live-proof-boundary:
+    name: Verify live signer proof (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-24.04
+          - windows-2025
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Install Linux Tauri dependencies
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Check Tauri formatting
+        run: cargo fmt --manifest-path apps/desktop/src-tauri/Cargo.toml --all -- --check
+
+      - name: Lint live proof boundary
+        shell: bash
+        run: |
+          set -o pipefail
+          cargo clippy \
+            --locked \
+            --manifest-path apps/desktop/src-tauri/Cargo.toml \
+            --all-targets \
+            --all-features \
+            -- \
+            -D warnings 2>&1 | tee "$RUNNER_TEMP/tauri-live-proof-clippy.log"
+
+      - name: Upload live proof lint diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: tauri-live-proof-clippy-${{ matrix.os }}
+          path: ${{ runner.temp }}/tauri-live-proof-clippy.log
+          if-no-files-found: warn
+          retention-days: 7
+
+      - name: Run live proof and recovery attacks
+        shell: bash
+        run: |
+          set -o pipefail
+          cargo test \
+            --locked \
+            --manifest-path apps/desktop/src-tauri/Cargo.toml \
+            --all-targets \
+            production_startup::tests \
+            -- \
+            --nocapture 2>&1 | tee "$RUNNER_TEMP/tauri-live-proof-tests.log"
+
+      - name: Upload live proof test diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: tauri-live-proof-tests-${{ matrix.os }}
+          path: ${{ runner.temp }}/tauri-live-proof-tests.log
+          if-no-files-found: warn
+          retention-days: 7
