@@ -25,7 +25,7 @@ jobs:
         with:
           components: rustfmt, clippy
 
-      - name: Bind and repair persistent sources
+      - name: Bind and harden persistent sources
         shell: python
         run: |
           from pathlib import Path
@@ -47,6 +47,95 @@ jobs:
               "    let file = File::open(path).map_err(|source| BackendIssuancePolicyStoreError::Io {",
               1,
           )
+
+          call_marker = """                if child.revision != current.revision.saturating_add(1) {
+                    return Err(BackendIssuancePolicyStoreError::InvalidRevisionChain);
+                }
+                if !visited.insert(child.state_digest.clone()) {
+"""
+          call_replacement = """                if child.revision != current.revision.saturating_add(1) {
+                    return Err(BackendIssuancePolicyStoreError::InvalidRevisionChain);
+                }
+                validate_policy_transition(&current, child)?;
+                if !visited.insert(child.state_digest.clone()) {
+"""
+          if "validate_policy_transition(&current, child)?;" not in source:
+              if call_marker not in source:
+                  raise SystemExit("transition call marker missing")
+              source = source.replace(call_marker, call_replacement, 1)
+
+          function_marker = "\nfn read_policy_state(\n"
+          function = """
+fn validate_policy_transition(
+    parent: &BackendIssuancePolicyState,
+    child: &BackendIssuancePolicyState,
+) -> Result<(), BackendIssuancePolicyStoreError> {
+    if !child.consumed.is_superset(&parent.consumed)
+        || !child.authorized_intents.is_superset(&parent.authorized_intents)
+    {
+        return Err(BackendIssuancePolicyStoreError::NonMonotonicHistory);
+    }
+    for (authorization_id, authorization_digest) in &parent.pending {
+        match child.pending.get(authorization_id) {
+            Some(child_digest) if child_digest == authorization_digest => {}
+            None if child.consumed.contains(authorization_id) => {}
+            _ => return Err(BackendIssuancePolicyStoreError::NonMonotonicHistory),
+        }
+    }
+    Ok(())
+}
+"""
+          if "fn validate_policy_transition(" not in source:
+              if function_marker not in source:
+                  raise SystemExit("transition function marker missing")
+              source = source.replace(function_marker, "\n" + function + function_marker, 1)
+
+          error_marker = """    #[error("backend issuance policy history diverged")]
+    DivergentHistory,
+"""
+          error_replacement = """    #[error("backend issuance policy history diverged")]
+    DivergentHistory,
+    #[error("backend issuance policy history attempted to remove replay state")]
+    NonMonotonicHistory,
+"""
+          if "NonMonotonicHistory," not in source:
+              if error_marker not in source:
+                  raise SystemExit("transition error marker missing")
+              source = source.replace(error_marker, error_replacement, 1)
+
+          test_marker = """    #[test]
+    fn abandoned_pending_record_is_ignored_during_recovery()
+"""
+          monotonic_test = """    #[test]
+    fn replay_sets_cannot_be_removed_by_a_later_record()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let mut parent_policy = BackendIssuancePolicy::default();
+        parent_policy
+            .consumed
+            .insert("authorization.issuance.0123456789abcdef01234567".to_owned());
+        parent_policy.authorized_intents.insert("d".repeat(64));
+        let parent = BackendIssuancePolicyState::from_policy(
+            &parent_policy,
+            1,
+            Some("e".repeat(64)),
+        )?;
+        let child = BackendIssuancePolicyState::from_policy(
+            &BackendIssuancePolicy::default(),
+            2,
+            Some(parent.state_digest().to_owned()),
+        )?;
+        assert!(matches!(
+            validate_policy_transition(&parent, &child),
+            Err(BackendIssuancePolicyStoreError::NonMonotonicHistory)
+        ));
+        Ok(())
+    }
+
+"""
+          if "fn replay_sets_cannot_be_removed_by_a_later_record()" not in source:
+              if test_marker not in source:
+                  raise SystemExit("monotonic test marker missing")
+              source = source.replace(test_marker, monotonic_test + test_marker, 1)
           source_path.write_text(source)
 
           test_path = Path("crates/backend-issuance-runtime/tests/persistent_production_capability.rs")
@@ -102,5 +191,5 @@ jobs:
             crates/backend-issuance-runtime/src/persistent.rs \
             crates/backend-issuance-runtime/tests/persistent_production_capability.rs
           git diff --cached --quiet && exit 0
-          git commit -m "Persist replay-safe production Capability authority"
+          git commit -m "Enforce monotonic production replay history"
           git push origin HEAD:agent/persistent-production-capability-v1
