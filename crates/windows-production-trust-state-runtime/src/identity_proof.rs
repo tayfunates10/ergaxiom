@@ -1,7 +1,7 @@
 use ergaxiom_proof_kernel::{HashingError, canonical_json_sha256};
 use ergaxiom_windows_production_key_governance_runtime::{
     PRODUCTION_KEY_TRUST_BINDING_SCHEMA, ProductionKeyGovernanceError, ProductionKeyRecord,
-    ProductionKeyTrustBinding,
+    ProductionKeyRegistry, ProductionKeyTrustBinding,
 };
 use ergaxiom_windows_production_signer_protocol_runtime::{
     ProductionSignerProtocolError, ProductionSignerResponse,
@@ -412,6 +412,196 @@ impl DeployedProductionSignerIdentityProof {
     }
 }
 
+#[derive(Debug, Clone)]
+pub struct VerifiedProductionSignerTrustLease {
+    proof_digest: String,
+    caller_identity_digest: String,
+    service_identity: SignerServiceIdentity,
+    trust_state: ProductionTrustStateBinding,
+    deployment_policy_revision: u64,
+    deployment_policy_digest: String,
+    proved_at_epoch_s: u64,
+    expires_at_epoch_s: u64,
+    capability_trust: GovernedProductionSignerTrustSnapshot,
+    attestation_trust: GovernedProductionSignerTrustSnapshot,
+    registry: ProductionKeyRegistry,
+}
+
+impl VerifiedProductionSignerTrustLease {
+    pub fn validate_at(
+        &self,
+        accepted: &VerifiedProductionTrustState,
+        deployment_policy: &ProductionSignerDeploymentPolicy,
+        trusted_now_epoch_s: u64,
+    ) -> Result<(), ProductionSignerIdentityProofError> {
+        validate_sha256(&self.proof_digest)?;
+        validate_sha256(&self.caller_identity_digest)?;
+        self.service_identity.validate()?;
+        self.trust_state.validate_seal()?;
+        deployment_policy.validate_seal()?;
+        accepted.binding().validate_seal()?;
+        if trusted_now_epoch_s < self.proved_at_epoch_s
+            || trusted_now_epoch_s >= self.expires_at_epoch_s
+        {
+            return Err(ProductionSignerIdentityProofError::TrustLeaseOutsideValidityWindow);
+        }
+        if self.trust_state != *accepted.binding()
+            || self.deployment_policy_revision != deployment_policy.revision
+            || self.deployment_policy_digest != deployment_policy.policy_digest
+            || self.service_identity.service_id != deployment_policy.service_id
+            || self.service_identity.executable_sha256
+                != accepted.binding().signer_service_executable_digest
+            || self.capability_trust.signer.caller_identity_digest != self.caller_identity_digest
+            || self.attestation_trust.signer.caller_identity_digest != self.caller_identity_digest
+            || self.capability_trust.signer.signer_service_identity_digest
+                != self.service_identity.digest()?
+            || self.attestation_trust.signer.signer_service_identity_digest
+                != self.service_identity.digest()?
+        {
+            return Err(ProductionSignerIdentityProofError::TrustLeaseBindingMismatch);
+        }
+        self.capability_trust.validate_for(
+            &ProductionKeyPolicy::capability(),
+            &self.registry,
+            trusted_now_epoch_s,
+        )?;
+        self.attestation_trust.validate_for(
+            &ProductionKeyPolicy::attestation(),
+            &self.registry,
+            trusted_now_epoch_s,
+        )?;
+        Ok(())
+    }
+
+    #[must_use]
+    pub fn proof_digest(&self) -> &str {
+        &self.proof_digest
+    }
+
+    #[must_use]
+    pub fn caller_identity_digest(&self) -> &str {
+        &self.caller_identity_digest
+    }
+
+    #[must_use]
+    pub const fn service_identity(&self) -> &SignerServiceIdentity {
+        &self.service_identity
+    }
+
+    #[must_use]
+    pub const fn trust_state(&self) -> &ProductionTrustStateBinding {
+        &self.trust_state
+    }
+
+    #[must_use]
+    pub const fn proved_at_epoch_s(&self) -> u64 {
+        self.proved_at_epoch_s
+    }
+
+    #[must_use]
+    pub const fn expires_at_epoch_s(&self) -> u64 {
+        self.expires_at_epoch_s
+    }
+
+    #[must_use]
+    pub const fn capability_trust(&self) -> &GovernedProductionSignerTrustSnapshot {
+        &self.capability_trust
+    }
+
+    #[must_use]
+    pub const fn attestation_trust(&self) -> &GovernedProductionSignerTrustSnapshot {
+        &self.attestation_trust
+    }
+
+    #[must_use]
+    pub const fn registry(&self) -> &ProductionKeyRegistry {
+        &self.registry
+    }
+}
+
+impl DeployedProductionSignerIdentityProof {
+    pub fn verify_trust_lease(
+        &self,
+        challenge: &ProductionSignerIdentityChallenge,
+        accepted: &VerifiedProductionTrustState,
+        deployment_policy: &ProductionSignerDeploymentPolicy,
+        trusted_now_epoch_s: u64,
+    ) -> Result<VerifiedProductionSignerTrustLease, ProductionSignerIdentityProofError> {
+        let service_identity =
+            self.verify(challenge, accepted, deployment_policy, trusted_now_epoch_s)?;
+        let capability_trust = governed_trust_for_identity(
+            &ProductionKeyIdentity::capability(),
+            &self.payload.caller_identity_digest,
+            &service_identity,
+            accepted,
+            deployment_policy,
+            trusted_now_epoch_s,
+        )?;
+        let attestation_trust = governed_trust_for_identity(
+            &ProductionKeyIdentity::attestation(),
+            &self.payload.caller_identity_digest,
+            &service_identity,
+            accepted,
+            deployment_policy,
+            trusted_now_epoch_s,
+        )?;
+        if attestation_trust.key != self.payload.attestation_key {
+            return Err(ProductionSignerIdentityProofError::TrustLeaseBindingMismatch);
+        }
+        let lease = VerifiedProductionSignerTrustLease {
+            proof_digest: self.proof_digest.clone(),
+            caller_identity_digest: self.payload.caller_identity_digest.clone(),
+            service_identity,
+            trust_state: accepted.binding().clone(),
+            deployment_policy_revision: deployment_policy.revision,
+            deployment_policy_digest: deployment_policy.policy_digest.clone(),
+            proved_at_epoch_s: self.payload.proved_at_epoch_s,
+            expires_at_epoch_s: self.payload.expires_at_epoch_s,
+            capability_trust,
+            attestation_trust,
+            registry: accepted.registry().clone(),
+        };
+        lease.validate_at(accepted, deployment_policy, trusted_now_epoch_s)?;
+        Ok(lease)
+    }
+}
+
+fn governed_trust_for_identity(
+    identity: &ProductionKeyIdentity,
+    caller_identity_digest: &str,
+    service_identity: &SignerServiceIdentity,
+    accepted: &VerifiedProductionTrustState,
+    deployment_policy: &ProductionSignerDeploymentPolicy,
+    trusted_now_epoch_s: u64,
+) -> Result<GovernedProductionSignerTrustSnapshot, ProductionSignerIdentityProofError> {
+    if !deployment_policy.permits(identity) {
+        return Err(ProductionSignerIdentityProofError::TrustLeaseIdentityNotEnabled);
+    }
+    validate_sha256(caller_identity_digest)?;
+    service_identity.validate()?;
+    let record = accepted
+        .registry()
+        .active_record(identity, trusted_now_epoch_s)?;
+    let key = key_binding(record, accepted.binding())?;
+    let trust = GovernedProductionSignerTrustSnapshot {
+        signer: ProductionSignerTrustSnapshot {
+            identity: identity.clone(),
+            public_key_digest: key.public_key_digest.clone(),
+            allowlist_revision: accepted.binding().caller_allowlist_revision,
+            allowlist_digest: accepted.binding().caller_allowlist_digest.clone(),
+            caller_identity_digest: caller_identity_digest.to_owned(),
+            signer_service_identity_digest: service_identity.digest()?,
+        },
+        key,
+    };
+    trust.validate_for(
+        &ProductionKeyPolicy::for_identity(identity.clone()),
+        accepted.registry(),
+        trusted_now_epoch_s,
+    )?;
+    Ok(trust)
+}
+
 fn active_attestation_binding(
     accepted: &VerifiedProductionTrustState,
     at_epoch_s: u64,
@@ -487,6 +677,12 @@ pub enum ProductionSignerIdentityProofError {
     ProofChallengeMismatch,
     #[error("production signer identity proof digest does not match")]
     ProofDigestMismatch,
+    #[error("production signer trust lease is outside its proof validity window")]
+    TrustLeaseOutsideValidityWindow,
+    #[error("production signer trust lease bindings do not match the verified deployment")]
+    TrustLeaseBindingMismatch,
+    #[error("production signer trust lease requires a disabled production identity")]
+    TrustLeaseIdentityNotEnabled,
     #[error("production signer identity proof canonical object is invalid")]
     InvalidCanonicalObject,
     #[error("production signer identity proof JSON failed: {0}")]

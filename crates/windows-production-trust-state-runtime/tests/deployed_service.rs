@@ -37,6 +37,7 @@ const PAYLOAD_DIGEST: &str = "cccccccccccccccccccccccccccccccccccccccccccccccccc
 struct GenerationBackend {
     generation_one: SigningKey,
     generation_two: SigningKey,
+    attestation_key: SigningKey,
     selected_generation: Rc<Cell<u64>>,
     substitute_generation_two: bool,
 }
@@ -46,6 +47,7 @@ impl GenerationBackend {
         Ok(Self {
             generation_one: SigningKey::from_bytes((&[17_u8; 32]).into())?,
             generation_two: SigningKey::from_bytes((&[23_u8; 32]).into())?,
+            attestation_key: SigningKey::from_bytes((&[29_u8; 32]).into())?,
             selected_generation: Rc::new(Cell::new(0)),
             substitute_generation_two: false,
         })
@@ -60,8 +62,14 @@ impl GenerationBackend {
 
     fn key_for_generation(
         &self,
+        policy: &ProductionKeyPolicy,
         generation: u64,
     ) -> Result<&SigningKey, HardwareSignerBackendError> {
+        if policy.identity == ProductionKeyIdentity::attestation() {
+            return (generation == 1)
+                .then_some(&self.attestation_key)
+                .ok_or_else(|| HardwareSignerBackendError::new("KEY_GENERATION_UNSUPPORTED"));
+        }
         match generation {
             1 => Ok(&self.generation_one),
             2 if !self.substitute_generation_two => Ok(&self.generation_two),
@@ -77,7 +85,7 @@ impl GenerationBackend {
         policy: &ProductionKeyPolicy,
         generation: u64,
     ) -> Result<HardwareKeyDescriptor, HardwareSignerBackendError> {
-        descriptor_from_key(policy, self.key_for_generation(generation)?)
+        descriptor_from_key(policy, self.key_for_generation(policy, generation)?)
     }
 
     fn signature_for(
@@ -89,7 +97,7 @@ impl GenerationBackend {
         digest: &str,
     ) -> Result<HardwareSignature, HardwareSignerBackendError> {
         self.selected_generation.set(generation);
-        let key = self.key_for_generation(generation)?;
+        let key = self.key_for_generation(policy, generation)?;
         let digest_bytes = decode_sha256(digest)?;
         let signature: Signature = key
             .sign_prehash(&digest_bytes)
@@ -267,6 +275,85 @@ fn stale_state_and_signed_binding_substitution_fail_closed() -> Result<(), Box<d
     Ok(())
 }
 
+#[test]
+fn verified_identity_proof_yields_fresh_dual_role_trust_lease() -> Result<(), Box<dyn Error>> {
+    let fixture = Fixture::build(GenerationBackend::production()?)?;
+    let challenge =
+        ergaxiom_windows_production_trust_state_runtime::ProductionSignerIdentityChallenge::build(
+            "identity-proof-lease-1",
+            "d".repeat(64),
+            &fixture.accepted,
+            &fixture.deployment_policy,
+            ACTIVATION + 2,
+            ACTIVATION + 22,
+        )?;
+    let accepted = fixture.accepted.clone();
+    let deployment_policy = fixture.deployment_policy.clone();
+    let caller = fixture.caller.clone();
+    let expected_service_identity = fixture.service_identity.clone();
+    let mut deployed = TrustBoundProductionSignerService::new(
+        fixture.service,
+        accepted.clone(),
+        deployment_policy.clone(),
+    )?;
+    let proof = deployed.handle_identity_challenge(&challenge, &caller, ACTIVATION + 3)?;
+    let lease =
+        proof.verify_trust_lease(&challenge, &accepted, &deployment_policy, ACTIVATION + 4)?;
+    assert_eq!(lease.service_identity(), &expected_service_identity);
+    assert_eq!(
+        lease.capability_trust().signer.identity,
+        ProductionKeyIdentity::capability()
+    );
+    assert_eq!(
+        lease.attestation_trust().signer.identity,
+        ProductionKeyIdentity::attestation()
+    );
+    assert_eq!(lease.proof_digest(), proof.proof_digest);
+    assert_eq!(lease.expires_at_epoch_s(), ACTIVATION + 22);
+    lease.validate_at(&accepted, &deployment_policy, ACTIVATION + 21)?;
+    assert!(matches!(
+        lease.validate_at(&accepted, &deployment_policy, ACTIVATION + 22),
+        Err(ergaxiom_windows_production_trust_state_runtime::ProductionSignerIdentityProofError::TrustLeaseOutsideValidityWindow)
+    ));
+    Ok(())
+}
+
+#[test]
+fn trust_lease_rejects_stale_proof_and_caller_substitution() -> Result<(), Box<dyn Error>> {
+    let fixture = Fixture::build(GenerationBackend::production()?)?;
+    let challenge =
+        ergaxiom_windows_production_trust_state_runtime::ProductionSignerIdentityChallenge::build(
+            "identity-proof-lease-2",
+            "e".repeat(64),
+            &fixture.accepted,
+            &fixture.deployment_policy,
+            ACTIVATION + 2,
+            ACTIVATION + 12,
+        )?;
+    let accepted = fixture.accepted.clone();
+    let deployment_policy = fixture.deployment_policy.clone();
+    let caller = fixture.caller.clone();
+    let mut deployed = TrustBoundProductionSignerService::new(
+        fixture.service,
+        accepted.clone(),
+        deployment_policy.clone(),
+    )?;
+    let proof = deployed.handle_identity_challenge(&challenge, &caller, ACTIVATION + 3)?;
+    assert!(
+        proof
+            .verify_trust_lease(&challenge, &accepted, &deployment_policy, ACTIVATION + 12)
+            .is_err()
+    );
+    let mut substituted = proof;
+    substituted.payload.caller_identity_digest = "f".repeat(64);
+    assert!(
+        substituted
+            .verify_trust_lease(&challenge, &accepted, &deployment_policy, ACTIVATION + 4)
+            .is_err()
+    );
+    Ok(())
+}
+
 struct Fixture {
     selected_generation: Rc<Cell<u64>>,
     service: ProductionSignerService<GenerationBackend>,
@@ -301,7 +388,10 @@ impl Fixture {
             "local-named-pipe-v1",
             64 * 1024,
             128 * 1024,
-            vec![ProductionKeyIdentity::capability()],
+            vec![
+                ProductionKeyIdentity::capability(),
+                ProductionKeyIdentity::attestation(),
+            ],
         )?;
 
         let mut registry = ProductionKeyRegistry::default();
@@ -325,6 +415,19 @@ impl Fixture {
             ACTIVATION,
             ACTIVATION,
             ACTIVATION + 1_000,
+        )?;
+        let revision = registry.revision();
+        let digest = registry.registry_digest()?;
+        registry.insert_initial_guarded(
+            revision,
+            &digest,
+            descriptor_from_key(
+                &ProductionKeyPolicy::attestation(),
+                &backend.attestation_key,
+            )?,
+            ACTIVATION - 100,
+            ACTIVATION + 1_000,
+            ACTIVATION - 90,
         )?;
 
         let governance_key = Ed25519SigningKey::from_bytes(&[71_u8; 32]);
