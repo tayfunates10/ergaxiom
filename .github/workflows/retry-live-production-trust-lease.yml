@@ -1,0 +1,62 @@
+name: Retry live production trust lease
+
+on:
+  push:
+    branches:
+      - agent/live-production-trust-lease-v1
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  validate-and-sync:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out branch
+        uses: actions/checkout@v4
+        with:
+          ref: agent/live-production-trust-lease-v1
+          fetch-depth: 0
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Apply trust lease source transformation
+        shell: python
+        run: |
+          from pathlib import Path
+          import textwrap
+
+          workflow = Path('.github/workflows/sync-live-production-trust-lease.yml').read_text()
+          start_marker = '      - name: Implement verified trust lease\n        shell: python\n        run: |\n'
+          start = workflow.index(start_marker) + len(start_marker)
+          end = workflow.index('\n      - name: Validate trust lease', start)
+          script = textwrap.dedent(workflow[start:end])
+          exec(compile(script, 'implement-live-trust-lease', 'exec'), {})
+
+      - name: Validate trust lease
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo fmt --all
+          cargo fmt --all -- --check
+          cargo clippy -p ergaxiom-windows-production-trust-state-runtime --all-targets --all-features -- -D warnings
+          cargo test -p ergaxiom-windows-production-trust-state-runtime --test deployed_service -- --nocapture
+
+      - name: Commit validated trust lease
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add crates/windows-production-trust-state-runtime/src/identity_proof.rs \
+            crates/windows-production-trust-state-runtime/tests/deployed_service.rs \
+            .github/workflows/live-production-trust-lease.yml \
+            docs/architecture/51-live-production-trust-lease.md
+          git add -u .github/workflows/inspect-live-production-trust-lease.yml
+          git diff --cached --quiet && exit 0
+          git commit -m "Build fresh production signer trust leases"
+          git push origin HEAD:agent/live-production-trust-lease-v1
