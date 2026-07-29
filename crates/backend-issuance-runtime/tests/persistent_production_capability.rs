@@ -1,15 +1,11 @@
 include!("authorization.rs");
 
+use std::fs;
 use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use ergaxiom_backend_issuance_runtime::{
-    BackendIssuanceError, PersistentBackendProductionCapabilityAuthority,
-    PersistentBackendProductionIssuanceError,
-};
-use ergaxiom_desktop_shell_runtime::{
-    DesktopApprovalRequest, DesktopCommandAction, DesktopCommandReceipt, DesktopShellSnapshot,
-    issue_desktop_approval, issue_desktop_command_receipt,
+    PersistentBackendProductionCapabilityAuthority, PersistentBackendProductionIssuanceError,
 };
 
 mod live {
@@ -49,7 +45,12 @@ mod live {
             self.service
                 .borrow_mut()
                 .handle_authenticated(request, &caller, LIVE_NOW)
-                .map_err(CapabilityIssuanceError::ProductionSigner)
+                .map(|package| package.signer_package)
+                .map_err(|error| {
+                    CapabilityIssuanceError::Serialization(serde_json::Error::io(
+                        std::io::Error::other(error.to_string()),
+                    ))
+                })
         }
     }
 
@@ -80,12 +81,8 @@ mod live {
             deployment_policy.clone(),
         )?;
         let proof = service.handle_identity_challenge(&challenge, &caller, ACTIVATION + 3)?;
-        let lease = proof.verify_trust_lease(
-            &challenge,
-            &accepted,
-            &deployment_policy,
-            LIVE_NOW,
-        )?;
+        let lease =
+            proof.verify_trust_lease(&challenge, &accepted, &deployment_policy, LIVE_NOW)?;
         let calls = Rc::new(Cell::new(0));
         Ok(LiveHarness {
             transport: LiveTransport {

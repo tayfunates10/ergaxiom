@@ -435,7 +435,7 @@ fn read_policy_state(
         return Err(BackendIssuancePolicyStoreError::RecordTooLarge);
     }
     let before_modified = before.modified().ok();
-    let mut file = File::open(path).map_err(|source| BackendIssuancePolicyStoreError::Io {
+    let file = File::open(path).map_err(|source| BackendIssuancePolicyStoreError::Io {
         operation: "open policy state",
         path: path.to_path_buf(),
         source,
@@ -648,12 +648,13 @@ mod tests {
     }
 
     #[test]
-    fn policy_state_survives_restart_and_preserves_replay_sets() -> Result<(), Box<dyn std::error::Error>> {
+    fn policy_state_survives_restart_and_preserves_replay_sets()
+    -> Result<(), Box<dyn std::error::Error>> {
         let root = test_root("restart");
         let (mut store, mut policy) = BackendIssuancePolicyStore::load_or_create(&root)?;
-        policy.consumed.insert(
-            "authorization.issuance.0123456789abcdef01234567".to_owned(),
-        );
+        policy
+            .consumed
+            .insert("authorization.issuance.0123456789abcdef01234567".to_owned());
         policy.authorized_intents.insert("a".repeat(64));
         let committed = store.commit(&policy)?.clone();
         assert_eq!(committed.revision(), 1);
@@ -681,7 +682,8 @@ mod tests {
     }
 
     #[test]
-    fn abandoned_pending_record_is_ignored_during_recovery() -> Result<(), Box<dyn std::error::Error>> {
+    fn abandoned_pending_record_is_ignored_during_recovery()
+    -> Result<(), Box<dyn std::error::Error>> {
         let root = test_root("pending");
         let (store, _) = BackendIssuancePolicyStore::load_or_create(&root)?;
         fs::write(
