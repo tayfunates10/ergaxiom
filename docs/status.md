@@ -1,141 +1,82 @@
 # Ergaxiom Current Capability Status
 
-This document records what the repository can currently prove. It is deliberately narrower than the long-term product vision.
+This document is the canonical claim boundary for the current repository. It records only capabilities supported by the checked-in implementation and mandatory validation gates. Unsupported claims remain `UNKNOWN`.
 
-A capability is marked **certified path** only when the repository has an automated evidence chain that reaches an independently verified Acceptance Certificate. **Demonstrated** means real execution exists but the complete profession-level claim set is not yet certified. **Implemented** means the deterministic component and attack tests exist. **Planned** means the capability is not present as a production runtime.
-
-## Capability matrix
+## Foundation
 
 | Area | Status | Current boundary |
 |---|---|---|
-| Normative Work Contract, Profession Capsule and Evidence Bundle schemas | Implemented | Draft schemas remain versioned and subject to pre-alpha change. |
-| Canonical JSON and SHA-256 sealing | Implemented | Used by contracts, plans, approvals, command receipts, evidence and certificates. |
-| Three-valued proof kernel | Implemented | Mandatory `FALSE`, `UNKNOWN`, missing and contradictory proof states fail closed. |
-| Property-based impossible-acceptance tests | Implemented | Generated states cannot accept missing mandatory proof. |
-| Work Contract and capsule runtime compilation | Implemented | Compiles typed contracts and version-pinned profession capsules. |
-| Digest-bound profession catalog and scaffold | Implemented | Every installed capsule must be explicitly cataloged by confined path, ID, version, canonical digest, lifecycle and exact job inventory. All example contracts are discovered automatically; certified jobs require contract coverage. New scaffolds are draft, planned and production-disabled. Runtime plugin loading is not claimed. |
-| Deterministic intent-to-contract compilation | Implemented | Static Social Media Post, Image Background Cleanup, Brand-Compliant Image Export and Print-Ready Poster Preflight compile structured resolved intents. Unrestricted natural-language interpretation is not claimed. |
-| Typed planner synthesis | Implemented | All four initial Graphic Designer jobs synthesize deterministic plans using capsule-approved operators. General planning is not claimed. |
-| Operator Plan compilation and trace conformance | Implemented | Plans may use only capsule-approved, version-pinned operators. |
-| Signed capability tokens and authorization receipts | Implemented | Direct-Ed25519, DPAPI signer-bound and separate P-256 production-bound tokens are contract, capsule, plan, step, operator, executor and optional-device bound. The permanent Linux and Windows production-signer matrix passed formatting, warnings-deny Clippy and attack tests. |
-| Purpose-locked Capability Token issuance | Implemented | DPAPI and P-256 authorities compute the canonical payload digest and fix the Capability role, issuer, logical key ID and signer request ID. Governed P-256 issuance additionally requires the exact active generation, key-record digest, registry revision/digest, public trust snapshot and sealed caller-authorization receipt before returning a token. |
-| Authorized execution trace | Implemented | Receipt use and plan state are independently recomputed. |
-| Occupational Twin | Implemented | Isolated deterministic workspace, immutable inputs, rollback, checkpoints and replay packages. |
-| Evidence Runtime | Implemented | Evidence Bundles cannot self-assert acceptance. |
-| Ed25519 Acceptance Certificates | Implemented | Direct and signer-bound issuance independently reassess the exact Evidence Bundle before signing. Existing direct-Ed25519 packages remain backward compatible. |
-| Purpose-locked Acceptance Certificate issuance | Implemented | DPAPI and P-256 authorities require Evidence Runtime `ACCEPTED` with zero failed or unknown mandatory obligations before signing. Governed P-256 issuance additionally requires an active registry generation and independently recomputes the Replay Manifest from the Evidence Bundle. |
-| Backend-authorized purpose-locked issuance | Implemented | Capability issuance requires an exact `Approved` snapshot, non-expired approval, applied approve receipt, compiled step/operator and contract permission. Attestation issuance requires an exact `Executed` snapshot, applied execute receipt, accepted Evidence Bundle and independently rebuilt Replay Manifest. Authorizations are one-shot and consumed before signer invocation. No renderer issuance command exists. |
-| Role-separated public-key governance | Implemented | Ed25519 roles remain issuer/key/validity/revision/digest bound. P-256 Capability and Attestation keys now use a separate canonical generation registry with guarded add, rotate and revoke receipts, active/retired/revoked status, record digests, validity windows and public-key reuse rejection. Stale revision/digest, role, identity and generation substitutions fail closed. |
-| Governed capability and attestation verification | Implemented | Direct and DPAPI artifacts retain Ed25519 governed verification. Production P-256 packages can now be issued and verified through generation-bound trust snapshots that pin the key-record digest and exact registry revision/digest. Historical retired generations are restricted to their validity interval; revoked generations fail closed. |
-| Deterministic release evidence | Implemented | SPDX 2.3 dependency inventory, source/toolchain/artifact manifest and sorted SHA-256 checksums reproduce from identical inputs. Permanent Windows CI compiles an unsigned candidate and proves it remains explicitly ineligible without signing and installer-provenance evidence. |
-| Windows DPAPI isolated signer | Implemented | A separate one-request signer process protects persisted Ed25519 seeds with DPAPI CurrentUser and identity-specific entropy, accepts only role-bound lowercase SHA-256 digests, persists replay markers and returns public material only. This is a development/backward-compatibility signer, not TPM non-exportability or protection from arbitrary malicious same-user code. |
-| Windows TPM/CNG issuer signer foundation | Implemented | Fixed Capability and Attestation logical identities use Microsoft Platform Crypto Provider, ECDSA P-256/SHA-256, non-exportable signing-only policy, public-only descriptors and handle-only signing. The normal CNG runtime has no provisioning feature and can only open existing generation-specific keys. Hosted runners keep assurance `UNPROVEN`; no software-provider or DPAPI fallback can claim production eligibility. |
-| Windows TPM/CNG administrator provisioning | Implemented | A separate feature-gated elevated administrator executable provisions a positive governed generation and emits sealed public-only evidence binding the generation, deterministic persisted-key name and P-256 key-possession signature. Generation 1 retains the original name; later generations use canonical fixed-width names. Hosted CI does not run a real UAC ceremony or prove physical TPM assurance. |
-| Authenticated local production signer service | Implemented | The revisioned allowlist, process identity, replay-before-backend and protected named-pipe boundary now run behind a fixed SCM own-process LocalSystem host. A canonical manifest binds the exact executable path/digest, accepted state, allowlist and deployment policy; delayed start, restricted privileges, failure actions, preshutdown handling and an administrator/System service DACL are Windows-compiled and attack-tested. A controlled production-machine installation record remains open. |
-| Persistent signed production trust state | Implemented | A separate threshold Ed25519 governance policy signs canonical trust-state envelopes containing the P-256 registry, allowlist and signer policy. Explicit bootstrap, exact next-revision activation, immutable files, protected Windows DACLs, atomic accepted-pointer replacement, sealed checkpoints, separately signed recovery and hardware-signed trust-state binding pass Ubuntu and Windows attack tests. Operational governance-key custody and administrator distribution procedures remain open. |
-| Windows production release signing | Planned | Authenticode, trusted timestamps, certificate-chain verification and signed installer upgrade/rollback provenance are not implemented. The CNG issuer-signer foundation does not make unsigned Windows artifacts release-eligible. |
-| Windows Bridge protocol | Implemented | Signed pre-state, action-boundary state, post-state and TOCTOU checks. |
-| Windows UI Automation host and Rust client | Demonstrated | Real bounded action against a controlled WPF target; not arbitrary Windows application control. |
-| Inkscape adapter | Demonstrated | Exact binary binding, source immutability, action-boundary checks and a restricted proof-bound operator set with real Inkscape regression. |
-| Proof-bound Inkscape canvas, layer, asset, text, color and geometry operators | Implemented | Ten version-pinned capabilities support canvas resize, layer creation, digest-bound asset placement, explicit text, fill, transform, align, distribute, editable SVG save and profiled PNG/SVG/PDF export. Unsupported SVG structures fail closed. |
-| Signed Inkscape execution evidence | Implemented | Source, editable SVG, rendered output, semantic snapshots, application identity and signature are bound. |
-| Independent PNG container validation | Implemented | Chunk ordering, CRC, dimensions, media type and color-profile evidence. |
-| Restricted sRGB normalization | Implemented | Adds sRGB evidence only to proven restricted SVG material without changing IDAT bytes. |
-| Independent PNG pixel decoding | Implemented | Restricted 8-bit non-interlaced RGB/RGBA profile with independent zlib and filter reconstruction. |
-| Rendered contrast validation | Implemented | Validates a declared text region using independently decoded pixels. |
-| Rendered logo geometry and clear space | Implemented | Validates a declared placement against a transparent approved PNG mask. |
-| Rendered text bounds, safe area and clipping guard | Implemented | Validates visible foreground inside a declared text-only analysis region. |
-| Editable SVG approved-copy identity | Implemented | Independently parses one direct-text SVG element and compares exact approved UTF-8 copy. |
-| Cross-validator final artifact binding | Implemented | Requires all raster validators to share the exact normalized PNG and pixel decode. |
-| Independent restricted PDF preflight | Implemented | Recomputes one-page PDF boxes, resources, vector-only state, outlined-font state, allowed color spaces, transparency and security boundaries. |
-| Static Social Media Post final certificate | Certified path | Synthetic end-to-end material reaches a certificate over signed execution, normalization and independent artifact proofs. Permanent real-Inkscape regressions cover bounded execution and final artifact certification. |
-| Image Background Cleanup final certificate | Certified path | Applies an explicitly approved digest-bound binary alpha mask without guessing segmentation, independently proves exact foreground preservation and transparent background samples, runs a pinned Inkscape integration probe and verifies an Ed25519 Acceptance Certificate. |
-| Brand-Compliant Image Export final certificate | Certified path | Independently proves exact restricted-SVG brand rules, exports through pinned Inkscape, preserves IDAT during sRGB normalization and verifies a signed Acceptance Certificate. |
-| Print-Ready Poster Preflight final certificate | Certified path | Independently proves bounded flat-vector source geometry, bleed, safe area, palette, PDF page boxes, vector-only resources, outlined fonts, approved color spaces, transparency absence, security boundaries and pinned Inkscape export before issuing a certificate. |
-| Desktop product shell | Implemented | Tauri/React shell displays immutable inputs, resolution state, contract, permissions, sealed plan, execution, validators, evidence, certificate state and backend command receipts. Renderer mutation cannot forge acceptance. |
-| Digest-bound desktop control authority | Implemented | Rust owns an in-memory approval, execution, cancellation and rollback lifecycle for the bounded static-post fixture. Stale snapshots, altered tuples, expired approvals, replayed transitions and modified receipts fail closed. Approval hashes are not production signatures. |
-| General application learning | Planned | No live-learning or self-modifying production capability is allowed. |
-| Cross-platform bridges | Planned | The proof kernel is platform-neutral; bounded Windows UI Automation and platform-bound Inkscape paths exist. |
+| Schemas and proof kernel | Implemented | Mandatory false, unknown, missing and contradictory evidence fail closed. |
+| Contract compilation and typed planning | Implemented | The four bounded Graphic Designer jobs compile resolved structured intent into capsule-approved deterministic plans. General natural-language compilation is not claimed. |
+| Profession catalog | Implemented | Every installed capsule is bound by confined path, ID, version, canonical digest, lifecycle state and exact job inventory. Example contracts must reference registered capsule versions and job types. |
+| Profession scaffold | Implemented | Existing catalog/capsule integrity is checked before mutation; conflicting IDs/paths and unsafe filesystem boundaries are rejected. New capsules are draft, planned, production-disabled, E0, network-denied and live-learning-disabled. |
+| Evidence and replay | Implemented | Executor self-assertion cannot complete acceptance; mandatory evidence is independently reassessed. |
+| Desktop control shell | Implemented for one bounded fixture | Rust owns approval/execution state; renderer state cannot forge acceptance. |
+| Windows UI Automation and Inkscape bridges | Demonstrated | Real bounded paths exist; arbitrary desktop control is not claimed. |
+
+## Profession baseline
+
+The installed profession is `ergaxiom.profession.graphic-designer` capsule **v0.6.0**. The catalog defines exactly four certified job identities:
+
+1. `social_media_static_post`
+2. `image_background_cleanup`
+3. `brand_compliant_image_export`
+4. `print_ready_poster_preflight`
+
+The catalog entry remains production-disabled. Certification applies only to the exact bounded operators, validators, artifacts and evidence chains covered by the permanent tests.
+
+## Release and security baseline
+
+Deterministic release evidence remains `schema_version: 0.2.0`. It binds the exact checked-out source commit, `Cargo.lock`, desktop `package-lock.json`, the profession catalog, every registered Profession Capsule, every example Work Contract and every foundation schema. Foundation inventory and digests are deterministic; invalid or mismatched catalog/capsule/contract references fail closed.
+
+Unsigned candidates remain `release_eligible: false` until all mandatory production signing and installer-provenance blockers are independently satisfied.
+
+Dependency security is blocking:
+
+- desktop candidates run `npm ci` and `npm audit --audit-level=high`;
+- Rust release/security paths reject stale lockfiles with `cargo metadata --locked`;
+- the pinned RustSec audit evaluates the checked-in lock graph; and
+- no advisory ignore or gate weakening is permitted.
 
 ## Phase assessment
 
-### Phase 0 — Verifiable foundation
+| Phase | Gate |
+|---|---|
+| Verifiable foundation | Satisfied for v1 |
+| Proof kernel | Satisfied for v1 |
+| Occupational Twin | Satisfied for v1 |
+| Windows execution bridge | Demonstrated; production deployment gates remain open |
+| Graphic Designer Alpha | Satisfied for the four bounded certified jobs |
+| Windows Product Alpha | Control and trust foundations implemented; persistent installed-backend and signed-release gates remain open |
+| Profession Learning Laboratory | Not started |
+| Additional professions/platforms | Catalog/scaffold foundation implemented; no second profession is claimed |
 
-**Exit gate: satisfied.** Normative schemas, cross-document validation, first capsule and complete example contracts are present and exercised by CI.
+## Open production gates
 
-### Phase 1 — Proof kernel
+The repository does not yet claim unrestricted desktop work, completed production installer provenance, general application learning or a second certified profession. The detailed remaining product gates are maintained in [release-readiness.md](release-readiness.md) and [roadmap.md](roadmap.md).
 
-**Exit gate: satisfied for v1.** Canonical sealing, three-valued acceptance, validator independence, capability authorization, evidence reassessment, replay manifests, signatures and property-based fail-closed tests are implemented.
+## Mandatory validation
 
-### Phase 2 — Occupational digital twin
+A canonical baseline is not ready while any required check is failing or pending:
 
-**Exit gate: satisfied for v1.** Immutable input staging, typed operations, atomic postconditions, rollback, trace conformance and replay material are implemented and attack-tested.
+```bash
+python tools/validate_schema_catalog.py
+python tools/validate_foundation.py
+python -m unittest tools.test_validate_foundation tools.test_scaffold_profession tools.release.test_generate_release_evidence
+python -m compileall -q tools
 
-### Phase 3 — Windows execution bridge
+cd apps/desktop
+npm ci
+npm audit --audit-level=high
+npm test
+npm run build
 
-**Status: demonstrated, not closed.** A genuine WPF UI Automation action is signed and independently verified. A bounded DPAPI signer, purpose-locked Ed25519 issuance, backend issuance authorization, a CNG/P-256 issuer-signer foundation, generation-aware administrator provisioner, governed P-256 rotation/revocation, authenticated local signer-service boundary, governed Capability/Attestation issuance and a persistent threshold-signed trust-state lifecycle now exist and pass the permanent Ubuntu/Windows matrix. The phase remains open because physical-TPM assurance is unproven, a controlled-hardware ceremony is not recorded, governance-key custody and signed-state distribution are not operationalized, the fixed service has not been elevated-installed and recovery-tested on controlled production hardware, and broader UI patterns, code signing and real-user deployment hardening are incomplete.
+cd ../..
+cargo metadata --locked --format-version 1 --no-deps > /dev/null
+cargo fmt --all -- --check
+cargo clippy --workspace --all-targets --all-features -- -D warnings
+cargo test --workspace --all-targets --all-features
+git diff --check
+```
 
-### Phase 4 — Graphic Designer Alpha
-
-**Exit gate: satisfied for v1.** Static Social Media Post, bounded binary-mask Image Background Cleanup, Brand-Compliant Image Export and bounded flat-vector Print-Ready Poster Preflight each have normative contracts, deterministic intent compilers, typed plans, independent validators, actionable failure maps, real Inkscape integration, Evidence Bundle reassessment, verified Acceptance Certificates and permanent CI.
-
-This does not claim unrestricted design automation, general commercial-print certification, CMYK conversion, spot-color validation, overprint simulation, PDF/X compliance or unrestricted raster-image DPI analysis.
-
-### Windows Product Alpha control gate
-
-**Status: implemented for one bounded fixture, product gate remains open.** The desktop application can review and submit the exact snapshot, contract, plan and permission tuple; Rust issues an expiring approval and owns execution, cancellation, rollback and audit receipts. Public Ed25519 verification-key governance, deterministic unsigned release evidence, a separate DPAPI signer, purpose-locked issuance, one-shot backend authorization, a CNG/P-256 open-only signer contract, generation-aware administrator provisioner, governed P-256 rotation/revocation, authenticated local signer-service boundary, governed Capability/Attestation issuance and persistent signed trust-state activation/recovery are implemented and CI-verified. The renderer exposes no issuance command. Persistent user-selected jobs, real Evidence Bundle loading, complete desktop/backend routing through a controlled-machine installed CNG service, independently proven physical-TPM keys, operational governance-key custody/distribution, Authenticode, signed installer provenance and all four profession paths in one user-driven desktop flow remain open.
-
-### Phase 5 — Profession learning laboratory
-
-**Status: not started.** Candidate operator learning, demonstration capture, synthetic-task generation, certification and capsule signing remain future work.
-
-### Phase 6 — Cross-platform and additional professions
-
-**Status: extension foundation implemented; additional professions not started.** The explicit profession catalog, digest binding, full capsule/contract discovery, fail-closed cross-capsule validation and draft scaffold are implemented. No second profession, dynamic runtime plugin loader or additional platform bridge is claimed.
-
-## Release labels
-
-- **Experimental:** code or execution may be demonstrated but cannot issue a verified-work certificate for the unsupported claim.
-- **Certified path:** the exact bounded claim set can reach an independently verifiable certificate through automated evidence.
-- **Profession alpha:** every mandatory technical claim for the declared job types is covered by certified paths and failure maps.
-- **Product alpha:** the desktop application can safely compile, review, authorize, execute and inspect those certified profession paths.
-
-## Completed immediate gates
-
-1. Deterministic intent-to-contract compiler for Static Social Media Post.
-2. Typed planner synthesis using certified Graphic Designer operators.
-3. Permanent real-Inkscape final-artifact validation and final-certificate CI.
-4. Tauri/React contract, permission, plan, execution, validator, evidence and certificate views.
-5. Renderer-side acceptance forgery prevention and actionable validator/failure display.
-6. Expanded proof-bound Inkscape operator set with per-operator attack coverage and real regression.
-7. Binary-mask Image Background Cleanup with authorized trace reassessment, independent PNG proofs, real Inkscape integration and a verified Acceptance Certificate.
-8. Brand-Compliant Image Export with restricted SVG rules, signed execution, IDAT-preserving sRGB normalization, real Inkscape export and a verified Acceptance Certificate.
-9. Print-Ready Poster Preflight with restricted outlined-vector SVG validation, deterministic PDF boxes, independent PDF resource/security proofs, real Inkscape export and a verified Acceptance Certificate.
-10. Digest-bound desktop approval and execution lifecycle with stale-state rejection, expiry, cancellation, rollback and canonical command receipts.
-11. Role-separated Ed25519 public-key governance with rotation, revocation, stale-registry rejection, governed Capability Token and Acceptance Certificate verification, reproducible SPDX/manifest/checksum evidence and fail-closed unsigned Windows candidates.
-12. Separate Windows signer executable with DPAPI CurrentUser at-rest protection, role-bound digest-only signatures, persistent replay rejection, generic error responses and real Windows process-isolation tests.
-13. Purpose-locked signer-bound Capability Token issuance with fixed role, issuer and key identity, backend-computed payload digests, trusted-public-key matching, governed revocation and real Windows child-process verification.
-14. Purpose-locked signer-bound Acceptance Certificate issuance with Evidence Runtime reassessment before signing, deterministic Replay Manifest binding, fixed Attestation identity, governed revocation and real Windows DPAPI child-process verification.
-15. One-shot backend authorization for purpose-locked Capability Token and Acceptance Certificate issuance, bound to exact approval, command receipt, snapshot, contract, plan, permission, Evidence Bundle and Replay Manifest material.
-16. TPM/CNG issuer-signer foundation with fixed Capability and Attestation identities, non-exportable signing-only P-256 key policy, handle-only CNG signing, P-256 protocol verification, authenticated caller and service-instance binding, replay-before-backend ordering and explicit local named-pipe security.
-17. Purpose-locked P-256 Capability Token and Acceptance Certificate issuance with sealed public trust snapshots, independent receipt sealing, backward-compatible artifact types, Evidence Bundle/Replay Manifest reassessment and permanent Linux/Windows CI.
-18. Compile-time separated elevated administrator provisioning with open-only normal signer builds, deterministic key naming, sealed public-only receipts, P-256 key-possession proof and fail-closed assurance that does not promote hosted keys to hardware-backed production status.
-19. Governed P-256 generations with generation-aware persisted-key naming and provisioning evidence, guarded add/rotate/revoke receipts, active/retired/revoked records, stale-registry and public-key-reuse rejection, active-only pre-signer issuance and registry-bound Capability/Attestation verification.
-20. Persistent threshold-signed production trust state with explicit offline bootstrap, exact monotonic revision chaining, protected immutable storage, atomic activation, sealed checkpoints, separately authorized recovery, active-generation startup matching and hardware-signed state binding.
-21. Hardened Windows production signer service host with a canonical fixed-policy manifest, exact executable path/digest binding, own-process LocalSystem SCM configuration, delayed start, restricted privilege list, failure actions, preshutdown handling, protected service DACL and accepted-state-bound CNG startup.
-22. Digest-bound profession catalog with exact capsule/job inventory, automatic validation of every example Work Contract, certified-job coverage gates, path/substitution attack tests and a non-overwriting draft scaffold for future professions.
-
-## Next gates
-
-1. Add independently trusted physical-TPM evidence and execute a controlled elevated provisioning ceremony whose evidence is retained and reviewed.
-2. Define and exercise operational custody, rotation, backup and recovery procedures for trust-governance private keys and administrator-controlled signed-state distribution.
-3. Execute and retain an elevated controlled-machine installation/validation record, service recovery exercise and complete desktop/backend routing through the installed signer.
-4. Add Authenticode, trusted timestamps, certificate-chain verification and signed installer upgrade/rollback provenance.
-5. Replace the bounded desktop fixture with persistent user-selected immutable inputs, load real Evidence Bundles and internally route all four certified Graphic Designer job types through the installed backend issuance policy.
-6. Expand the Windows Bridge across real application patterns and recovery cases.
-7. Build the Profession Learning Laboratory in a cryptographically separate environment.
-8. Add cross-platform bridges and additional profession capsules only after the Windows Product Alpha gates hold.
-
-## Non-negotiable rule
-
-A passing model response, application return code, screenshot, click, keystroke, declared success field or executor-generated digest is never sufficient proof by itself. Unsupported claims remain `UNKNOWN` and cannot be promoted by product messaging, UI state or certificate wording.
+Windows-specific signer/service/Tauri and real-Inkscape regressions must pass on the same exact PR HEAD. No security, provenance, assurance, validator or evidence gate may be weakened to obtain a green result.
