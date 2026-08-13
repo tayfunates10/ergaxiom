@@ -65,6 +65,22 @@ class ProfessionLearningLabTests(unittest.TestCase):
         self.assertFalse(first["signing"]["production_key_access"])
         self.assertFalse(first["promotion"]["automatic_production_allowed"])
 
+    def test_cross_profession_or_job_demonstrations_are_rejected(self) -> None:
+        wrong_capsule = copy.deepcopy(self.demo)
+        wrong_capsule["capsule_id"] = "ergaxiom.profession.other"
+        wrong_job = copy.deepcopy(self.demo)
+        wrong_job["job_type"] = "different_job"
+
+        for demonstration in (wrong_capsule, wrong_job):
+            with self.subTest(demonstration=demonstration):
+                with self.assertRaises(LabValidationError):
+                    synthesize_candidate(
+                        [demonstration],
+                        candidate_id="candidate.technical-writer.invalid",
+                        capsule_id="ergaxiom.profession.technical-writer",
+                        job_type="plain_text_revision",
+                    )
+
     def test_missing_provenance_or_license_is_rejected(self) -> None:
         missing = copy.deepcopy(self.demo)
         del missing["provenance"]["license"]
@@ -115,6 +131,26 @@ class ProfessionLearningLabTests(unittest.TestCase):
                 with self.assertRaises(LabValidationError):
                     certify_candidate(copy.deepcopy(self.expected_candidate), mutation)
 
+    def test_duplicate_or_unsupported_certification_suite_kinds_are_rejected(self) -> None:
+        duplicate = copy.deepcopy(self.certification)
+        duplicate["suites"][1]["kind"] = duplicate["suites"][0]["kind"]
+
+        unsupported = copy.deepcopy(self.certification)
+        unsupported["suites"].append(
+            {
+                "kind": "unsupported_suite",
+                "run_id": "invalid-suite",
+                "total": 1,
+                "failures": 0,
+                "unknowns": 0,
+            }
+        )
+
+        for mutation in (duplicate, unsupported):
+            with self.subTest(mutation=mutation):
+                with self.assertRaises(LabValidationError):
+                    certify_candidate(copy.deepcopy(self.expected_candidate), mutation)
+
     def test_seeded_property_fuzz_preserves_scope_and_production_invariants(self) -> None:
         rng = random.Random(79)
         declared = set(self.demo["declared_capability_scope"])
@@ -157,7 +193,20 @@ class ProfessionLearningLabTests(unittest.TestCase):
         )
         self.assertEqual(rolled_back["current_version"], "0.1.0")
         self.assertIn("0.2.0-canary.1", rolled_back["revoked_versions"])
-        self.assertTrue(rolled_back["last_action"]["rollback_applied"])
+        self.assertEqual(rolled_back["history"][-2]["kind"], "revoke")
+        self.assertEqual(rolled_back["history"][-2]["version"], "0.2.0-canary.1")
+        self.assertTrue(
+            rolled_back["history"][-2]["evidence_id"].startswith("revocation:")
+        )
+        self.assertEqual(rolled_back["history"][-1]["kind"], "rollback")
+        self.assertEqual(rolled_back["history"][-1]["version"], "0.1.0")
+        self.assertTrue(
+            rolled_back["history"][-1]["evidence_id"].startswith("rollback:")
+        )
+
+        lifecycle_schema = load(SCHEMAS / "capsule-lifecycle.schema.json")
+        errors = list(Draft202012Validator(lifecycle_schema).iter_errors(rolled_back))
+        self.assertEqual(errors, [])
 
         unsafe = copy.deepcopy(self.lifecycle)
         unsafe["revoked_versions"] = ["0.1.0"]
