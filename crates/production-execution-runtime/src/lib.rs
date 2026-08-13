@@ -16,14 +16,19 @@ use ergaxiom_desktop_shell_runtime::{
     DesktopControlError, DesktopControlStatus, DesktopShellSnapshot, control_status_from_snapshot,
     verify_desktop_approval_binding, verify_desktop_command_receipt, verify_desktop_shell_snapshot,
 };
-use ergaxiom_evidence_runtime::{EvidenceBundle, EvidenceBundleError, assess_bundle};
+use ergaxiom_evidence_runtime::{EvidenceBundleError, assess_bundle};
 use ergaxiom_operator_plan_runtime::CompiledPlan;
-use ergaxiom_proof_kernel::{AssuranceLevel, DecisionStatus, HashingError, canonical_json_bytes, canonical_json_sha256};
+use ergaxiom_proof_kernel::{
+    AssuranceLevel, DecisionStatus, HashingError, canonical_json_bytes, canonical_json_sha256,
+};
 use ergaxiom_windows_production_governed_issuance_runtime::{
     GovernedCapabilityAuthorizer, GovernedProductionIssuanceError,
     verify_governed_production_attestation_against_bundle,
 };
-use ergaxiom_windows_production_trust_state_runtime::VerifiedProductionSignerTrustLease;
+use ergaxiom_windows_production_trust_state_runtime::{
+    ProductionSignerDeploymentPolicy, ProductionSignerIdentityProofError,
+    VerifiedProductionSignerTrustLease, VerifiedProductionTrustState,
+};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use thiserror::Error;
@@ -77,7 +82,6 @@ pub struct ProductionExecutionChainState {
     pub replay_manifest_digest: Option<String>,
     pub attestation_authorization: Option<BackendIssuanceAuthorization>,
     pub acceptance_package: Option<ProductionSignerBoundAttestationPackage>,
-    pub verified_attestation: Option<VerifiedAttestation>,
     pub final_snapshot: Option<DesktopShellSnapshot>,
     pub cancel_receipt: Option<DesktopCommandReceipt>,
     pub rollback_receipt: Option<DesktopCommandReceipt>,
@@ -105,7 +109,6 @@ impl ProductionExecutionChainState {
             replay_manifest_digest: None,
             attestation_authorization: None,
             acceptance_package: None,
-            verified_attestation: None,
             final_snapshot: None,
             cancel_receipt: None,
             rollback_receipt: None,
@@ -122,53 +125,72 @@ impl ProductionExecutionChainState {
         }
         validate_identifier(&self.job_id)?;
         if self.revision == 0 {
-            if self.previous_state_digest.is_some() || self.stage != ProductionExecutionStage::Initial {
+            if self.previous_state_digest.is_some()
+                || self.stage != ProductionExecutionStage::Initial
+            {
                 return Err(ProductionExecutionStoreError::InvalidInitialState);
             }
         } else {
-            validate_sha256(
-                self.previous_state_digest
-                    .as_deref()
-                    .ok_or(ProductionExecutionStoreError::MissingPreviousDigest)?,
-            )?;
+            let previous = self
+                .previous_state_digest
+                .as_deref()
+                .ok_or(ProductionExecutionStoreError::MissingPreviousDigest)?;
+            validate_sha256(previous)?;
         }
         validate_sha256(&self.state_digest)?;
         if self.state_digest != self.expected_digest()? {
             return Err(ProductionExecutionStoreError::StateDigestMismatch);
         }
-        self.validate_material()
+        self.validate_approval_material()?;
+        self.validate_capabilities()?;
+        self.validate_execution_material()?;
+        self.validate_certificate_material()?;
+        self.validate_terminal_receipts()
     }
 
-    fn validate_material(&self) -> Result<(), ProductionExecutionStoreError> {
+    fn expected_digest(&self) -> Result<String, ProductionExecutionStoreError> {
+        let mut value = serde_json::to_value(self)?;
+        let object = value
+            .as_object_mut()
+            .ok_or(ProductionExecutionStoreError::InvalidCanonicalObject)?;
+        object.insert("state_digest".to_owned(), Value::String(String::new()));
+        Ok(canonical_json_sha256(&value)?)
+    }
+
+    fn validate_approval_material(&self) -> Result<(), ProductionExecutionStoreError> {
         let approved_present = self.approved_snapshot.is_some()
             && self.approval.is_some()
             && self.approve_receipt.is_some();
         if self.stage != ProductionExecutionStage::Initial && !approved_present {
             return Err(ProductionExecutionStoreError::MissingApprovalMaterial);
         }
-        if let (Some(snapshot), Some(approval), Some(receipt)) = (
+        let (Some(snapshot), Some(approval), Some(receipt)) = (
             self.approved_snapshot.as_ref(),
             self.approval.as_ref(),
             self.approve_receipt.as_ref(),
-        ) {
-            if snapshot.job_id.as_deref() != Some(self.job_id.as_str())
-                || !verify_desktop_shell_snapshot(snapshot)?
-                || control_status_from_snapshot(snapshot)? != DesktopControlStatus::Approved
-                || !verify_desktop_command_receipt(receipt)?
-                || receipt.action != DesktopCommandAction::Approve
-                || receipt.post_snapshot_digest != snapshot.snapshot_digest
-                || receipt.approval_digest.as_deref() != Some(approval.approval_digest.as_str())
-            {
-                return Err(ProductionExecutionStoreError::ApprovalMaterialMismatch);
-            }
-            verify_desktop_approval_binding(snapshot, approval, &approval.approval_digest)?;
+        ) else {
+            return Ok(());
+        };
+        if snapshot.job_id.as_deref() != Some(self.job_id.as_str())
+            || !verify_desktop_shell_snapshot(snapshot)?
+            || control_status_from_snapshot(snapshot)? != DesktopControlStatus::Approved
+            || !verify_desktop_command_receipt(receipt)?
+            || receipt.action != DesktopCommandAction::Approve
+            || receipt.post_snapshot_digest != snapshot.snapshot_digest
+            || receipt.approval_digest.as_deref()
+                != Some(approval.approval_digest.as_str())
+        {
+            return Err(ProductionExecutionStoreError::ApprovalMaterialMismatch);
         }
+        verify_desktop_approval_binding(snapshot, approval, &approval.approval_digest)?;
+        Ok(())
+    }
 
+    fn validate_capabilities(&self) -> Result<(), ProductionExecutionStoreError> {
         let mut token_ids = BTreeSet::new();
         for capability in &self.capabilities {
             if capability.authorization.kind != BackendIssuanceKind::Capability
                 || capability.authorization.job_id != self.job_id
-                || capability.token.payload.token_id.is_empty()
                 || !token_ids.insert(capability.token.payload.token_id.as_str())
             {
                 return Err(ProductionExecutionStoreError::CapabilityMaterialMismatch);
@@ -191,44 +213,52 @@ impl ProductionExecutionChainState {
                         || receipt.use_number == 0
                         || receipt.use_number > receipt.max_uses
                     {
-                        return Err(ProductionExecutionStoreError::CapabilityConsumptionMismatch);
+                        return Err(
+                            ProductionExecutionStoreError::CapabilityConsumptionMismatch,
+                        );
                     }
                     validate_sha256(digest)?;
                 }
-                _ => return Err(ProductionExecutionStoreError::CapabilityConsumptionMismatch),
+                _ => {
+                    return Err(
+                        ProductionExecutionStoreError::CapabilityConsumptionMismatch,
+                    );
+                }
             }
         }
-        if matches!(
+        if self.requires_consumed_capabilities()
+            && (self.capabilities.is_empty()
+                || self
+                    .capabilities
+                    .iter()
+                    .any(|capability| capability.consumption_receipt.is_none()))
+        {
+            return Err(ProductionExecutionStoreError::UnconsumedCapability);
+        }
+        Ok(())
+    }
+
+    fn requires_consumed_capabilities(&self) -> bool {
+        matches!(
             self.stage,
             ProductionExecutionStage::CapabilitiesConsumed
                 | ProductionExecutionStage::Executed
                 | ProductionExecutionStage::Certified
                 | ProductionExecutionStage::RolledBack
-        ) && (self.capabilities.is_empty()
-            || self
-                .capabilities
-                .iter()
-                .any(|capability| capability.consumption_receipt.is_none()))
-        {
-            return Err(ProductionExecutionStoreError::UnconsumedCapability);
-        }
+        )
+    }
 
-        let executed_present = self.executed_snapshot.is_some()
+    fn validate_execution_material(&self) -> Result<(), ProductionExecutionStoreError> {
+        let execution_present = self.executed_snapshot.is_some()
             && self.execute_receipt.is_some()
             && self.evidence_bundle.is_some()
             && self.evidence_bundle_digest.is_some()
             && self.replay_manifest.is_some()
             && self.replay_manifest_digest.is_some();
-        if matches!(
-            self.stage,
-            ProductionExecutionStage::Executed
-                | ProductionExecutionStage::Certified
-                | ProductionExecutionStage::RolledBack
-        ) && !executed_present
-        {
+        if self.requires_execution_material() && !execution_present {
             return Err(ProductionExecutionStoreError::MissingExecutionMaterial);
         }
-        if let (
+        let (
             Some(snapshot),
             Some(receipt),
             Some(bundle),
@@ -242,62 +272,92 @@ impl ProductionExecutionChainState {
             self.evidence_bundle_digest.as_ref(),
             self.replay_manifest.as_ref(),
             self.replay_manifest_digest.as_ref(),
-        ) {
-            if !verify_desktop_shell_snapshot(snapshot)?
-                || control_status_from_snapshot(snapshot)? != DesktopControlStatus::Executed
-                || !verify_desktop_command_receipt(receipt)?
-                || receipt.action != DesktopCommandAction::Execute
-                || receipt.post_snapshot_digest != snapshot.snapshot_digest
-                || snapshot.evidence_bundle.as_ref().map(|item| item.digest.as_str())
-                    != Some(bundle_digest.as_str())
-                || snapshot.replay_manifest.as_ref().map(|item| item.digest.as_str())
-                    != Some(replay_digest.as_str())
-                || canonical_json_sha256(bundle)? != *bundle_digest
-                || canonical_json_sha256(&serde_json::to_value(replay)?)? != *replay_digest
-            {
-                return Err(ProductionExecutionStoreError::ExecutionMaterialMismatch);
-            }
-            let _: EvidenceBundle = serde_json::from_value(bundle.clone())?;
+        ) else {
+            return Ok(());
+        };
+        if !verify_desktop_shell_snapshot(snapshot)?
+            || control_status_from_snapshot(snapshot)? != DesktopControlStatus::Executed
+            || !verify_desktop_command_receipt(receipt)?
+            || receipt.action != DesktopCommandAction::Execute
+            || receipt.post_snapshot_digest != snapshot.snapshot_digest
+            || snapshot
+                .evidence_bundle
+                .as_ref()
+                .map(|item| item.digest.as_str())
+                != Some(bundle_digest.as_str())
+            || snapshot
+                .replay_manifest
+                .as_ref()
+                .map(|item| item.digest.as_str())
+                != Some(replay_digest.as_str())
+            || canonical_json_sha256(bundle)? != *bundle_digest
+            || canonical_json_sha256(&serde_json::to_value(replay)?)? != *replay_digest
+        {
+            return Err(ProductionExecutionStoreError::ExecutionMaterialMismatch);
         }
+        Ok(())
+    }
 
+    fn requires_execution_material(&self) -> bool {
+        matches!(
+            self.stage,
+            ProductionExecutionStage::Executed
+                | ProductionExecutionStage::Certified
+                | ProductionExecutionStage::RolledBack
+        )
+    }
+
+    fn validate_certificate_material(&self) -> Result<(), ProductionExecutionStoreError> {
         let certified_present = self.attestation_authorization.is_some()
             && self.acceptance_package.is_some()
-            && self.verified_attestation.is_some()
             && self.final_snapshot.is_some();
-        if matches!(self.stage, ProductionExecutionStage::Certified | ProductionExecutionStage::RolledBack)
-            && !certified_present
+        if matches!(
+            self.stage,
+            ProductionExecutionStage::Certified | ProductionExecutionStage::RolledBack
+        ) && !certified_present
         {
             return Err(ProductionExecutionStoreError::MissingCertificateMaterial);
         }
-        if let (Some(auth), Some(package), Some(verified), Some(snapshot)) = (
+        let (Some(auth), Some(package), Some(snapshot)) = (
             self.attestation_authorization.as_ref(),
             self.acceptance_package.as_ref(),
-            self.verified_attestation.as_ref(),
             self.final_snapshot.as_ref(),
-        ) {
-            if auth.kind != BackendIssuanceKind::Attestation
-                || auth.job_id != self.job_id
-                || package.replay_manifest != *self.replay_manifest.as_ref().ok_or(
-                    ProductionExecutionStoreError::MissingExecutionMaterial,
-                )?
-                || verified.decision != DecisionStatus::Accepted
-                || snapshot.authority_status != AuthorityStatus::VerifiedAccepted
-                || !verify_desktop_shell_snapshot(snapshot)?
-                || snapshot.certificate.as_ref().map(|certificate| certificate.certificate_digest.as_str())
-                    != Some(verified.certificate_digest.as_str())
-                || snapshot.certificate.as_ref().map(|certificate| certificate.evidence_bundle_digest.as_str())
-                    != Some(verified.evidence_bundle_digest.as_str())
-            {
-                return Err(ProductionExecutionStoreError::CertificateMaterialMismatch);
-            }
+        ) else {
+            return Ok(());
+        };
+        let replay = self
+            .replay_manifest
+            .as_ref()
+            .ok_or(ProductionExecutionStoreError::MissingExecutionMaterial)?;
+        let certificate = snapshot
+            .certificate
+            .as_ref()
+            .ok_or(ProductionExecutionStoreError::MissingCertificateMaterial)?;
+        if auth.kind != BackendIssuanceKind::Attestation
+            || auth.job_id != self.job_id
+            || package.replay_manifest != *replay
+            || snapshot.authority_status != AuthorityStatus::VerifiedAccepted
+            || !verify_desktop_shell_snapshot(snapshot)?
+            || !certificate.signature_verified
+            || !certificate.bundle_verified
+            || !certificate.decision_accepted
+            || certificate.mandatory_failures != 0
+            || certificate.mandatory_unknowns != 0
+        {
+            return Err(ProductionExecutionStoreError::CertificateMaterialMismatch);
         }
+        Ok(())
+    }
 
+    fn validate_terminal_receipts(&self) -> Result<(), ProductionExecutionStoreError> {
         if self.stage == ProductionExecutionStage::Cancelled {
             let receipt = self
                 .cancel_receipt
                 .as_ref()
                 .ok_or(ProductionExecutionStoreError::MissingCancellationReceipt)?;
-            if !verify_desktop_command_receipt(receipt)? || receipt.action != DesktopCommandAction::Cancel {
+            if !verify_desktop_command_receipt(receipt)?
+                || receipt.action != DesktopCommandAction::Cancel
+            {
                 return Err(ProductionExecutionStoreError::CancellationMaterialMismatch);
             }
         }
@@ -306,20 +366,13 @@ impl ProductionExecutionChainState {
                 .rollback_receipt
                 .as_ref()
                 .ok_or(ProductionExecutionStoreError::MissingRollbackReceipt)?;
-            if !verify_desktop_command_receipt(receipt)? || receipt.action != DesktopCommandAction::Rollback {
+            if !verify_desktop_command_receipt(receipt)?
+                || receipt.action != DesktopCommandAction::Rollback
+            {
                 return Err(ProductionExecutionStoreError::RollbackMaterialMismatch);
             }
         }
         Ok(())
-    }
-
-    fn expected_digest(&self) -> Result<String, ProductionExecutionStoreError> {
-        let mut value = serde_json::to_value(self)?;
-        let object = value
-            .as_object_mut()
-            .ok_or(ProductionExecutionStoreError::InvalidCanonicalObject)?;
-        object.insert("state_digest".to_owned(), Value::String(String::new()));
-        Ok(canonical_json_sha256(&value)?)
     }
 }
 
@@ -392,14 +445,14 @@ impl ProductionExecutionChainStore {
         ) {
             return Err(ProductionExecutionStoreError::InvalidTransition);
         }
+        let token_value = serde_json::to_value(&token)?;
+        let token_digest = canonical_json_sha256(&token_value)?;
         if self.current.capabilities.iter().any(|existing| {
             existing.token.payload.token_id == token.payload.token_id
-                || existing.token_digest
-                    == canonical_json_sha256(&serde_json::to_value(&token)).unwrap_or_default()
+                || existing.token_digest == token_digest
         }) {
             return Err(ProductionExecutionStoreError::DuplicateCapability);
         }
-        let token_digest = canonical_json_sha256(&serde_json::to_value(&token)?)?;
         let mut next = self.current.clone();
         next.stage = ProductionExecutionStage::CapabilitiesIssued;
         next.capabilities.push(PersistedProductionCapability {
@@ -419,7 +472,8 @@ impl ProductionExecutionChainStore {
     ) -> Result<(), ProductionExecutionStoreError> {
         if !matches!(
             self.current.stage,
-            ProductionExecutionStage::CapabilitiesIssued | ProductionExecutionStage::CapabilitiesConsumed
+            ProductionExecutionStage::CapabilitiesIssued
+                | ProductionExecutionStage::CapabilitiesConsumed
         ) {
             return Err(ProductionExecutionStoreError::InvalidTransition);
         }
@@ -473,7 +527,6 @@ impl ProductionExecutionChainStore {
         &mut self,
         attestation_authorization: BackendIssuanceAuthorization,
         package: ProductionSignerBoundAttestationPackage,
-        verified_attestation: VerifiedAttestation,
         final_snapshot: DesktopShellSnapshot,
     ) -> Result<(), ProductionExecutionStoreError> {
         if self.current.stage != ProductionExecutionStage::Executed {
@@ -483,7 +536,6 @@ impl ProductionExecutionChainStore {
         next.stage = ProductionExecutionStage::Certified;
         next.attestation_authorization = Some(attestation_authorization);
         next.acceptance_package = Some(package);
-        next.verified_attestation = Some(verified_attestation);
         next.final_snapshot = Some(final_snapshot);
         self.commit(next)
     }
@@ -492,7 +544,9 @@ impl ProductionExecutionChainStore {
         &mut self,
         receipt: DesktopCommandReceipt,
     ) -> Result<(), ProductionExecutionStoreError> {
-        if self.current.stage != ProductionExecutionStage::Approved || !self.current.capabilities.is_empty() {
+        if self.current.stage != ProductionExecutionStage::Approved
+            || !self.current.capabilities.is_empty()
+        {
             return Err(ProductionExecutionStoreError::InvalidTransition);
         }
         let mut next = self.current.clone();
@@ -518,8 +572,11 @@ impl ProductionExecutionChainStore {
         &mut self,
         mut next: ProductionExecutionChainState,
     ) -> Result<(), ProductionExecutionStoreError> {
-        let observed = scan_chain(&self.root)?.ok_or(ProductionExecutionStoreError::MissingCurrentState)?;
-        if observed.state_digest != self.current.state_digest || observed.revision != self.current.revision {
+        let observed =
+            scan_chain(&self.root)?.ok_or(ProductionExecutionStoreError::MissingCurrentState)?;
+        if observed.state_digest != self.current.state_digest
+            || observed.revision != self.current.revision
+        {
             return Err(ProductionExecutionStoreError::ConcurrentMutation);
         }
         next.revision = self
@@ -541,12 +598,15 @@ impl ProductionExecutionChainStore {
 pub fn consume_governed_capability(
     token: &ProductionSignerBoundCapabilityToken,
     lease: &VerifiedProductionSignerTrustLease,
+    accepted: &VerifiedProductionTrustState,
+    deployment_policy: &ProductionSignerDeploymentPolicy,
     compiled_contract: &CompiledContract,
     compiled_plan: &CompiledPlan,
     trusted_now_epoch_s: u64,
     expected_executor_id: &str,
     expected_device_id: Option<&str>,
 ) -> Result<AuthorizationReceipt, ProductionExecutionVerifyError> {
+    lease.validate_at(accepted, deployment_policy, trusted_now_epoch_s)?;
     let mut authorizer = GovernedCapabilityAuthorizer::new(
         lease.capability_trust().clone(),
         lease.registry().clone(),
@@ -562,13 +622,20 @@ pub fn consume_governed_capability(
     )?)
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn verify_recovered_certified_chain(
     state: &ProductionExecutionChainState,
     lease: &VerifiedProductionSignerTrustLease,
+    accepted: &VerifiedProductionTrustState,
+    deployment_policy: &ProductionSignerDeploymentPolicy,
+    trusted_now_epoch_s: u64,
     compiled_contract: CompiledContract,
     compiled_plan: &CompiledPlan,
     verified_assurance_level: AssuranceLevel,
+    expected_executor_id: &str,
+    expected_device_id: Option<&str>,
 ) -> Result<VerifiedAttestation, ProductionExecutionVerifyError> {
+    lease.validate_at(accepted, deployment_policy, trusted_now_epoch_s)?;
     state.validate_seal()?;
     if state.stage != ProductionExecutionStage::Certified {
         return Err(ProductionExecutionVerifyError::NotCertified);
@@ -576,7 +643,9 @@ pub fn verify_recovered_certified_chain(
     let bundle = state
         .evidence_bundle
         .as_ref()
-        .ok_or(ProductionExecutionVerifyError::MissingMaterial("evidence_bundle"))?;
+        .ok_or(ProductionExecutionVerifyError::MissingMaterial(
+            "evidence_bundle",
+        ))?;
     let assessment = assess_bundle(
         compiled_contract.clone(),
         compiled_plan,
@@ -592,60 +661,137 @@ pub fn verify_recovered_certified_chain(
     let package = state
         .acceptance_package
         .as_ref()
-        .ok_or(ProductionExecutionVerifyError::MissingMaterial("acceptance_package"))?;
+        .ok_or(ProductionExecutionVerifyError::MissingMaterial(
+            "acceptance_package",
+        ))?;
     let verified = verify_governed_production_attestation_against_bundle(
         package,
         lease.attestation_trust(),
         lease.registry(),
-        compiled_contract,
+        compiled_contract.clone(),
         compiled_plan,
         bundle,
         verified_assurance_level,
     )?;
-    if state.verified_attestation.as_ref() != Some(&verified) {
-        return Err(ProductionExecutionVerifyError::PersistedVerificationMismatch);
-    }
-    for capability in &state.capabilities {
-        let token_value = serde_json::to_value(&capability.token)?;
-        capability.token.signer_package.verify_governed(
-            lease.capability_trust(),
-            lease.registry(),
-            capability.token.payload.issued_at_epoch_s,
-        )?;
-        let receipt = capability
-            .consumption_receipt
-            .as_ref()
-            .ok_or(ProductionExecutionVerifyError::MissingMaterial("capability_consumption"))?;
-        if receipt.token_digest != canonical_json_sha256(&token_value)? {
-            return Err(ProductionExecutionVerifyError::CapabilityReceiptMismatch);
-        }
-    }
+    verify_final_snapshot(state, &verified)?;
+    verify_capability_receipts(
+        state,
+        lease,
+        &compiled_contract,
+        compiled_plan,
+        expected_executor_id,
+        expected_device_id,
+    )?;
     Ok(verified)
 }
 
-fn prepare_root(root: &Path) -> Result<(), ProductionExecutionStoreError> {
-    if !root.is_absolute() {
-        return Err(ProductionExecutionStoreError::PathNotAbsolute(root.to_path_buf()));
-    }
-    if root.exists() {
-        let metadata = fs::symlink_metadata(root).map_err(|source| io_error("inspect store root", root, source))?;
-        if metadata.file_type().is_symlink() {
-            return Err(ProductionExecutionStoreError::DirectSymbolicLink(root.to_path_buf()));
-        }
-        if !metadata.is_dir() {
-            return Err(ProductionExecutionStoreError::StoreRootNotDirectory(root.to_path_buf()));
-        }
-    } else {
-        fs::create_dir_all(root).map_err(|source| io_error("create store root", root, source))?;
+fn verify_final_snapshot(
+    state: &ProductionExecutionChainState,
+    verified: &VerifiedAttestation,
+) -> Result<(), ProductionExecutionVerifyError> {
+    let snapshot = state
+        .final_snapshot
+        .as_ref()
+        .ok_or(ProductionExecutionVerifyError::MissingMaterial(
+            "final_snapshot",
+        ))?;
+    let certificate = snapshot
+        .certificate
+        .as_ref()
+        .ok_or(ProductionExecutionVerifyError::MissingMaterial(
+            "certificate_verification",
+        ))?;
+    if snapshot.authority_status != AuthorityStatus::VerifiedAccepted
+        || !verify_desktop_shell_snapshot(snapshot)?
+        || certificate.certificate_id != verified.certificate_id
+        || certificate.certificate_digest != verified.certificate_digest
+        || certificate.evidence_bundle_digest != verified.evidence_bundle_digest
+        || !certificate.signature_verified
+        || !certificate.bundle_verified
+        || !certificate.decision_accepted
+        || certificate.mandatory_failures != 0
+        || certificate.mandatory_unknowns != 0
+    {
+        return Err(ProductionExecutionVerifyError::PersistedVerificationMismatch);
     }
     Ok(())
 }
 
-fn scan_chain(root: &Path) -> Result<Option<ProductionExecutionChainState>, ProductionExecutionStoreError> {
+fn verify_capability_receipts(
+    state: &ProductionExecutionChainState,
+    lease: &VerifiedProductionSignerTrustLease,
+    compiled_contract: &CompiledContract,
+    compiled_plan: &CompiledPlan,
+    expected_executor_id: &str,
+    expected_device_id: Option<&str>,
+) -> Result<(), ProductionExecutionVerifyError> {
+    for capability in &state.capabilities {
+        let persisted_receipt = capability
+            .consumption_receipt
+            .as_ref()
+            .ok_or(ProductionExecutionVerifyError::MissingMaterial(
+                "capability_consumption",
+            ))?;
+        let mut authorizer = GovernedCapabilityAuthorizer::new(
+            lease.capability_trust().clone(),
+            lease.registry().clone(),
+        )?;
+        let token_value = serde_json::to_value(&capability.token)?;
+        let verified_receipt = authorizer.authorize(
+            &token_value,
+            compiled_contract,
+            compiled_plan,
+            persisted_receipt.authorized_at_epoch_s,
+            expected_executor_id,
+            expected_device_id,
+        )?;
+        if &verified_receipt != persisted_receipt {
+            return Err(ProductionExecutionVerifyError::CapabilityReceiptMismatch);
+        }
+        let receipt_digest = canonical_json_sha256(&serde_json::to_value(persisted_receipt)?)?;
+        if capability.consumption_receipt_digest.as_deref() != Some(receipt_digest.as_str()) {
+            return Err(ProductionExecutionVerifyError::CapabilityReceiptMismatch);
+        }
+    }
+    Ok(())
+}
+
+fn prepare_root(root: &Path) -> Result<(), ProductionExecutionStoreError> {
+    if !root.is_absolute() {
+        return Err(ProductionExecutionStoreError::PathNotAbsolute(
+            root.to_path_buf(),
+        ));
+    }
+    if root.exists() {
+        let metadata = fs::symlink_metadata(root)
+            .map_err(|source| io_error("inspect store root", root, source))?;
+        if metadata.file_type().is_symlink() {
+            return Err(ProductionExecutionStoreError::DirectSymbolicLink(
+                root.to_path_buf(),
+            ));
+        }
+        if !metadata.is_dir() {
+            return Err(ProductionExecutionStoreError::StoreRootNotDirectory(
+                root.to_path_buf(),
+            ));
+        }
+    } else {
+        fs::create_dir_all(root)
+            .map_err(|source| io_error("create store root", root, source))?;
+    }
+    Ok(())
+}
+
+fn scan_chain(
+    root: &Path,
+) -> Result<Option<ProductionExecutionChainState>, ProductionExecutionStoreError> {
     let mut states = BTreeMap::<String, ProductionExecutionChainState>::new();
     for entry in fs::read_dir(root).map_err(|source| io_error("read store root", root, source))? {
         let entry = entry.map_err(|source| io_error("read store entry", root, source))?;
-        let name = entry.file_name().into_string().map_err(|_| ProductionExecutionStoreError::NonUtf8Entry)?;
+        let name = entry
+            .file_name()
+            .into_string()
+            .map_err(|_| ProductionExecutionStoreError::NonUtf8Entry)?;
         if name.starts_with(PENDING_PREFIX) && name.ends_with(PENDING_SUFFIX) {
             continue;
         }
@@ -679,7 +825,9 @@ fn scan_chain(root: &Path) -> Result<Option<ProductionExecutionChainState>, Prod
     loop {
         let children = states
             .values()
-            .filter(|state| state.previous_state_digest.as_deref() == Some(current.state_digest.as_str()))
+            .filter(|state| {
+                state.previous_state_digest.as_deref() == Some(current.state_digest.as_str())
+            })
             .cloned()
             .collect::<Vec<_>>();
         match children.as_slice() {
@@ -702,10 +850,15 @@ fn scan_chain(root: &Path) -> Result<Option<ProductionExecutionChainState>, Prod
     Ok(Some(current))
 }
 
-fn read_state(path: &Path) -> Result<ProductionExecutionChainState, ProductionExecutionStoreError> {
-    let before = fs::symlink_metadata(path).map_err(|source| io_error("inspect state", path, source))?;
+fn read_state(
+    path: &Path,
+) -> Result<ProductionExecutionChainState, ProductionExecutionStoreError> {
+    let before =
+        fs::symlink_metadata(path).map_err(|source| io_error("inspect state", path, source))?;
     if before.file_type().is_symlink() || !before.is_file() {
-        return Err(ProductionExecutionStoreError::InvalidRecordType(path.to_path_buf()));
+        return Err(ProductionExecutionStoreError::InvalidRecordType(
+            path.to_path_buf(),
+        ));
     }
     if before.len() > MAX_RECORD_BYTES {
         return Err(ProductionExecutionStoreError::RecordTooLarge);
@@ -720,8 +873,12 @@ fn read_state(path: &Path) -> Result<ProductionExecutionChainState, ProductionEx
     if u64::try_from(bytes.len()).unwrap_or(u64::MAX) > MAX_RECORD_BYTES {
         return Err(ProductionExecutionStoreError::RecordTooLarge);
     }
-    let after = fs::symlink_metadata(path).map_err(|source| io_error("reinspect state", path, source))?;
-    if before.len() != after.len() || before_modified != after.modified().ok() || before.file_type() != after.file_type() {
+    let after =
+        fs::symlink_metadata(path).map_err(|source| io_error("reinspect state", path, source))?;
+    if before.len() != after.len()
+        || before_modified != after.modified().ok()
+        || before.file_type() != after.file_type()
+    {
         return Err(ProductionExecutionStoreError::UnstableRead);
     }
     let state: ProductionExecutionChainState = serde_json::from_slice(&bytes)?;
@@ -729,7 +886,10 @@ fn read_state(path: &Path) -> Result<ProductionExecutionChainState, ProductionEx
     Ok(state)
 }
 
-fn write_state(root: &Path, state: &ProductionExecutionChainState) -> Result<(), ProductionExecutionStoreError> {
+fn write_state(
+    root: &Path,
+    state: &ProductionExecutionChainState,
+) -> Result<(), ProductionExecutionStoreError> {
     state.validate_seal()?;
     let final_path = root.join(state_filename(state));
     if final_path.exists() {
@@ -751,8 +911,10 @@ fn write_state(root: &Path, state: &ProductionExecutionChainState) -> Result<(),
     file.write_all(&bytes)
         .and_then(|()| file.sync_all())
         .map_err(|source| io_error("write pending state", &temp_path, source))?;
-    fs::hard_link(&temp_path, &final_path).map_err(|source| io_error("publish immutable state", &final_path, source))?;
-    fs::remove_file(&temp_path).map_err(|source| io_error("remove pending state", &temp_path, source))?;
+    fs::hard_link(&temp_path, &final_path)
+        .map_err(|source| io_error("publish immutable state", &final_path, source))?;
+    fs::remove_file(&temp_path)
+        .map_err(|source| io_error("remove pending state", &temp_path, source))?;
     Ok(())
 }
 
@@ -776,14 +938,20 @@ fn validate_identifier(value: &str) -> Result<(), ProductionExecutionStoreError>
 
 fn validate_sha256(value: &str) -> Result<(), ProductionExecutionStoreError> {
     if value.len() != 64
-        || !value.bytes().all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+        || !value
+            .bytes()
+            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
     {
         return Err(ProductionExecutionStoreError::InvalidSha256);
     }
     Ok(())
 }
 
-fn io_error(operation: &'static str, path: &Path, source: std::io::Error) -> ProductionExecutionStoreError {
+fn io_error(
+    operation: &'static str,
+    path: &Path,
+    source: std::io::Error,
+) -> ProductionExecutionStoreError {
     ProductionExecutionStoreError::Io {
         operation,
         path: path.to_path_buf(),
@@ -799,15 +967,17 @@ pub enum ProductionExecutionVerifyError {
     Evidence(#[from] EvidenceBundleError),
     #[error(transparent)]
     Governed(#[from] GovernedProductionIssuanceError),
+    #[error(transparent)]
+    Lease(#[from] ProductionSignerIdentityProofError),
     #[error("production execution chain is not certified")]
     NotCertified,
     #[error("production execution chain is missing {0}")]
     MissingMaterial(&'static str),
     #[error("production Evidence Bundle is not independently ACCEPTED")]
     EvidenceNotAccepted,
-    #[error("persisted attestation verification does not match independent verification")]
+    #[error("persisted certificate verification does not match independent verification")]
     PersistedVerificationMismatch,
-    #[error("persisted capability consumption receipt does not match its token")]
+    #[error("persisted Capability consumption receipt does not independently verify")]
     CapabilityReceiptMismatch,
     #[error("failed to serialize production execution verification material: {0}")]
     Serialization(#[from] serde_json::Error),
@@ -909,8 +1079,8 @@ pub enum ProductionExecutionStoreError {
     RollbackMaterialMismatch,
     #[error(transparent)]
     Desktop(#[from] DesktopControlError),
-    #[error("failed to decode production execution Evidence Bundle: {0}")]
-    BundleDecode(#[from] serde_json::Error),
+    #[error("failed to decode production execution state: {0}")]
+    Json(#[from] serde_json::Error),
     #[error(transparent)]
     Hashing(#[from] HashingError),
     #[error("failed to {operation} at {path}: {source}")]
@@ -939,7 +1109,8 @@ mod tests {
     }
 
     #[test]
-    fn initial_chain_is_digest_addressed_and_restart_stable() -> Result<(), Box<dyn std::error::Error>> {
+    fn initial_chain_is_digest_addressed_and_restart_stable(
+    ) -> Result<(), Box<dyn std::error::Error>> {
         let root = test_root("restart");
         let first = ProductionExecutionChainStore::load_or_create(&root, "job.test.0001")?;
         assert_eq!(first.current().revision, 0);
@@ -954,7 +1125,8 @@ mod tests {
     }
 
     #[test]
-    fn unexpected_or_corrupt_history_fails_closed() -> Result<(), Box<dyn std::error::Error>> {
+    fn unexpected_or_corrupt_history_fails_closed(
+    ) -> Result<(), Box<dyn std::error::Error>> {
         let root = test_root("corrupt");
         let store = ProductionExecutionChainStore::load_or_create(&root, "job.test.0002")?;
         let state_path = root.join(state_filename(store.current()));
@@ -966,10 +1138,14 @@ mod tests {
     }
 
     #[test]
-    fn pending_temp_record_is_ignored_but_unexpected_file_is_rejected() -> Result<(), Box<dyn std::error::Error>> {
+    fn pending_temp_is_ignored_but_unexpected_file_is_rejected(
+    ) -> Result<(), Box<dyn std::error::Error>> {
         let root = test_root("entries");
         let _ = ProductionExecutionChainStore::load_or_create(&root, "job.test.0003")?;
-        fs::write(root.join(".production-execution-pending-test.tmp"), b"partial")?;
+        fs::write(
+            root.join(".production-execution-pending-test.tmp"),
+            b"partial",
+        )?;
         assert!(ProductionExecutionChainStore::load_or_create(&root, "job.test.0003").is_ok());
         fs::write(root.join("evil.json"), b"{}")?;
         assert!(matches!(
