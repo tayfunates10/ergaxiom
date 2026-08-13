@@ -91,9 +91,15 @@ def build_draft_capsule(
         },
         "training": {
             "live_learning_allowed": False,
-            "certification_suite": None,
+            "certification_suite": "profession-learning-lab/v1",
             "minimum_pass_rate": 1.0,
-            "required_zero_failure_tests": [],
+            "required_zero_failure_tests": [
+                "adversarial",
+                "isolation",
+                "property_fuzz",
+                "regression",
+                "revocation_rollback",
+            ],
         },
         "metadata": {
             "status": "draft",
@@ -222,6 +228,7 @@ def main() -> int:
     print(f"- capsule: {capsule_path}")
     print(f"- catalog: {catalog_path}")
     print("- state: draft, planned and production-disabled")
+    print("- laboratory: candidate-only synthesis; no automatic production promotion")
     return 0
 
 

@@ -46,6 +46,18 @@ class ProfessionScaffoldTests(unittest.TestCase):
             self.assertEqual(entry["job_types"][0]["status"], "planned")
             self.assertEqual(catalog["catalog_version"], "0.1.1")
             self.assertFalse(capsule["training"]["live_learning_allowed"])
+            self.assertEqual(
+                capsule["training"]["certification_suite"],
+                "profession-learning-lab/v1",
+            )
+            self.assertEqual(capsule["training"]["minimum_pass_rate"], 1.0)
+            self.assertIn(
+                "property_fuzz", capsule["training"]["required_zero_failure_tests"]
+            )
+            self.assertIn(
+                "revocation_rollback",
+                capsule["training"]["required_zero_failure_tests"],
+            )
 
     def test_existing_profession_is_never_overwritten(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

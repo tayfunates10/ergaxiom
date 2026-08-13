@@ -1,0 +1,19 @@
+{
+  "schema_version": "0.1.0",
+  "capsule_id": "ergaxiom.profession.technical-writer",
+  "current_version": "0.2.0-canary.1",
+  "rollback_target": "0.1.0",
+  "revoked_versions": [],
+  "history": [
+    {
+      "kind": "candidate",
+      "version": "0.2.0-canary.1",
+      "evidence_id": "candidate.technical-writer.001"
+    },
+    {
+      "kind": "canary",
+      "version": "0.2.0-canary.1",
+      "evidence_id": "cert.technical-writer.001"
+    }
+  ]
+}

@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ergaxiom.dev/schemas/capsule-lifecycle.schema.json",
+  "title": "Ergaxiom Capsule Lifecycle Record",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "capsule_id", "current_version", "rollback_target", "revoked_versions", "history"],
+  "properties": {
+    "schema_version": {"const": "0.1.0"},
+    "capsule_id": {"type": "string", "minLength": 1},
+    "current_version": {"type": "string", "minLength": 1},
+    "rollback_target": {"type": ["string", "null"]},
+    "revoked_versions": {"type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
+    "history": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["kind", "version", "evidence_id"],
+        "properties": {
+          "kind": {"enum": ["candidate", "canary", "activate", "revoke", "rollback"]},
+          "version": {"type": "string", "minLength": 1},
+          "evidence_id": {"type": "string", "minLength": 1}
+        }
+      }
+    }
+  }
+}

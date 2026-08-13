@@ -1,0 +1,50 @@
+{
+  "schema_version": "0.1.0",
+  "capsule_id": "ergaxiom.profession.technical-writer",
+  "version": "0.1.0",
+  "profession": {
+    "name": "technical_writer",
+    "display_name": "Technical Writer",
+    "description": "Minimal demonstration profession for proving the isolated extension mechanism.",
+    "specializations": []
+  },
+  "job_types": [
+    {
+      "id": "plain_text_revision",
+      "description": "Draft bounded plain-text revision job used only to prove profession extension.",
+      "specialization": null,
+      "required_inputs": [],
+      "required_outputs": [],
+      "required_constraints": [],
+      "operator_ids": [],
+      "minimum_assurance_level": "E0"
+    }
+  ],
+  "operators": [],
+  "validators": [],
+  "policies": {
+    "default_network": "denied",
+    "unknown_handling": "request_resolution",
+    "self_verification_allowed": false,
+    "irreversible_actions_require_approval": true,
+    "minimum_assurance_by_job_type": {
+      "plain_text_revision": "E0"
+    }
+  },
+  "training": {
+    "live_learning_allowed": false,
+    "certification_suite": "profession-learning-lab/v1",
+    "minimum_pass_rate": 1.0,
+    "required_zero_failure_tests": [
+      "adversarial",
+      "isolation",
+      "property_fuzz",
+      "regression",
+      "revocation_rollback"
+    ]
+  },
+  "metadata": {
+    "status": "draft",
+    "owner": "Ergaxiom core team"
+  }
+}
