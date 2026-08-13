@@ -13,6 +13,7 @@ A capability is marked **certified path** only when the repository has an automa
 | Three-valued proof kernel | Implemented | Mandatory `FALSE`, `UNKNOWN`, missing and contradictory proof states fail closed. |
 | Property-based impossible-acceptance tests | Implemented | Generated states cannot accept missing mandatory proof. |
 | Work Contract and capsule runtime compilation | Implemented | Compiles typed contracts and version-pinned profession capsules. |
+| Digest-bound profession catalog and scaffold | Implemented | Every installed capsule must be explicitly cataloged by confined path, ID, version, canonical digest, lifecycle and exact job inventory. All example contracts are discovered automatically; certified jobs require contract coverage. New scaffolds are draft, planned and production-disabled. Runtime plugin loading is not claimed. |
 | Deterministic intent-to-contract compilation | Implemented | Static Social Media Post, Image Background Cleanup, Brand-Compliant Image Export and Print-Ready Poster Preflight compile structured resolved intents. Unrestricted natural-language interpretation is not claimed. |
 | Typed planner synthesis | Implemented | All four initial Graphic Designer jobs synthesize deterministic plans using capsule-approved operators. General planning is not claimed. |
 | Operator Plan compilation and trace conformance | Implemented | Plans may use only capsule-approved, version-pinned operators. |
@@ -90,7 +91,7 @@ This does not claim unrestricted design automation, general commercial-print cer
 
 ### Phase 6 — Cross-platform and additional professions
 
-**Status: not started.** Additional platform bridges and profession capsules remain future work.
+**Status: extension foundation implemented; additional professions not started.** The explicit profession catalog, digest binding, full capsule/contract discovery, fail-closed cross-capsule validation and draft scaffold are implemented. No second profession, dynamic runtime plugin loader or additional platform bridge is claimed.
 
 ## Release labels
 
@@ -122,6 +123,7 @@ This does not claim unrestricted design automation, general commercial-print cer
 19. Governed P-256 generations with generation-aware persisted-key naming and provisioning evidence, guarded add/rotate/revoke receipts, active/retired/revoked records, stale-registry and public-key-reuse rejection, active-only pre-signer issuance and registry-bound Capability/Attestation verification.
 20. Persistent threshold-signed production trust state with explicit offline bootstrap, exact monotonic revision chaining, protected immutable storage, atomic activation, sealed checkpoints, separately authorized recovery, active-generation startup matching and hardware-signed state binding.
 21. Hardened Windows production signer service host with a canonical fixed-policy manifest, exact executable path/digest binding, own-process LocalSystem SCM configuration, delayed start, restricted privilege list, failure actions, preshutdown handling, protected service DACL and accepted-state-bound CNG startup.
+22. Digest-bound profession catalog with exact capsule/job inventory, automatic validation of every example Work Contract, certified-job coverage gates, path/substitution attack tests and a non-overwriting draft scaffold for future professions.
 
 ## Next gates
 

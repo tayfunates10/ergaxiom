@@ -59,7 +59,7 @@ Private-key use will require a later Windows-only signer service with DPAPI or T
 `tools/release/generate_release_evidence.py` produces three artifacts from immutable inputs:
 
 - an SPDX 2.3 JSON dependency inventory derived from `Cargo.lock` and the desktop `package-lock.json`;
-- a canonical release manifest binding the source commit, lockfiles, toolchain versions and artifact bytes;
+- a canonical release manifest binding the source commit, lockfiles, digest-bound profession catalog, toolchain versions and artifact bytes;
 - a sorted `SHA256SUMS` file for the candidate and evidence files.
 
 The generator rejects malformed source identities, missing lockfiles, duplicate artifact basenames and absent artifacts. Two runs over the same source, lockfiles, toolchain strings and artifact bytes must be byte-identical.

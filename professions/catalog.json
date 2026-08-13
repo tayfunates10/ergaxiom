@@ -1,0 +1,33 @@
+{
+  "schema_version": "0.1.0",
+  "catalog_id": "ergaxiom.profession-catalog",
+  "catalog_version": "0.1.0",
+  "entries": [
+    {
+      "capsule_id": "ergaxiom.profession.graphic-designer",
+      "capsule_version": "0.6.0",
+      "capsule_path": "graphic-designer/profession.json",
+      "capsule_digest": "c26fd07fa575f9ac4df884644526ad51a01405ff076465a08bc28f1d327bd8e8",
+      "certification_level": "profession_alpha",
+      "production_enabled": false,
+      "job_types": [
+        {
+          "id": "brand_compliant_image_export",
+          "status": "certified_path"
+        },
+        {
+          "id": "image_background_cleanup",
+          "status": "certified_path"
+        },
+        {
+          "id": "print_ready_poster_preflight",
+          "status": "certified_path"
+        },
+        {
+          "id": "social_media_static_post",
+          "status": "certified_path"
+        }
+      ]
+    }
+  ]
+}

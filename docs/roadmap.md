@@ -15,7 +15,7 @@ For the exact implemented claim boundary, see [Current capability status](status
 | Phase 4 — Graphic Designer Alpha | Satisfied for v1; four certified job paths |
 | Windows Product Alpha | Digest-bound control implemented for one bounded fixture; release and multi-job gates open |
 | Phase 5 — Profession learning laboratory | Not started |
-| Phase 6 — Cross-platform and additional professions | Not started |
+| Phase 6 — Cross-platform and additional professions | Extension catalog foundation implemented; additional capsules not started |
 
 A satisfied v1 gate means the listed invariants are implemented and exercised by automated tests. It does not mean interfaces are stable or the product is ready for unrestricted use.
 
@@ -187,6 +187,17 @@ Exit criteria:
 ## Phase 6 — Cross-platform and additional professions
 
 **Goal:** preserve the proof kernel while replacing platform bridges and adding profession capsules.
+
+Implemented extension foundation:
+
+- explicit allowlisted profession catalog with canonical capsule digests;
+- exact capsule/job inventory and lifecycle binding;
+- automatic discovery and validation of every installed capsule and example Work Contract;
+- certified-job example-contract coverage gate;
+- path traversal, substitution, downgrade and duplicate-identity attack tests; and
+- a safe scaffold that creates only draft, planned, production-disabled professions.
+
+This foundation does not count as a second profession or a dynamic plugin runtime. Each new profession must still implement and certify its own typed compiler, planner, operators, independent validators, evidence path and application boundary.
 
 Candidate capsules:
 

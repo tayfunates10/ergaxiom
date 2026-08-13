@@ -21,7 +21,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Iterable
 
-SCHEMA_VERSION = "0.1.0"
+SCHEMA_VERSION = "0.2.0"
 FIXED_CREATED_AT = "1970-01-01T00:00:00Z"
 SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 COMMIT_RE = re.compile(r"^[0-9a-f]{40}$")
@@ -62,6 +62,16 @@ def canonical_json_bytes(value: Any) -> bytes:
         sort_keys=True,
         separators=(",", ":"),
     ).encode("utf-8")
+
+
+def canonical_json_file_sha256(path: Path) -> str:
+    try:
+        value = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as error:
+        raise ReleaseEvidenceError(f"failed to parse canonical JSON {path}: {error}") from error
+    if not isinstance(value, dict):
+        raise ReleaseEvidenceError(f"canonical JSON input must be an object: {path}")
+    return sha256_bytes(canonical_json_bytes(value))
 
 
 def write_json(path: Path, value: Any) -> None:
@@ -227,6 +237,7 @@ def build_manifest(
     source_commit: str,
     cargo_lock: Path,
     package_lock: Path,
+    profession_catalog: Path,
     sbom_path: Path,
     artifacts: list[dict[str, Any]],
     rustc_version: str,
@@ -240,6 +251,9 @@ def build_manifest(
             "commit": source_commit,
             "cargo_lock_sha256": sha256_file(cargo_lock),
             "desktop_package_lock_sha256": sha256_file(package_lock),
+            "profession_catalog_sha256": canonical_json_file_sha256(
+                profession_catalog
+            ),
         },
         "toolchain": {
             "node": node_version,
@@ -304,9 +318,15 @@ def main(argv: list[str] | None = None) -> int:
         repo_root = args.repo_root.resolve(strict=True)
         cargo_lock = repo_root / "Cargo.lock"
         package_lock = repo_root / "apps" / "desktop" / "package-lock.json"
-        if not cargo_lock.is_file() or not package_lock.is_file():
+        profession_catalog = repo_root / "professions" / "catalog.json"
+        if (
+            not cargo_lock.is_file()
+            or not package_lock.is_file()
+            or not profession_catalog.is_file()
+        ):
             raise ReleaseEvidenceError(
-                "Cargo.lock and apps/desktop/package-lock.json are required"
+                "Cargo.lock, apps/desktop/package-lock.json and "
+                "professions/catalog.json are required"
             )
         source_commit = validate_source_commit(args.source_commit)
         dependencies = sorted(
@@ -324,6 +344,7 @@ def main(argv: list[str] | None = None) -> int:
             source_commit=source_commit,
             cargo_lock=cargo_lock,
             package_lock=package_lock,
+            profession_catalog=profession_catalog,
             sbom_path=sbom_path,
             artifacts=artifacts,
             rustc_version=args.rustc_version or command_version(["rustc", "-Vv"]),

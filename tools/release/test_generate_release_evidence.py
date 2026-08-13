@@ -21,6 +21,7 @@ class ReleaseEvidenceTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             (root / "apps" / "desktop").mkdir(parents=True)
+            (root / "professions").mkdir()
             (root / "Cargo.lock").write_text(
                 """version = 4
 
@@ -48,6 +49,16 @@ version = "4.5.6"
                         },
                     }
                 ),
+                encoding="utf-8",
+            )
+            profession_catalog = {
+                "schema_version": "0.1.0",
+                "catalog_id": "ergaxiom.profession-catalog",
+                "catalog_version": "0.1.0",
+                "entries": [],
+            }
+            (root / "professions" / "catalog.json").write_text(
+                json.dumps(profession_catalog),
                 encoding="utf-8",
             )
             artifact = root / "ergaxiom-desktop.exe"
@@ -87,6 +98,11 @@ version = "4.5.6"
                 )
             )
             self.assertIs(manifest["release_eligible"], False)
+            self.assertEqual(manifest["schema_version"], "0.2.0")
+            self.assertEqual(
+                MODULE.sha256_bytes(MODULE.canonical_json_bytes(profession_catalog)),
+                manifest["source"]["profession_catalog_sha256"],
+            )
             self.assertEqual(
                 [
                     "AUTHENTICODE_NOT_VERIFIED",

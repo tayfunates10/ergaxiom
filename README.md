@@ -13,17 +13,19 @@ Ergaxiom is an implementation-stage pre-alpha. Its proof and certification core 
 The repository currently contains:
 
 - a Rust proof kernel with `TRUE`, `FALSE` and `UNKNOWN` claim semantics,
-- typed Work Contract and Profession Capsule compilation,
+- typed Work Contract and Profession Capsule compilation plus an explicit digest-bound profession catalog,
 - signed capability authorization and receipt-bound execution traces,
 - deterministic occupational-twin simulation, rollback and replay,
-- signed Evidence Bundles and Ed25519 Acceptance Certificates,
+- independently reassessed Evidence Bundles and Ed25519/P-256 Acceptance Certificates,
+- a Tauri/React desktop inspection and digest-bound control shell,
+- role-separated Windows DPAPI and TPM/CNG signing foundations with persistent governed trust state,
 - a proof-bound Windows UI Automation bridge demonstrated against a controlled WPF target,
 - a pinned Inkscape adapter with signed execution evidence,
 - independent PNG structure, sRGB, pixel, contrast, logo-geometry and text-bounds validators,
-- independent editable-SVG approved-copy validation, and
-- a bounded Static Social Media Post chain that can issue a final certificate over independently bound artifacts.
+- independent editable-SVG, brand and restricted-PDF validation, and
+- four bounded Graphic Designer jobs that can issue final certificates over independently bound artifacts.
 
-The current implementation does **not** yet provide a natural-language contract compiler, production desktop UI, arbitrary application learning or unrestricted control of desktop software. See [Current capability status](docs/status.md) for the exact claim boundary.
+The current implementation does **not** yet provide unrestricted natural-language contract compilation, a signed production installer, completed desktop-to-installed-signer execution, arbitrary application learning or unrestricted control of desktop software. See [Current capability status](docs/status.md) for the exact claim boundary.
 
 ## What makes Ergaxiom different
 
@@ -81,10 +83,12 @@ A click, application success response or self-declared validator result cannot i
 
 - [`schemas/work-contract.schema.json`](schemas/work-contract.schema.json)
 - [`schemas/profession-capsule.schema.json`](schemas/profession-capsule.schema.json)
+- [`schemas/profession-catalog.schema.json`](schemas/profession-catalog.schema.json)
 - [`schemas/evidence-bundle.schema.json`](schemas/evidence-bundle.schema.json)
 
-### First profession and contract
+### Profession catalog and first profession
 
+- [`professions/catalog.json`](professions/catalog.json)
 - [`professions/graphic-designer/profession.json`](professions/graphic-designer/profession.json)
 - [`examples/work-contracts/social-media-static-post.json`](examples/work-contracts/social-media-static-post.json)
 
@@ -93,12 +97,15 @@ A click, application success response or self-declared validator result cannot i
 - [System vision](docs/architecture/00-system-vision.md)
 - [Trust and verification model](docs/architecture/01-trust-model.md)
 - [Repository layout](docs/repository-layout.md)
+- [Profession extension boundary](docs/architecture/53-profession-catalog-and-extension-boundary.md)
 - [Current capability status](docs/status.md)
 - [Capability-gated roadmap](docs/roadmap.md)
+- [Release readiness and external blockers](docs/release-readiness.md)
+- [Security policy](SECURITY.md)
 
 ### Runtime workspace
 
-The Rust workspace contains 26 crates spanning contracts, authorization, execution, evidence, attestation, occupational simulation, Windows bridging, Inkscape execution and independent artifact verification.
+The Rust workspace contains 56 packages spanning contracts, authorization, execution, evidence, attestation, occupational simulation, Windows trust and signing, Inkscape execution and independent artifact verification.
 
 ## Validation
 
@@ -106,7 +113,18 @@ Install the Python development dependency and validate the normative foundation:
 
 ```bash
 python -m pip install -r requirements-dev.txt
+python tools/validate_schema_catalog.py
 python tools/validate_foundation.py
+python -m unittest tools.test_validate_foundation tools.test_scaffold_profession
+```
+
+Validate the desktop renderer:
+
+```bash
+cd apps/desktop
+npm ci
+npm test
+npm run build
 ```
 
 Validate the Rust workspace:
@@ -121,13 +139,12 @@ GitHub Actions also runs dedicated Windows and real Inkscape workflows. The real
 
 ## Current priorities
 
-1. Implement the deterministic intent-to-Work-Contract compiler.
-2. Implement the typed planner service over certified capsule operators.
-3. Build the Tauri and React desktop shell for contract review, permission approval, execution and evidence inspection.
-4. Expand the Inkscape adapter beyond the bounded direct-text and raster-export path.
-5. Certify the remaining Graphic Designer job types.
-6. Build the isolated profession-learning laboratory.
-7. Add cross-platform bridges only without weakening the proof kernel.
+1. Complete persistent desktop/backend routing through the installed production signer and full Evidence Bundle/Acceptance Certificate recovery chain.
+2. Execute controlled physical-TPM provisioning, service installation and recovery ceremonies with retained evidence.
+3. Add Authenticode, trusted timestamps and signed installer upgrade/rollback provenance.
+4. Replace the bounded desktop fixture with persistent user-selected inputs across all four certified Graphic Designer jobs.
+5. Build the isolated Profession Learning Laboratory.
+6. Add new cataloged professions and cross-platform bridges only without weakening the proof kernel.
 
 ## Project stage
 

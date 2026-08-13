@@ -44,6 +44,9 @@ jobs:
       - name: Install pinned frontend dependencies
         run: npm ci
 
+      - name: Reject high-severity dependency vulnerabilities
+        run: npm audit --audit-level=high
+
       - name: Typecheck frontend
         run: npm run check
 

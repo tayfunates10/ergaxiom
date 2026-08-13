@@ -11,6 +11,7 @@ on:
       - "crates/attestation-runtime/**"
       - "apps/desktop/package-lock.json"
       - "apps/desktop/src-tauri/**"
+      - "professions/catalog.json"
       - "tools/release/**"
       - "docs/architecture/36-key-governance-and-release-evidence.md"
       - "docs/status.md"
@@ -27,6 +28,7 @@ on:
       - "crates/attestation-runtime/**"
       - "apps/desktop/package-lock.json"
       - "apps/desktop/src-tauri/**"
+      - "professions/catalog.json"
       - "tools/release/**"
       - "docs/architecture/36-key-governance-and-release-evidence.md"
       - "docs/status.md"
@@ -36,6 +38,21 @@ permissions:
   contents: read
 
 jobs:
+  rustsec:
+    name: Reject vulnerable Rust dependencies
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      checks: write
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Audit Cargo.lock against the RustSec advisory database
+        uses: rustsec/audit-check@69366f33c96575abad1ee0dba8212993eecbe998 # v2.0.0
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
   governance:
     name: Verify governed issuer roles rotation and revocation
     runs-on: ubuntu-24.04

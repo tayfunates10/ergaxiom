@@ -5,25 +5,21 @@ Ergaxiom is a polyglot monorepo. The proof kernel, platform bridges, model-assis
 ```text
 ergaxiom/
 ├── apps/
-│   └── desktop/                 # Tauri + React user interface
+│   ├── desktop/                 # Tauri + React product shell
+│   └── windows-*/               # Provisioning and signer-service executables
 ├── crates/
-│   ├── proof-kernel/            # Rust acceptance and evidence core
-│   ├── contract-model/          # Canonical typed contract model
-│   ├── policy-engine/           # Capability and permission decisions
-│   └── trace-model/             # Execution trace and conformance types
-├── bridges/
-│   ├── windows/                 # C#/.NET Windows execution bridge
-│   └── applications/            # Versioned application-specific adapters
-├── services/
-│   ├── contract-compiler/       # Model-assisted intent-to-contract service
-│   ├── planner/                 # Typed operator-plan synthesis
-│   └── perception/              # Visual interpretation, never final proof
+│   ├── proof-kernel/            # Three-valued acceptance and canonical hashing
+│   ├── *-runtime/               # Typed contract, plan, execution and evidence boundaries
+│   ├── *-certified-path-runtime/# Bounded profession certification chains
+│   └── windows-*/               # Windows bridge, trust and signer boundaries
+├── hosts/                       # Controlled .NET UI Automation hosts and targets
 ├── schemas/                     # Normative machine-readable contracts
-├── professions/                 # Versioned profession capsules
-├── validators/                  # Independent deterministic validators
-├── examples/                    # Example contracts and evidence bundles
-├── evals/                       # Certification, adversarial and regression tasks
-├── tools/                       # Repository and schema validation tools
+├── professions/
+│   ├── catalog.json             # Digest-bound installed-capsule allowlist
+│   └── */profession.json        # Versioned profession capsules
+├── examples/                    # Example intents, plans and Work Contracts
+├── fixtures/                    # Pinned real-application fixtures
+├── tools/                       # Validation, release evidence and safe scaffolding
 ├── docs/                        # Architecture, threat model and roadmap
 └── .github/workflows/           # CI and security automation
 ```
@@ -34,15 +30,15 @@ ergaxiom/
 
 This is the authoritative acceptance boundary. It must not depend on a language model, UI automation implementation or application-specific SDK.
 
-### `services/*`
+### Compiler and planner runtimes
 
-Services may use probabilistic models to interpret or propose. Their outputs are untrusted until converted into typed structures and accepted by deterministic policy and proof checks.
+Intent compilers and planners may propose only the typed profiles they explicitly implement. Their outputs remain untrusted until the Contract Runtime and Operator Plan Runtime independently compile and seal them.
 
-### `bridges/*`
+### Execution bridges and certified-path runtimes
 
-Bridges execute capability-scoped operations and report observed state. They cannot issue final acceptance decisions.
+Bridges execute capability-scoped operations and report observed state. Certified-path runtimes may assemble evidence, but acceptance still requires independent Evidence Runtime reassessment and governed attestation issuance.
 
-### `validators/*`
+### Independent validator runtimes
 
 Validators must declare:
 
@@ -58,17 +54,21 @@ Critical validators must not share the same hidden implementation path as the op
 
 ### `professions/*`
 
-A profession capsule references operators and validators by stable IDs and pinned versions. A capsule cannot grant itself broader system permissions than the installed policy allows.
+A profession capsule references operators and validators by stable IDs and pinned versions. Every installed capsule must also appear in `professions/catalog.json` with its exact canonical digest and job inventory. A capsule or catalog entry cannot grant broader system permissions than the installed policy allows.
+
+### `apps/desktop`
+
+The renderer displays backend-produced state and submits bounded approval/control requests. It cannot read signing material, select signer identities, load arbitrary capsules or create accepted evidence.
 
 ## Dependency direction
 
 Allowed high-level direction:
 
 ```text
-UI → services → typed contracts → proof kernel
-planner → profession capsule → operator interfaces
-bridges → trace events → proof kernel
-validators → proof results → proof kernel
+UI → backend commands → typed contracts → proof kernel
+planner → cataloged profession capsule → operator interfaces
+bridges → signed trace events → execution/evidence runtimes
+validators → proof results → evidence runtime → attestation runtime
 ```
 
 Forbidden direction:
@@ -78,15 +78,16 @@ proof kernel → language model
 proof kernel → desktop UI
 proof kernel → application-specific SDK
 validator → executor's unverified success flag
+profession catalog → unrestricted dynamic code loading
 ```
 
-## Initial implementation order
+## Profession extension order
 
-Directories are created only when they contain executable code, tests or a normative specification. The project will not add empty placeholder trees solely to appear complete.
+Directories are created only when they contain executable code, tests or a normative specification. The project does not add empty placeholder trees solely to appear complete.
 
-1. Stabilize schemas and foundation validation.
-2. Implement Rust contract and proof types.
-3. Implement acceptance-state property tests.
-4. Add isolated workspace and trace model.
-5. Add the first independent image validators.
-6. Add Windows and application bridges after the proof boundary exists.
+1. Scaffold a draft, production-disabled catalog entry.
+2. Define typed jobs, operators, constraints, validators and assurance policy.
+3. Add example Work Contracts and deterministic compiler/planner profiles.
+4. Implement isolated execution and independent evidence paths.
+5. Add mutation, fuzz, adversarial and real-application regressions.
+6. Promote a job only after its bounded path reaches an independently verified certificate.

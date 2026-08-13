@@ -1,0 +1,104 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ergaxiom.dev/schemas/profession-catalog.schema.json",
+  "title": "Ergaxiom Profession Catalog",
+  "description": "The explicit allowlist of versioned profession capsules installed in an Ergaxiom build.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "catalog_id",
+    "catalog_version",
+    "entries"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "0.1.0"
+    },
+    "catalog_id": {
+      "const": "ergaxiom.profession-catalog"
+    },
+    "catalog_version": {
+      "type": "string",
+      "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)(?:-[0-9A-Za-z.-]+)?$"
+    },
+    "entries": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/catalogEntry"
+      }
+    }
+  },
+  "$defs": {
+    "catalogEntry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "capsule_id",
+        "capsule_version",
+        "capsule_path",
+        "capsule_digest",
+        "certification_level",
+        "production_enabled",
+        "job_types"
+      ],
+      "properties": {
+        "capsule_id": {
+          "type": "string",
+          "pattern": "^[a-z0-9]+(?:[._-][a-z0-9]+)*$"
+        },
+        "capsule_version": {
+          "type": "string",
+          "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)(?:-[0-9A-Za-z.-]+)?$"
+        },
+        "capsule_path": {
+          "type": "string",
+          "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*/profession\\.json$"
+        },
+        "capsule_digest": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "certification_level": {
+          "enum": [
+            "draft",
+            "experimental",
+            "profession_alpha"
+          ]
+        },
+        "production_enabled": {
+          "type": "boolean"
+        },
+        "job_types": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/jobTypeStatus"
+          }
+        }
+      }
+    },
+    "jobTypeStatus": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "status"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "status": {
+          "enum": [
+            "planned",
+            "experimental",
+            "certified_path"
+          ]
+        }
+      }
+    }
+  }
+}
