@@ -325,24 +325,8 @@ jobs:
         run: |
           set -euo pipefail
           cargo update -p quick-xml@0.40.1 --precise 0.41.0
-          cargo update -p lopdf@0.36.0 --precise 0.42.0
           cargo metadata --locked --format-version 1 --no-deps > /dev/null
           git diff --check -- Cargo.lock
-
-      - name: Encode resolver Cargo.lock for exact retrieval
-        shell: bash
-        run: |
-          python - <<'PY'
-          import base64
-          import hashlib
-          from pathlib import Path
-
-          data = Path("Cargo.lock").read_bytes()
-          print("ERGAXIOM_CARGO_LOCK_SHA256=" + hashlib.sha256(data).hexdigest())
-          print("ERGAXIOM_CARGO_LOCK_B64_BEGIN")
-          print(base64.b64encode(data).decode("ascii"))
-          print("ERGAXIOM_CARGO_LOCK_B64_END")
-          PY
 
       - name: Upload resolver Cargo.lock
         uses: actions/upload-artifact@v4
