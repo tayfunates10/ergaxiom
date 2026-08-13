@@ -87,7 +87,12 @@ def build(base,p,sig=None,life=None,prod=None,hw=None,lic=None):
     if not ho:b.append("HARDWARE_OPERATIONAL_EVIDENCE_NOT_VERIFIED")
     if not xo:b.append("DISTRIBUTION_LICENSE_NOT_APPROVED")
     b=sorted(set(b))
-    return {"schema_version":"0.1.0","product":base.get("product"),"source":base["source"],"toolchain":base.get("toolchain"),"artifacts":base["artifacts"],"sbom":base.get("sbom"),"windows_release_policy":{"policy_id":p["policy_id"],"sha256":sha(p),"canonical_installer":"nsis"},"signing":ss,"installer_provenance":{"installer_name":ins,"installer_sha256":art[ins],"verified":so and lo},"installer_lifecycle":ls,"production_chain":ps,"hardware_operational":hs,"distribution_license":xs,"release_eligible":not b,"blocking_reasons":b}
+    final_artifacts=[]
+    for artifact in base["artifacts"]:
+        item=dict(artifact)
+        item["authenticode_status"]="VERIFIED" if so else "NOT_VERIFIED"
+        final_artifacts.append(item)
+    return {"schema_version":"0.1.0","product":base.get("product"),"source":base["source"],"toolchain":base.get("toolchain"),"artifacts":final_artifacts,"sbom":base.get("sbom"),"windows_release_policy":{"policy_id":p["policy_id"],"sha256":sha(p),"canonical_installer":"nsis"},"signing":ss,"installer_provenance":{"installer_name":ins,"installer_sha256":art[ins],"verified":so and lo},"installer_lifecycle":ls,"production_chain":ps,"hardware_operational":hs,"distribution_license":xs,"release_eligible":not b,"blocking_reasons":b}
 
 def main(argv=None):
     ap=argparse.ArgumentParser(); ap.add_argument("--base-manifest",type=Path,required=True); ap.add_argument("--policy",type=Path,required=True); ap.add_argument("--signature-evidence",type=Path); ap.add_argument("--lifecycle-evidence",type=Path); ap.add_argument("--production-chain-evidence",type=Path); ap.add_argument("--hardware-operational-evidence",type=Path); ap.add_argument("--license-decision",type=Path); ap.add_argument("--output",type=Path,required=True); a=ap.parse_args(argv)
