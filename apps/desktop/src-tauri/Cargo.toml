@@ -19,16 +19,24 @@ path = "src/main.rs"
 tauri-build = { version = "=2.6.3", features = [] }
 
 [dependencies]
+ergaxiom-attestation-issuance-runtime = { path = "../../../crates/attestation-issuance-runtime" }
+ergaxiom-attestation-runtime = { path = "../../../crates/attestation-runtime" }
 ergaxiom-backend-issuance-runtime = { path = "../../../crates/backend-issuance-runtime" }
+ergaxiom-capability-issuance-runtime = { path = "../../../crates/capability-issuance-runtime" }
+ergaxiom-capability-runtime = { path = "../../../crates/capability-runtime" }
 ergaxiom-contract-runtime = { path = "../../../crates/contract-runtime" }
 ergaxiom-desktop-shell-runtime = { path = "../../../crates/desktop-shell-runtime" }
+ergaxiom-evidence-runtime = { path = "../../../crates/evidence-runtime" }
+ergaxiom-execution-runtime = { path = "../../../crates/execution-runtime" }
 ergaxiom-graphic-designer-twin-runtime = { path = "../../../crates/graphic-designer-twin-runtime" }
 ergaxiom-intent-contract-compiler-runtime = { path = "../../../crates/intent-contract-compiler-runtime" }
 ergaxiom-occupational-twin-runtime = { path = "../../../crates/occupational-twin-runtime" }
 ergaxiom-operator-plan-runtime = { path = "../../../crates/operator-plan-runtime" }
 ergaxiom-operator-simulation-runtime = { path = "../../../crates/operator-simulation-runtime" }
+ergaxiom-production-execution-runtime = { path = "../../../crates/production-execution-runtime" }
 ergaxiom-proof-kernel = { path = "../../../crates/proof-kernel" }
 ergaxiom-typed-planner-runtime = { path = "../../../crates/typed-planner-runtime" }
+ergaxiom-windows-production-governed-issuance-runtime = { path = "../../../crates/windows-production-governed-issuance-runtime" }
 ergaxiom-windows-production-key-governance-runtime = { path = "../../../crates/windows-production-key-governance-runtime" }
 ergaxiom-windows-production-signer-host-runtime = { path = "../../../crates/windows-production-signer-host-runtime" }
 ergaxiom-windows-production-signer-runtime = { path = "../../../crates/windows-production-signer-runtime" }
