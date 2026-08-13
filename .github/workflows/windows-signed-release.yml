@@ -19,7 +19,7 @@ jobs:
         with:
           components: rustfmt
       - name: Release evidence attack tests
-        run: python -m unittest tools.release.test_generate_release_evidence tools.release.test_finalize_windows_release_evidence
+        run: python -m unittest tools.release.test_generate_release_evidence tools.release.test_finalize_windows_release_evidence tools.release.test_windows_release_attack_matrix
       - name: Validate release JSON
         run: |
           python -m json.tool tools/release/windows_release_policy.json >/dev/null
