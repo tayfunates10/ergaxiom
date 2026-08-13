@@ -1,0 +1,86 @@
+name: Windows release evidence
+on:
+  pull_request:
+    paths: ["apps/desktop/**", "apps/windows-production-signer-service/**", "tools/release/**", "docs/windows-signed-release.md", ".github/workflows/windows-signed-release.yml"]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  policy:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: apps/desktop/package-lock.json
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+      - name: Release evidence attack tests
+        run: python -m unittest tools.release.test_generate_release_evidence tools.release.test_finalize_windows_release_evidence
+      - name: Validate release JSON
+        run: |
+          python -m json.tool tools/release/windows_release_policy.json >/dev/null
+          python -m json.tool apps/desktop/src-tauri/tauri.release.conf.json >/dev/null
+          python -m json.tool apps/desktop/src-tauri/tauri.ci-installer.conf.json >/dev/null
+      - name: Frontend regression
+        working-directory: apps/desktop
+        run: npm ci && npm test && npm run build
+      - name: Rust format
+        run: cargo fmt --all -- --check
+
+  unsigned-candidate-is-blocked:
+    runs-on: windows-2025
+    env:
+      SOURCE_COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: apps/desktop/package-lock.json
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Build exact PE inputs and NSIS installer
+        shell: pwsh
+        run: |
+          npm --prefix apps/desktop ci
+          npm --prefix apps/desktop run tauri -- build --no-bundle
+          cargo build --release -p ergaxiom-windows-production-signer-service
+          New-Item -ItemType Directory -Force apps/desktop/src-tauri/release-resources | Out-Null
+          Copy-Item target/release/ergaxiom-windows-production-signer-service.exe apps/desktop/src-tauri/release-resources/ergaxiom-windows-production-signer-service.exe
+          npm --prefix apps/desktop run tauri -- bundle --config src-tauri/tauri.ci-installer.conf.json
+      - name: Produce unsigned Authenticode evidence and final fail-closed decision
+        shell: pwsh
+        run: |
+          $installer=@(Get-ChildItem apps/desktop/src-tauri/target/release/bundle/nsis -Filter '*-setup.exe')
+          if($installer.Count-ne1){throw 'Expected exactly one NSIS installer'}
+          $rustc=(rustc --version).Trim();$node=(node --version).Trim();$npm=(npm --version).Trim()
+          python tools/release/generate_release_evidence.py --repo-root . --artifact apps/desktop/src-tauri/target/release/ergaxiom-desktop.exe --artifact apps/desktop/src-tauri/release-resources/ergaxiom-windows-production-signer-service.exe --artifact $installer[0].FullName --source-commit $env:SOURCE_COMMIT --rustc-version $rustc --node-version $node --npm-version $npm --output-dir $env:RUNNER_TEMP/base
+          ./tools/release/verify_windows_signatures.ps1 -Mode test -PolicyPath tools/release/windows_release_policy.json -Artifact @('apps/desktop/src-tauri/target/release/ergaxiom-desktop.exe','apps/desktop/src-tauri/release-resources/ergaxiom-windows-production-signer-service.exe',$installer[0].FullName) -EvidenceOut $env:RUNNER_TEMP/signatures.json
+          python tools/release/finalize_windows_release_evidence.py --base-manifest $env:RUNNER_TEMP/base/ergaxiom-release-manifest.json --policy tools/release/windows_release_policy.json --signature-evidence $env:RUNNER_TEMP/signatures.json --output $env:RUNNER_TEMP/final.json
+          $f=Get-Content $env:RUNNER_TEMP/final.json -Raw|ConvertFrom-Json
+          if($f.release_eligible-ne$false){throw 'Unsigned/test candidate became production eligible'}
+          foreach($b in @('SIGNING_IDENTITY_POLICY_UNRESOLVED','AUTHENTICODE_NOT_VERIFIED','INSTALLER_LIFECYCLE_NOT_VERIFIED','PRODUCTION_CHAIN_EVIDENCE_NOT_VERIFIED','HARDWARE_OPERATIONAL_EVIDENCE_NOT_VERIFIED','DISTRIBUTION_LICENSE_NOT_APPROVED')){if($b-notin$f.blocking_reasons){throw "Missing blocker $b"}}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-release-evidence-NOT-PRODUCTION
+          path: |
+            ${{ runner.temp }}/base/**
+            ${{ runner.temp }}/signatures.json
+            ${{ runner.temp }}/final.json
+          retention-days: 14
+
+  production-preflight:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: windows-2025
+    steps:
+      - uses: actions/checkout@v4
+      - name: Real certificate and license must be owner-pinned
+        shell: pwsh
+        run: |
+          $p=Get-Content tools/release/windows_release_policy.json -Raw|ConvertFrom-Json
+          if($p.signing.identity_status-ne'OWNER_APPROVED_PINNED' -or [string]::IsNullOrWhiteSpace([string]$p.signing.expected_subject) -or [string]::IsNullOrWhiteSpace([string]$p.signing.expected_certificate_sha256)){throw 'PRODUCTION BLOCKED: real code-signing identity pin is unresolved'}
+          if($p.license.owner_decision_status-ne'APPROVED' -or [string]::IsNullOrWhiteSpace([string]$p.license.spdx_expression)){throw 'PRODUCTION BLOCKED: distribution license is unresolved'}
