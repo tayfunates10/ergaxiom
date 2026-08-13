@@ -302,20 +302,20 @@ jobs:
           retention-days: 14
 
   cargo-lock-resolution:
-    name: Resolve RustSec-safe Cargo.lock for PR #73
+    name: Materialize RustSec-safe Cargo.lock for PR #73
     if: >-
       github.event_name == 'pull_request' &&
       github.event.pull_request.head.repo.full_name == github.repository &&
       github.head_ref == 'codex/release-readiness-profession-platform'
     runs-on: ubuntu-24.04
     permissions:
-      contents: read
+      contents: write
     steps:
       - name: Check out exact PR head
         uses: actions/checkout@v4
         with:
           ref: ${{ env.SOURCE_COMMIT }}
-          persist-credentials: false
+          persist-credentials: true
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -327,11 +327,16 @@ jobs:
           cargo update -p quick-xml@0.40.1 --precise 0.41.0
           cargo metadata --locked --format-version 1 --no-deps > /dev/null
           git diff --check -- Cargo.lock
+          test "$(git diff --name-only | tr -d '\r')" = "Cargo.lock"
 
-      - name: Upload resolver Cargo.lock
-        uses: actions/upload-artifact@v4
-        with:
-          name: ergaxiom-rustsec-safe-cargo-lock
-          path: Cargo.lock
-          if-no-files-found: error
-          retention-days: 1
+      - name: Commit only resolver-produced Cargo.lock
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$SOURCE_COMMIT"
+          git config user.name "ergaxiom-pr73-lock-materializer"
+          git config user.email "actions@users.noreply.github.com"
+          git add -- Cargo.lock
+          test "$(git diff --cached --name-only | tr -d '\r')" = "Cargo.lock"
+          git commit -m "Update Cargo.lock for RustSec fixes"
+          git push origin "HEAD:${GITHUB_HEAD_REF}"
