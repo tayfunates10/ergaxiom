@@ -27,25 +27,45 @@ jobs:
         with:
           toolchain: "1.85.0"
           components: rustfmt, clippy
-      - name: Formatting
+      - name: Capture formatting gate state
         shell: bash
         run: |
           set +e
-          output="$(cargo fmt --all -- --check 2>&1)"
+          cargo fmt --all -- --check > "$RUNNER_TEMP/issue75-rustfmt.txt" 2>&1
+          status=$?
+          echo "$status" > "$RUNNER_TEMP/issue75-rustfmt-status"
+          cargo fmt --all
+          exit 0
+      - name: Clippy
+        shell: bash
+        run: |
+          set +e
+          output="$(cargo clippy -p ergaxiom-production-execution-runtime --all-targets -- -D warnings 2>&1)"
           status=$?
           if [ "$status" -ne 0 ]; then
             escaped="${output//'%'/'%25'}"
             escaped="${escaped//$'\r'/'%0D'}"
             escaped="${escaped//$'\n'/'%0A'}"
-            echo "::error title=rustfmt check failed::$escaped"
+            echo "::error title=production runtime clippy failed::$escaped"
             exit "$status"
           fi
-      - name: Clippy
-        run: cargo clippy -p ergaxiom-production-execution-runtime --all-targets -- -D warnings
       - name: Runtime tests
         run: cargo test -p ergaxiom-production-execution-runtime
       - name: Backend persistent issuance regression
         run: cargo test -p ergaxiom-backend-issuance-runtime --test persistent_production_capability
+      - name: Enforce formatting gate
+        if: always()
+        shell: bash
+        run: |
+          status="$(cat "$RUNNER_TEMP/issue75-rustfmt-status")"
+          if [ "$status" -ne 0 ]; then
+            output="$(cat "$RUNNER_TEMP/issue75-rustfmt.txt")"
+            escaped="${output//'%'/'%25'}"
+            escaped="${escaped//$'\r'/'%0D'}"
+            escaped="${escaped//$'\n'/'%0A'}"
+            echo "::error title=rustfmt check failed::$escaped"
+            exit 1
+          fi
 
   desktop-boundary:
     name: desktop-boundary
