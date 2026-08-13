@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ergaxiom.dev/schemas/windows-governance-recovery-receipt.schema.json",
+  "title": "Ergaxiom Windows Governance Key Rotation and Recovery Receipt",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "ceremony_id", "reason", "role", "previous_generation", "replacement_generation", "backup_policy", "private_key_material_present", "previous_key_record_digest", "replacement_provisioning_evidence_sha256", "replacement_public_key_digest", "previous_trust_state_digest", "replacement_trust_state_digest", "signed_distribution_digest", "recovery_quorum", "receipt_digest"],
+  "properties": {
+    "schema_version": {"const": "0.1.0"},
+    "ceremony_id": {"type": "string", "minLength": 1, "maxLength": 128},
+    "reason": {"enum": ["planned_rotation", "compromise_revoke", "hardware_loss_recovery", "service_rebuild_recovery"]},
+    "role": {"enum": ["CAPABILITY", "ATTESTATION"]},
+    "previous_generation": {"type": "integer", "minimum": 1},
+    "replacement_generation": {"type": "integer", "minimum": 2},
+    "backup_policy": {"const": "PUBLIC_ONLY_NO_PRIVATE_KEY_BACKUP"},
+    "private_key_material_present": {"const": false},
+    "previous_key_record_digest": {"$ref": "#/$defs/sha256"},
+    "replacement_provisioning_evidence_sha256": {"$ref": "#/$defs/sha256"},
+    "replacement_public_key_digest": {"$ref": "#/$defs/sha256"},
+    "previous_trust_state_digest": {"$ref": "#/$defs/sha256"},
+    "replacement_trust_state_digest": {"$ref": "#/$defs/sha256"},
+    "signed_distribution_digest": {"$ref": "#/$defs/sha256"},
+    "recovery_quorum": {"type": "object", "additionalProperties": false, "required": ["threshold", "approvals"], "properties": {"threshold": {"type": "integer", "minimum": 2}, "approvals": {"type": "array", "minItems": 2, "items": {"type": "object", "additionalProperties": false, "required": ["participant_id", "approval_digest"], "properties": {"participant_id": {"type": "string", "minLength": 1, "maxLength": 128}, "approval_digest": {"$ref": "#/$defs/sha256"}}}}}},
+    "receipt_digest": {"$ref": "#/$defs/sha256"}
+  },
+  "$defs": {"sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}}
+}
