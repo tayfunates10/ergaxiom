@@ -261,3 +261,45 @@ jobs:
           path: ${{ runner.temp }}/release-evidence/**
           if-no-files-found: error
           retention-days: 14
+
+  ai1-lock-repair:
+    name: Materialize RustSec-safe Cargo.lock
+    if: >-
+      github.event_name == 'pull_request' &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.head_ref == 'codex/release-readiness-profession-platform'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - name: Check out exact PR head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.SOURCE_COMMIT }}
+          persist-credentials: true
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Resolve only the security-patched dependency graph
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo update -p quick-xml --precise 0.41.0
+          cargo update -p lopdf --precise 0.42.0
+          cargo metadata --locked --format-version 1 --no-deps > /dev/null
+          git diff --check -- Cargo.lock
+
+      - name: Commit resolver output to this PR branch only
+        shell: bash
+        run: |
+          set -euo pipefail
+          if git diff --quiet -- Cargo.lock; then
+            exit 0
+          fi
+          git config user.name "ergaxiom-ai1-lock-repair"
+          git config user.email "actions@users.noreply.github.com"
+          git add Cargo.lock
+          git commit -m "Update Cargo.lock for RustSec fixes"
+          git push origin HEAD:${GITHUB_HEAD_REF}
