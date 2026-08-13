@@ -92,6 +92,8 @@ A click, application success response or self-declared validator result cannot i
 - [`professions/graphic-designer/profession.json`](professions/graphic-designer/profession.json)
 - [`examples/work-contracts/social-media-static-post.json`](examples/work-contracts/social-media-static-post.json)
 
+New professions must enter through `tools/scaffold_profession.py`. The scaffold validates the existing catalog and capsule digests before mutation, confines paths to `professions/`, rejects duplicate identities and paths, and creates only draft, planned, production-disabled E0 capsules with network and live learning denied by default.
+
 ### Architecture
 
 - [System vision](docs/architecture/00-system-vision.md)
@@ -105,37 +107,45 @@ A click, application success response or self-declared validator result cannot i
 
 ### Runtime workspace
 
-The Rust workspace contains 56 packages spanning contracts, authorization, execution, evidence, attestation, occupational simulation, Windows trust and signing, Inkscape execution and independent artifact verification.
+The Rust workspace contains the proof kernel, contracts, authorization, execution, evidence, attestation, occupational simulation, Windows trust/signing, Inkscape execution and independent artifact-verification runtimes. `Cargo.toml` and the checked-in `Cargo.lock` are the authoritative workspace and dependency graph; CI rejects lock drift on release/security paths.
 
 ## Validation
 
-Install the Python development dependency and validate the normative foundation:
+Install the Python development dependency and validate the normative foundation, scaffold and deterministic release evidence:
 
 ```bash
 python -m pip install -r requirements-dev.txt
 python tools/validate_schema_catalog.py
 python tools/validate_foundation.py
-python -m unittest tools.test_validate_foundation tools.test_scaffold_profession
+python -m unittest \
+  tools.test_validate_foundation \
+  tools.test_scaffold_profession \
+  tools.release.test_generate_release_evidence
+python -m compileall -q tools
 ```
 
-Validate the desktop renderer:
+Validate the desktop renderer and its dependency gate:
 
 ```bash
 cd apps/desktop
 npm ci
+npm audit --audit-level=high
 npm test
 npm run build
+cd ../..
 ```
 
-Validate the Rust workspace:
+Validate the Rust workspace and the checked-in lock graph:
 
 ```bash
+cargo metadata --locked --format-version 1 --no-deps > /dev/null
 cargo fmt --all -- --check
 cargo clippy --workspace --all-targets --all-features -- -D warnings
 cargo test --workspace --all-targets --all-features
+git diff --check
 ```
 
-GitHub Actions also runs dedicated Windows and real Inkscape workflows. The real Inkscape workflow pins the executable identity and exercises edit, export, signed execution, PNG validation, sRGB normalization, independent pixel decoding, rendered contrast and final attestation regressions.
+GitHub Actions also runs dedicated Windows, RustSec and real Inkscape workflows. Release evidence is generated only from the exact source commit, binds both lockfiles plus a validated deterministic inventory of the profession catalog, every registered capsule, every example Work Contract and every foundation schema, and remains ineligible until the independent production signing and installer-provenance blockers are satisfied.
 
 ## Current priorities
 
