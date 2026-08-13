@@ -22,13 +22,24 @@ jobs:
     name: production-execution-runtime
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: "1.85.0"
           components: rustfmt, clippy
       - name: Formatting
-        run: cargo fmt --all -- --check
+        shell: bash
+        run: |
+          set +e
+          output="$(cargo fmt --all -- --check 2>&1)"
+          status=$?
+          if [ "$status" -ne 0 ]; then
+            escaped="${output//'%'/'%25'}"
+            escaped="${escaped//$'\r'/'%0D'}"
+            escaped="${escaped//$'\n'/'%0A'}"
+            echo "::error title=rustfmt check failed::$escaped"
+            exit "$status"
+          fi
       - name: Clippy
         run: cargo clippy -p ergaxiom-production-execution-runtime --all-targets -- -D warnings
       - name: Runtime tests
@@ -40,10 +51,17 @@ jobs:
     name: desktop-boundary
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: "1.85.0"
           components: clippy
       - name: Desktop production boundary compile
-        run: cargo check --manifest-path apps/desktop/src-tauri/Cargo.toml --all-targets
+        shell: pwsh
+        run: |
+          $output = cargo check --manifest-path apps/desktop/src-tauri/Cargo.toml --all-targets 2>&1 | Out-String
+          if ($LASTEXITCODE -ne 0) {
+            $escaped = $output.Replace('%', '%25').Replace("`r", '%0D').Replace("`n", '%0A')
+            Write-Output "::error title=desktop cargo check failed::$escaped"
+            exit $LASTEXITCODE
+          }
