@@ -143,6 +143,14 @@ def synthesize_candidate(
 
     for demonstration in demonstrations:
         validate_expert_demonstration(demonstration)
+        if demonstration.get("capsule_id") != capsule_id:
+            raise LabValidationError(
+                "expert demonstration capsule_id does not match candidate capsule"
+            )
+        if demonstration.get("job_type") != job_type:
+            raise LabValidationError(
+                "expert demonstration job_type does not match candidate job type"
+            )
 
     ordered = sorted(demonstrations, key=lambda item: item["demonstration_id"])
     scopes: list[str] = []
@@ -275,9 +283,19 @@ def certify_candidate(
     suites = certification.get("suites")
     if not isinstance(suites, list):
         raise LabValidationError("certification suites are required")
-    by_kind = {
-        suite.get("kind"): suite for suite in suites if isinstance(suite, dict)
-    }
+    suite_kinds = [
+        suite.get("kind") for suite in suites if isinstance(suite, dict)
+    ]
+    if len(suite_kinds) != len(suites):
+        raise LabValidationError("certification suites must be objects")
+    if len(suite_kinds) != len(set(suite_kinds)):
+        raise LabValidationError("duplicate certification suite kinds are forbidden")
+    unsupported = set(suite_kinds) - REQUIRED_CERTIFICATION_SUITES
+    if unsupported:
+        raise LabValidationError(
+            "unsupported certification suites: " + ", ".join(sorted(unsupported))
+        )
+    by_kind = {suite["kind"]: suite for suite in suites}
     missing = REQUIRED_CERTIFICATION_SUITES - set(by_kind)
     if missing:
         raise LabValidationError(
@@ -352,17 +370,33 @@ def revoke_version(
     revoked = set(updated.get("revoked_versions", []))
     revoked.add(version)
     updated["revoked_versions"] = sorted(revoked)
-    updated["last_action"] = {
-        "kind": "revoke",
-        "version": version,
-        "reason": reason,
-    }
+
+    history = updated.get("history")
+    if not isinstance(history, list):
+        raise LabValidationError("capsule lifecycle history is required")
+    evidence_digest = canonical_json_sha256(
+        {"kind": "revoke", "version": version, "reason": reason}
+    )
+    history.append(
+        {
+            "kind": "revoke",
+            "version": version,
+            "evidence_id": f"revocation:{evidence_digest}",
+        }
+    )
+
     if updated.get("current_version") == version:
         rollback_target = updated.get("rollback_target")
         if not rollback_target or rollback_target in revoked:
             raise LabValidationError("active revoked version has no safe rollback target")
         updated["current_version"] = rollback_target
-        updated["last_action"]["rollback_applied"] = True
+        history.append(
+            {
+                "kind": "rollback",
+                "version": rollback_target,
+                "evidence_id": f"rollback:{evidence_digest}",
+            }
+        )
     return updated
 
 
