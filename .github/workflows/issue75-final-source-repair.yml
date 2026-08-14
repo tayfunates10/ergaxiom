@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   repair:
-    if: github.event.head_commit.message == 'issue75-run-source-repair-v5'
+    if: github.event.head_commit.message == 'issue75-run-source-repair-v6'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -26,11 +26,11 @@ jobs:
       - name: Format
         run: cargo +1.85.0 fmt --all
       - name: Clippy production execution store
-        run: cargo +1.85.0 clippy -p ergaxiom-production-execution-runtime --all-targets -- -D warnings
+        run: cargo +1.85.0 clippy -p ergaxiom-production-execution-runtime --all-targets --keep-going -- -D warnings
       - name: Clippy persistent production authority
-        run: cargo +1.85.0 clippy -p ergaxiom-production-execution-authority-runtime --all-targets -- -D warnings
+        run: cargo +1.85.0 clippy -p ergaxiom-production-execution-authority-runtime --all-targets --keep-going -- -D warnings
       - name: Clippy production evidence
-        run: cargo +1.85.0 clippy -p ergaxiom-graphic-production-evidence-runtime --all-targets -- -D warnings
+        run: cargo +1.85.0 clippy -p ergaxiom-graphic-production-evidence-runtime --all-targets --keep-going -- -D warnings
       - name: Runtime tests
         run: cargo +1.85.0 test -p ergaxiom-production-execution-runtime
       - name: Authority tests
