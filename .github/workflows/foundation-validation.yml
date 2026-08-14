@@ -65,11 +65,17 @@ jobs:
       - name: Run profession catalog, scaffold and laboratory attack tests
         run: python -m unittest tools.test_validate_foundation tools.test_scaffold_profession tools.test_profession_lab
 
+      - name: Compile Python validation tooling
+        run: python -m compileall -q tools
+
       - name: Validate Phase 0 foundation
         shell: bash
         run: |
           set -o pipefail
           python tools/validate_foundation.py 2>&1 | tee "$RUNNER_TEMP/foundation-validation.log"
+
+      - name: Reject whitespace and patch errors
+        run: git diff --check HEAD^
 
       - name: Upload foundation diagnostics
         if: always()
