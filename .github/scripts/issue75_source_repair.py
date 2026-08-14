@@ -49,6 +49,10 @@ precedence_patterns = [
         "nibble(chunk[0])? << 4 | nibble(chunk[1])?",
         "(nibble(chunk[0])? << 4) | nibble(chunk[1])?",
     ),
+    (
+        "u16::from(bytes[0]) << 8 | u16::from(bytes[1])",
+        "(u16::from(bytes[0]) << 8) | u16::from(bytes[1])",
+    ),
 ]
 precedence_hits = 0
 for target in Path("crates").rglob("*.rs"):
@@ -67,7 +71,7 @@ if precedence_hits == 0:
         for target in Path("crates").rglob("*.rs")
     )
     if not already_fixed:
-        raise SystemExit("expected signer/trust decode precedence expressions were not found")
+        raise SystemExit("expected production precedence expressions were not found")
 
 acceptance = Path("crates/production-execution-authority-runtime/tests/persistent_chain.rs")
 text = acceptance.read_text()
