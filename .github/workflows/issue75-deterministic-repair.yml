@@ -22,8 +22,9 @@ jobs:
           toolchain: "1.85.0"
           components: rustfmt
       - name: Apply exact runtime repair
-        shell: python
+        shell: bash
         run: |
+          python - <<'PY'
           from pathlib import Path
           path = Path('crates/production-execution-runtime/src/lib.rs')
           text = path.read_text()
@@ -38,6 +39,7 @@ jobs:
               raise SystemExit('store-error anchor not found')
           text = text.replace(old, new, 1)
           path.write_text(text)
+          PY
       - name: Format with pinned toolchain
         run: cargo +1.85.0 fmt --all
       - name: Commit repaired source
