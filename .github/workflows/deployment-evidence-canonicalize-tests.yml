@@ -13,18 +13,31 @@ on:
 permissions:
   contents: read
 
+env:
+  SOURCE_COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
+
 jobs:
   canonicalize:
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - name: Check out exact source commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.SOURCE_COMMIT }}
+          persist-credentials: false
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt
+      - name: Reject source identity substitution
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$SOURCE_COMMIT"
       - name: Check canonical Rust formatting
         run: cargo fmt --all -- --check
       - name: Check canonical lockfile
         shell: bash
         run: |
-          cargo generate-lockfile
+          set -euo pipefail
+          cargo metadata --locked --format-version 1 > /dev/null
           git diff --exit-code -- Cargo.lock

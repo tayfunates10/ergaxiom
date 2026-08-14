@@ -3,7 +3,7 @@ name: Key governance and release evidence
 on:
   pull_request:
     paths:
-      - "Cargo.toml"
+      - "**/Cargo.toml"
       - "Cargo.lock"
       - "crates/key-governance-runtime/**"
       - "crates/governed-verification-runtime/**"
@@ -11,16 +11,23 @@ on:
       - "crates/attestation-runtime/**"
       - "apps/desktop/package-lock.json"
       - "apps/desktop/src-tauri/**"
-      - "professions/catalog.json"
+      - "professions/**"
+      - "examples/work-contracts/**"
+      - "schemas/**"
+      - "tools/validate_foundation.py"
+      - "tools/validate_schema_catalog.py"
+      - "tools/scaffold_profession.py"
       - "tools/release/**"
       - "docs/architecture/36-key-governance-and-release-evidence.md"
+      - "docs/release-readiness.md"
       - "docs/status.md"
+      - "docs/roadmap.md"
       - ".github/workflows/key-governance-release-evidence.yml"
   push:
     branches:
       - main
     paths:
-      - "Cargo.toml"
+      - "**/Cargo.toml"
       - "Cargo.lock"
       - "crates/key-governance-runtime/**"
       - "crates/governed-verification-runtime/**"
@@ -28,14 +35,24 @@ on:
       - "crates/attestation-runtime/**"
       - "apps/desktop/package-lock.json"
       - "apps/desktop/src-tauri/**"
-      - "professions/catalog.json"
+      - "professions/**"
+      - "examples/work-contracts/**"
+      - "schemas/**"
+      - "tools/validate_foundation.py"
+      - "tools/validate_schema_catalog.py"
+      - "tools/scaffold_profession.py"
       - "tools/release/**"
       - "docs/architecture/36-key-governance-and-release-evidence.md"
+      - "docs/release-readiness.md"
       - "docs/status.md"
+      - "docs/roadmap.md"
       - ".github/workflows/key-governance-release-evidence.yml"
 
 permissions:
   contents: read
+
+env:
+  SOURCE_COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
 
 jobs:
   rustsec:
@@ -45,8 +62,17 @@ jobs:
       contents: read
       checks: write
     steps:
-      - name: Check out repository
+      - name: Check out exact source commit
         uses: actions/checkout@v4
+        with:
+          ref: ${{ env.SOURCE_COMMIT }}
+          persist-credentials: false
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Reject stale or inconsistent Cargo.lock
+        run: cargo metadata --locked --format-version 1 > /dev/null
 
       - name: Audit Cargo.lock against the RustSec advisory database
         uses: rustsec/audit-check@69366f33c96575abad1ee0dba8212993eecbe998 # v2.0.0
@@ -57,8 +83,11 @@ jobs:
     name: Verify governed issuer roles rotation and revocation
     runs-on: ubuntu-24.04
     steps:
-      - name: Check out repository
+      - name: Check out exact source commit
         uses: actions/checkout@v4
+        with:
+          ref: ${{ env.SOURCE_COMMIT }}
+          persist-credentials: false
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -88,11 +117,32 @@ jobs:
   deterministic-evidence:
     name: Reproduce SPDX manifest and checksums
     runs-on: ubuntu-24.04
-    env:
-      SOURCE_COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
     steps:
-      - name: Check out repository
+      - name: Check out exact source commit
         uses: actions/checkout@v4
+        with:
+          ref: ${{ env.SOURCE_COMMIT }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Reject source identity substitution
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$SOURCE_COMMIT"
+
+      - name: Reject whitespace errors in the exact change set
+        shell: bash
+        env:
+          BASE_COMMIT: ${{ github.event.pull_request.base.sha || '' }}
+        run: |
+          set -euo pipefail
+          if [ -n "${BASE_COMMIT:-}" ]; then
+            git cat-file -e "${BASE_COMMIT}^{commit}"
+            git diff --check "$BASE_COMMIT...HEAD"
+          else
+            git diff --check HEAD^ HEAD
+          fi
 
       - name: Install Node
         uses: actions/setup-node@v4
@@ -102,8 +152,12 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
 
-      - name: Run release evidence unit tests
-        run: python -m unittest tools/release/test_generate_release_evidence.py
+      - name: Validate foundation and Python tooling
+        run: |
+          python tools/validate_schema_catalog.py
+          python tools/validate_foundation.py
+          python -m unittest tools.test_validate_foundation tools.test_scaffold_profession tools.release.test_generate_release_evidence
+          python -m compileall -q tools
 
       - name: Generate identical evidence twice
         shell: bash
@@ -130,6 +184,8 @@ jobs:
               (Path(os.environ["RUNNER_TEMP"]) / "evidence-a" / "ergaxiom-release-manifest.json")
               .read_text(encoding="utf-8")
           )
+          if manifest["source"]["commit"] != os.environ["SOURCE_COMMIT"]:
+              raise SystemExit("release manifest source commit does not match exact checkout")
           if manifest["release_eligible"] is not False:
               raise SystemExit("unsigned candidate was incorrectly marked release eligible")
           PY
@@ -145,11 +201,20 @@ jobs:
   windows-candidate:
     name: Build unsigned Windows candidate and bind release evidence
     runs-on: windows-2025
-    env:
-      SOURCE_COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
     steps:
-      - name: Check out repository
+      - name: Check out exact source commit
         uses: actions/checkout@v4
+        with:
+          ref: ${{ env.SOURCE_COMMIT }}
+          persist-credentials: false
+
+      - name: Reject source identity substitution
+        shell: pwsh
+        run: |
+          $actual = (git rev-parse HEAD).Trim()
+          if ($actual -ne "$env:SOURCE_COMMIT") {
+            throw "Checked out $actual but release evidence is labeled $env:SOURCE_COMMIT"
+          }
 
       - name: Install Node
         uses: actions/setup-node@v4
@@ -161,13 +226,40 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
 
+      - name: Reject stale or inconsistent Cargo.lock
+        run: cargo metadata --locked --format-version 1 > $null
+
       - name: Install pinned desktop dependencies
         working-directory: apps/desktop
         run: npm ci
 
+      - name: Reject high-severity desktop dependency vulnerabilities
+        working-directory: apps/desktop
+        run: npm audit --audit-level=high
+
+      - name: Run desktop trust-boundary tests
+        working-directory: apps/desktop
+        run: npm test
+
+      - name: Build desktop renderer
+        working-directory: apps/desktop
+        run: npm run build
+
       - name: Compile Windows candidate without signing or bundling
         working-directory: apps/desktop
         run: npm run tauri -- build --no-bundle
+
+      - name: Isolate byte-identical Windows release candidate
+        shell: pwsh
+        run: |
+          $builtCandidate = "apps/desktop/src-tauri/target/release/ergaxiom-desktop.exe"
+          $releaseCandidate = Join-Path $env:RUNNER_TEMP "ergaxiom-desktop.exe"
+          Copy-Item -LiteralPath $builtCandidate -Destination $releaseCandidate -Force
+          $builtHash = (Get-FileHash -LiteralPath $builtCandidate -Algorithm SHA256).Hash
+          $releaseHash = (Get-FileHash -LiteralPath $releaseCandidate -Algorithm SHA256).Hash
+          if ($builtHash -ne $releaseHash) {
+            throw "Isolated release candidate copy changed bytes"
+          }
 
       - name: Generate fail-closed candidate evidence
         shell: pwsh
@@ -175,9 +267,10 @@ jobs:
           $rustcVersion = (rustc --version).Trim()
           $nodeVersion = (node --version).Trim()
           $npmVersion = (npm --version).Trim()
+          $releaseCandidate = Join-Path $env:RUNNER_TEMP "ergaxiom-desktop.exe"
           python tools/release/generate_release_evidence.py `
             --repo-root . `
-            --artifact apps/desktop/src-tauri/target/release/ergaxiom-desktop.exe `
+            --artifact "$releaseCandidate" `
             --source-commit "$env:SOURCE_COMMIT" `
             --rustc-version "$rustcVersion" `
             --node-version "$nodeVersion" `
@@ -185,6 +278,9 @@ jobs:
             --output-dir "$env:RUNNER_TEMP\release-evidence"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           $manifest = Get-Content "$env:RUNNER_TEMP\release-evidence\ergaxiom-release-manifest.json" | ConvertFrom-Json
+          if ($manifest.source.commit -ne "$env:SOURCE_COMMIT") {
+            throw "Release manifest source commit does not match exact checkout"
+          }
           if ($manifest.release_eligible -ne $false) {
             throw "Unsigned Windows candidate was incorrectly marked release eligible"
           }
@@ -193,7 +289,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: ergaxiom-windows-unsigned-governed-candidate
-          path: apps/desktop/src-tauri/target/release/ergaxiom-desktop.exe
+          path: ${{ runner.temp }}/ergaxiom-desktop.exe
           if-no-files-found: error
           retention-days: 14
 
