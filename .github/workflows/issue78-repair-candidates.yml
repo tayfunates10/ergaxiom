@@ -10,49 +10,63 @@ on:
       - "crates/desktop-user-job-runtime/**"
       - "crates/production-execution-runtime/**"
       - ".github/workflows/issue78-repair-candidates.yml"
-  workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 env:
-  SOURCE_COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
+  SOURCE_COMMIT: ${{ github.event.pull_request.head.sha }}
 
 concurrency:
-  group: issue78-repair-${{ github.event.pull_request.number || github.ref }}
+  group: issue78-repair-${{ github.event.pull_request.number }}
   cancel-in-progress: true
 
 jobs:
-  candidates:
+  repair:
+    if: github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ env.SOURCE_COMMIT }}
-          persist-credentials: false
+          ref: ${{ github.event.pull_request.head.ref }}
+          fetch-depth: 0
+          persist-credentials: true
       - name: Reject source substitution
         run: test "$(git rev-parse HEAD)" = "$SOURCE_COMMIT"
       - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: "1.85.0"
           components: rustfmt
-      - name: Generate exact candidates
+      - name: Generate exact lock and formatting repairs
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p "$RUNNER_TEMP/candidates"
           cargo generate-lockfile
-          cp Cargo.lock "$RUNNER_TEMP/candidates/Cargo.lock"
           cargo generate-lockfile --manifest-path apps/desktop/src-tauri/Cargo.toml
-          cp apps/desktop/src-tauri/Cargo.lock "$RUNNER_TEMP/candidates/tauri-Cargo.lock"
           cargo fmt --all
-          cp crates/desktop-user-job-runtime/src/lib.rs "$RUNNER_TEMP/candidates/desktop-user-job-lib.rs"
-          cp crates/production-execution-runtime/src/bin/verify_production_release_chain.rs "$RUNNER_TEMP/candidates/verify-production-release-chain.rs"
+      - name: Validate generated candidates before commit
+        shell: bash
+        run: |
+          set -euo pipefail
           cargo metadata --locked --format-version 1 >/dev/null
           cargo metadata --locked --manifest-path apps/desktop/src-tauri/Cargo.toml --format-version 1 >/dev/null
-      - uses: actions/upload-artifact@v4
-        with:
-          name: issue78-exact-repair-candidates
-          path: ${{ runner.temp }}/candidates/*
-          if-no-files-found: error
-          retention-days: 7
+          cargo fmt --all -- --check
+          cargo check --locked -p ergaxiom-production-execution-runtime --bin verify_production_release_chain
+          cargo test --locked -p ergaxiom-desktop-user-job-runtime
+      - name: Commit exact repairs to PR head
+        shell: bash
+        env:
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
+        run: |
+          set -euo pipefail
+          git add Cargo.lock apps/desktop/src-tauri/Cargo.lock \
+            crates/desktop-user-job-runtime/src/lib.rs \
+            crates/production-execution-runtime/src/bin/verify_production_release_chain.rs
+          if git diff --cached --quiet; then
+            echo 'No generated repair changes remain.'
+            exit 0
+          fi
+          git config user.name 'ergaxiom-release-ci'
+          git config user.email 'ergaxiom-release-ci@users.noreply.github.com'
+          git commit -m 'Apply exact generated lock and rustfmt repairs'
+          git push origin "HEAD:${HEAD_REF}"
