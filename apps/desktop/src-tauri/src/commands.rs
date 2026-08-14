@@ -16,9 +16,7 @@ use ergaxiom_proof_kernel::AssuranceLevel;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
-use crate::pipeline::{
-    PipelineSnapshotMode, build_pipeline_snapshot, prepare_desktop_job,
-};
+use crate::pipeline::{PipelineSnapshotMode, build_pipeline_snapshot, prepare_desktop_job};
 use crate::production_execution::{ProductionExecutionBoundaryError, ProductionExecutionState};
 use crate::production_pipeline::execute_approved_job;
 
@@ -77,7 +75,21 @@ impl DesktopControlState {
         let prepared = prepare_desktop_job()?;
         let recovered = production.with_fresh_lease(|authority, lease, deployment, _client, now| {
             let state = authority.chain_state().clone();
-            if state.stage == ProductionExecutionStage::Certified {
+            if matches!(
+                state.stage,
+                ProductionExecutionStage::Certified | ProductionExecutionStage::RolledBack
+            ) {
+                let bundle = state
+                    .evidence_bundle
+                    .as_ref()
+                    .ok_or(ProductionExecutionBoundaryError::TrustLeaseRejected)?;
+                let executed_snapshot = state
+                    .executed_snapshot
+                    .as_ref()
+                    .ok_or(ProductionExecutionBoundaryError::TrustLeaseRejected)?;
+                authority
+                    .verify_execution_evidence_binding(bundle, executed_snapshot)
+                    .map_err(ProductionExecutionBoundaryError::from)?;
                 verify_recovered_certified_chain(
                     &state,
                     lease,
@@ -161,9 +173,8 @@ impl DesktopControlState {
             }
             ProductionExecutionStage::Cancelled => {
                 let approval = state.approval;
-                let snapshot = build_pipeline_snapshot(PipelineSnapshotMode::Cancelled(
-                    approval.as_ref(),
-                ))?;
+                let snapshot =
+                    build_pipeline_snapshot(PipelineSnapshotMode::Cancelled(approval.as_ref()))?;
                 let cancel = state
                     .cancel_receipt
                     .ok_or_else(|| "recovered chain is missing cancellation receipt".to_owned())?;
@@ -177,10 +188,28 @@ impl DesktopControlState {
                 receipts.push(cancel);
                 Self::from_recovered(snapshot, approval, receipts)
             }
-            ProductionExecutionStage::RolledBack => Err(
-                "rolled-back production chain requires certified-chain recovery verification"
-                    .to_owned(),
-            ),
+            ProductionExecutionStage::RolledBack => {
+                let certified = state
+                    .final_snapshot
+                    .ok_or_else(|| "recovered chain is missing certified snapshot".to_owned())?;
+                let approval = state
+                    .approval
+                    .ok_or_else(|| "recovered chain is missing approval record".to_owned())?;
+                let approve = state
+                    .approve_receipt
+                    .ok_or_else(|| "recovered chain is missing approval receipt".to_owned())?;
+                let execute = state
+                    .execute_receipt
+                    .ok_or_else(|| "recovered chain is missing execute receipt".to_owned())?;
+                let rollback = state
+                    .rollback_receipt
+                    .ok_or_else(|| "recovered chain is missing rollback receipt".to_owned())?;
+                let snapshot = terminal_snapshot(&certified, DesktopControlStatus::RolledBack)?;
+                if rollback.post_snapshot_digest != snapshot.snapshot_digest {
+                    return Err("recovered rollback snapshot digest mismatch".to_owned());
+                }
+                Self::from_recovered(snapshot, Some(approval), vec![approve, execute, rollback])
+            }
         }
     }
 
@@ -293,13 +322,48 @@ impl DesktopControlState {
             .approval
             .clone()
             .ok_or_else(|| "desktop execution has no backend approval record".to_owned())?;
-        verify_desktop_approval_for_execution(
-            &session.snapshot,
-            &approval,
-            &request.approval_digest,
-            now,
-        )
-        .map_err(|error| format!("desktop execution rejected: {error}"))?;
+        let status = control_status_from_snapshot(&session.snapshot)
+            .map_err(|error| format!("desktop control state invalid: {error}"))?;
+        match status {
+            DesktopControlStatus::Approved => {
+                verify_desktop_approval_for_execution(
+                    &session.snapshot,
+                    &approval,
+                    &request.approval_digest,
+                    now,
+                )
+                .map_err(|error| format!("desktop execution rejected: {error}"))?;
+            }
+            DesktopControlStatus::Executed if session.snapshot.certificate.is_none() => {
+                verify_desktop_approval_binding(
+                    &session.snapshot,
+                    &approval,
+                    &request.approval_digest,
+                )
+                .map_err(|error| format!("desktop execution resume rejected: {error}"))?;
+                let execute_receipt = session
+                    .receipts
+                    .iter()
+                    .rev()
+                    .find(|receipt| receipt.action == DesktopCommandAction::Execute)
+                    .ok_or_else(|| {
+                        "desktop execution resume has no persisted Execute receipt".to_owned()
+                    })?;
+                if execute_receipt.post_snapshot_digest != session.snapshot.snapshot_digest
+                    || execute_receipt.approval_digest.as_deref()
+                        != Some(approval.approval_digest.as_str())
+                    || execute_receipt.issued_at_epoch_s > approval.expires_at_epoch_s
+                {
+                    return Err("desktop execution resume receipt binding mismatch".to_owned());
+                }
+            }
+            _ => {
+                return Err(
+                    "desktop execution requires Approved state or an uncertified persisted execution"
+                        .to_owned(),
+                );
+            }
+        }
         let approve_receipt = session
             .receipts
             .iter()
@@ -314,7 +378,13 @@ impl DesktopControlState {
             &approve_receipt,
         )?;
         session.snapshot = result.final_snapshot;
-        session.receipts.push(result.execute_receipt);
+        if !session
+            .receipts
+            .iter()
+            .any(|receipt| receipt.receipt_digest == result.execute_receipt.receipt_digest)
+        {
+            session.receipts.push(result.execute_receipt);
+        }
         response_from_session(&session)
     }
 
