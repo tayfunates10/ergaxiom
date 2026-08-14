@@ -5,13 +5,18 @@ use std::fs::{self, File, OpenOptions};
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 
+use ergaxiom_desktop_shell_runtime::{
+    DesktopApprovalRecord, DesktopCommandAction, DesktopCommandReceipt, DesktopControlStatus,
+    DesktopShellSnapshot, control_status_from_snapshot, verify_desktop_approval,
+    verify_desktop_approval_binding, verify_desktop_command_receipt, verify_desktop_shell_snapshot,
+};
 use ergaxiom_proof_kernel::{HashingError, canonical_json_sha256};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 use thiserror::Error;
 
-const JOB_SCHEMA: &str = "0.1.0";
+const JOB_SCHEMA: &str = "0.2.0";
 const PROFESSION_ID: &str = "ergaxiom.profession.graphic-designer";
 const JOBS_DIR: &str = "jobs";
 const BLOBS_DIR: &str = "immutable-inputs";
@@ -21,7 +26,7 @@ const PENDING_PREFIX: &str = ".pending-state-";
 const PENDING_SUFFIX: &str = ".tmp";
 const BLOB_SUFFIX: &str = ".bin";
 const MAX_INPUT_BYTES: u64 = 64 * 1024 * 1024;
-const MAX_STATE_BYTES: u64 = 8 * 1024 * 1024;
+const MAX_STATE_BYTES: u64 = 16 * 1024 * 1024;
 const MAX_STATES: usize = 8_192;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -91,15 +96,14 @@ pub struct ImmutableInput {
     pub size_bytes: u64,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct ApprovalBinding {
-    pub approval_id: String,
-    pub contract_digest: String,
-    pub plan_digest: String,
-    pub permission_digest: String,
-    pub issued_at_epoch_s: u64,
-    pub expires_at_epoch_s: u64,
-    pub approval_digest: String,
+/// Canonical approval material is issued and verified by `desktop-shell-runtime`.
+/// The persistent job layer stores this tuple but never mints or re-hashes approval authority.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ApprovalAuthorityBinding {
+    #[serde(flatten)]
+    pub record: DesktopApprovalRecord,
+    pub approved_snapshot: DesktopShellSnapshot,
+    pub approve_receipt: DesktopCommandReceipt,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -162,7 +166,7 @@ pub struct UserJobRecord {
     pub operator_plan: Option<Value>,
     pub plan_digest: Option<String>,
     pub permission_digest: Option<String>,
-    pub approval: Option<ApprovalBinding>,
+    pub approval: Option<ApprovalAuthorityBinding>,
     pub production: Option<ProductionBinding>,
     pub evidence: Option<EvidenceBinding>,
     pub certificate: Option<CertificateBinding>,
@@ -275,7 +279,10 @@ impl UserJobRecord {
     }
 
     fn requires_all_inputs(&self) -> bool {
-        !matches!(self.phase, UserJobPhase::Draft | UserJobPhase::UnresolvedIntent)
+        !matches!(
+            self.phase,
+            UserJobPhase::Draft | UserJobPhase::UnresolvedIntent | UserJobPhase::Cancelled
+        )
     }
 
     fn validate_compiled_material(&self) -> Result<(), UserJobError> {
@@ -333,25 +340,45 @@ impl UserJobRecord {
         if approval_required && self.approval.is_none() {
             return Err(UserJobError::MissingApproval);
         }
-        let Some(approval) = &self.approval else {
+        let Some(binding) = &self.approval else {
             return Ok(());
         };
-        validate_identifier(&approval.approval_id)?;
-        validate_sha256(&approval.approval_digest)?;
-        if Some(approval.contract_digest.as_str()) != self.contract_digest.as_deref()
-            || Some(approval.plan_digest.as_str()) != self.plan_digest.as_deref()
-            || Some(approval.permission_digest.as_str()) != self.permission_digest.as_deref()
-            || approval.expires_at_epoch_s <= approval.issued_at_epoch_s
-        {
-            return Err(UserJobError::ApprovalBindingMismatch);
+        let record = &binding.record;
+        if !verify_desktop_approval(record).map_err(canonical_control_error)? {
+            return Err(UserJobError::CanonicalApprovalRejected);
         }
-        let mut value = serde_json::to_value(approval)?;
-        let object = value
-            .as_object_mut()
-            .ok_or(UserJobError::InvalidCanonicalObject)?;
-        object.insert("approval_digest".to_owned(), Value::String(String::new()));
-        if canonical_json_sha256(&value)? != approval.approval_digest {
-            return Err(UserJobError::ApprovalDigestMismatch);
+        if !verify_desktop_shell_snapshot(&binding.approved_snapshot)
+            .map_err(canonical_shell_error)?
+        {
+            return Err(UserJobError::CanonicalApprovalSnapshotRejected);
+        }
+        if !verify_desktop_command_receipt(&binding.approve_receipt)
+            .map_err(canonical_control_error)?
+        {
+            return Err(UserJobError::CanonicalApprovalReceiptRejected);
+        }
+        verify_desktop_approval_binding(
+            &binding.approved_snapshot,
+            record,
+            &record.approval_digest,
+        )
+        .map_err(canonical_control_error)?;
+        if control_status_from_snapshot(&binding.approved_snapshot)
+            .map_err(canonical_control_error)?
+            != DesktopControlStatus::Approved
+            || binding.approve_receipt.action != DesktopCommandAction::Approve
+            || binding.approve_receipt.job_id != self.job_id
+            || binding.approve_receipt.post_snapshot_digest
+                != binding.approved_snapshot.snapshot_digest
+            || binding.approve_receipt.pre_snapshot_digest != record.pre_snapshot_digest
+            || binding.approve_receipt.approval_digest.as_deref()
+                != Some(record.approval_digest.as_str())
+            || record.job_id != self.job_id
+            || Some(record.contract_digest.as_str()) != self.contract_digest.as_deref()
+            || Some(record.plan_digest.as_str()) != self.plan_digest.as_deref()
+            || Some(record.permission_digest.as_str()) != self.permission_digest.as_deref()
+        {
+            return Err(UserJobError::CanonicalApprovalBindingMismatch);
         }
         Ok(())
     }
@@ -416,7 +443,7 @@ impl UserJobRecord {
         {
             return Err(UserJobError::CertificateProductionBindingMismatch);
         }
-        if self.phase == UserJobPhase::Accepted || self.phase == UserJobPhase::RecoveryRequired {
+        if matches!(self.phase, UserJobPhase::Accepted | UserJobPhase::RecoveryRequired) {
             let evidence = self.evidence.as_ref().ok_or(UserJobError::MissingEvidence)?;
             if !evidence.accepted
                 || !certificate.signature_verified
@@ -474,10 +501,7 @@ impl UserJobStore {
         })
     }
 
-    pub fn open(
-        product_root: impl AsRef<Path>,
-        job_id: &str,
-    ) -> Result<Self, UserJobError> {
+    pub fn open(product_root: impl AsRef<Path>, job_id: &str) -> Result<Self, UserJobError> {
         let product_root = product_root.as_ref().to_path_buf();
         prepare_product_root(&product_root)?;
         validate_identifier(job_id)?;
@@ -537,12 +561,12 @@ impl UserJobStore {
         }
         validate_file_name(file_name)?;
         validate_media_type(media_type)?;
-        if bytes.is_empty() || u64::try_from(bytes.len()).map_err(|_| UserJobError::InputTooLarge)? > MAX_INPUT_BYTES {
+        let size_bytes = u64::try_from(bytes.len()).map_err(|_| UserJobError::InputTooLarge)?;
+        if bytes.is_empty() || size_bytes > MAX_INPUT_BYTES {
             return Err(UserJobError::InputTooLarge);
         }
         let digest = sha256_hex(bytes);
         persist_blob(&self.product_root, &digest, bytes)?;
-        let size_bytes = u64::try_from(bytes.len()).map_err(|_| UserJobError::InputTooLarge)?;
         let mut next = self.current.clone();
         next.inputs.insert(
             role.to_owned(),
@@ -628,12 +652,10 @@ impl UserJobStore {
         self.commit(next)
     }
 
-    pub fn record_approval(
+    pub fn record_canonical_approval(
         &mut self,
         expected_state_digest: &str,
-        approval_id: String,
-        issued_at_epoch_s: u64,
-        expires_at_epoch_s: u64,
+        binding: ApprovalAuthorityBinding,
     ) -> Result<(), UserJobError> {
         self.verify_expected_state(expected_state_digest)?;
         if !matches!(
@@ -642,29 +664,15 @@ impl UserJobStore {
         ) {
             return Err(UserJobError::InvalidTransition);
         }
-        validate_identifier(&approval_id)?;
-        let mut approval = ApprovalBinding {
-            approval_id,
-            contract_digest: self.current.contract_digest.clone().ok_or(UserJobError::MissingCompiledMaterial)?,
-            plan_digest: self.current.plan_digest.clone().ok_or(UserJobError::MissingCompiledMaterial)?,
-            permission_digest: self.current.permission_digest.clone().ok_or(UserJobError::MissingCompiledMaterial)?,
-            issued_at_epoch_s,
-            expires_at_epoch_s,
-            approval_digest: String::new(),
-        };
-        let value = serde_json::to_value(&approval)?;
-        approval.approval_digest = canonical_json_sha256(&value)?;
         let mut next = self.current.clone();
-        next.approval = Some(approval);
+        next.approval = Some(binding);
         next.phase = UserJobPhase::Approved;
         next.status_detail = None;
+        next.validate_approval()?;
         self.commit(next)
     }
 
-    pub fn record_approval_expired(
-        &mut self,
-        expected_state_digest: &str,
-    ) -> Result<(), UserJobError> {
+    pub fn record_approval_expired(&mut self, expected_state_digest: &str) -> Result<(), UserJobError> {
         self.verify_expected_state(expected_state_digest)?;
         if self.current.phase != UserJobPhase::Approved {
             return Err(UserJobError::InvalidTransition);
@@ -827,10 +835,7 @@ impl UserJobStore {
         self.commit(next)
     }
 
-    pub fn cancel_before_execution(
-        &mut self,
-        expected_state_digest: &str,
-    ) -> Result<(), UserJobError> {
+    pub fn cancel_before_execution(&mut self, expected_state_digest: &str) -> Result<(), UserJobError> {
         self.verify_expected_state(expected_state_digest)?;
         if self.current.production.is_some()
             || matches!(
@@ -1165,7 +1170,7 @@ fn validate_identifier(value: &str) -> Result<(), UserJobError> {
         || value.len() > 160
         || !value
             .bytes()
-            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'_' | b'-'))
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'_' | b'-' | b':'))
     {
         return Err(UserJobError::InvalidIdentifier(value.to_owned()));
     }
@@ -1212,7 +1217,7 @@ fn validate_sha256(value: &str) -> Result<(), UserJobError> {
     if value.len() != 64
         || !value
             .bytes()
-            .all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase())
+            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
     {
         return Err(UserJobError::InvalidSha256(value.to_owned()));
     }
@@ -1221,6 +1226,14 @@ fn validate_sha256(value: &str) -> Result<(), UserJobError> {
 
 fn sha256_hex(bytes: &[u8]) -> String {
     format!("{:x}", Sha256::digest(bytes))
+}
+
+fn canonical_control_error(error: impl ToString) -> UserJobError {
+    UserJobError::CanonicalControl(error.to_string())
+}
+
+fn canonical_shell_error(error: impl ToString) -> UserJobError {
+    UserJobError::CanonicalShell(error.to_string())
 }
 
 fn io_error(operation: &'static str, path: &Path, source: std::io::Error) -> UserJobError {
@@ -1327,12 +1340,20 @@ pub enum UserJobError {
     ContractDigestMismatch,
     #[error("Operator Plan digest mismatch")]
     PlanDigestMismatch,
-    #[error("approval is missing")]
+    #[error("canonical desktop approval is missing")]
     MissingApproval,
-    #[error("approval digest mismatch")]
-    ApprovalDigestMismatch,
-    #[error("approval binding does not match exact contract, plan and permission digests")]
-    ApprovalBindingMismatch,
+    #[error("canonical desktop approval failed verification")]
+    CanonicalApprovalRejected,
+    #[error("canonical approved DesktopShellSnapshot failed verification")]
+    CanonicalApprovalSnapshotRejected,
+    #[error("canonical Approve receipt failed verification")]
+    CanonicalApprovalReceiptRejected,
+    #[error("canonical approval tuple does not bind this persistent job")]
+    CanonicalApprovalBindingMismatch,
+    #[error("desktop control authority rejected approval material: {0}")]
+    CanonicalControl(String),
+    #[error("desktop shell authority rejected snapshot material: {0}")]
+    CanonicalShell(String),
     #[error("production binding is missing")]
     MissingProductionBinding,
     #[error("production stage is invalid")]
@@ -1370,13 +1391,20 @@ pub enum UserJobError {
 mod tests {
     use std::time::{SystemTime, UNIX_EPOCH};
 
+    use ergaxiom_desktop_shell_runtime::{
+        ApprovalSummary, DesktopApprovalRequest, DesktopShellMaterial, DigestItem, StageStatus,
+        build_desktop_shell_snapshot, issue_desktop_approval, issue_desktop_command_receipt,
+    };
     use serde_json::json;
 
     use super::*;
 
     fn test_root(name: &str) -> Result<PathBuf, Box<dyn std::error::Error>> {
         let nonce = SystemTime::now().duration_since(UNIX_EPOCH)?.as_nanos();
-        Ok(std::env::temp_dir().join(format!("ergaxiom-user-job-{name}-{}-{nonce}", std::process::id())))
+        Ok(std::env::temp_dir().join(format!(
+            "ergaxiom-user-job-{name}-{}-{nonce}",
+            std::process::id()
+        )))
     }
 
     fn fake_digest(byte: char) -> String {
@@ -1400,6 +1428,138 @@ mod tests {
             store.import_input(&expected, role, name, media, bytes)?;
         }
         Ok(store)
+    }
+
+    fn compile_test_material(store: &mut UserJobStore) -> Result<(), Box<dyn std::error::Error>> {
+        let contract = json!({"contract_id": "contract.test"});
+        let plan = json!({"plan_id": "plan.test"});
+        let expected = store.current().state_digest.clone();
+        store.record_compiled(
+            &expected,
+            CompiledJobMaterial {
+                resolved_intent: json!({"kind": "cleanup"}),
+                contract_digest: canonical_json_sha256(&contract)?,
+                work_contract: contract,
+                plan_digest: canonical_json_sha256(&plan)?,
+                operator_plan: plan,
+                permission_digest: fake_digest('a'),
+            },
+        )?;
+        Ok(())
+    }
+
+    fn approval_snapshot(
+        store: &UserJobStore,
+        status: DesktopControlStatus,
+        approval: Option<&DesktopApprovalRecord>,
+    ) -> Result<DesktopShellSnapshot, Box<dyn std::error::Error>> {
+        let contract_digest = store.current().contract_digest.clone().ok_or("contract")?;
+        let plan_digest = store.current().plan_digest.clone().ok_or("plan")?;
+        let permission_digest = store.current().permission_digest.clone().ok_or("permission")?;
+        let (approval_id, expires_at_epoch_s, approval_status, approval_digest) = match approval {
+            Some(record) => (
+                record.approval_id.clone(),
+                record.expires_at_epoch_s,
+                StageStatus::Passed,
+                Some(record.approval_digest.clone()),
+            ),
+            None => (
+                "approval.pending".to_owned(),
+                0,
+                StageStatus::Pending,
+                None,
+            ),
+        };
+        build_desktop_shell_snapshot(DesktopShellMaterial {
+            generated_at: "2026-08-14T07:00:00Z".to_owned(),
+            job_id: Some(store.current().job_id.clone()),
+            unresolved: Vec::new(),
+            staged_inputs: store
+                .current()
+                .inputs
+                .values()
+                .map(|input| DigestItem {
+                    id: input.role.clone(),
+                    media_type: Some(input.media_type.clone()),
+                    digest: input.sha256.clone(),
+                    status: StageStatus::Passed,
+                })
+                .collect(),
+            contract: Some(DigestItem {
+                id: "contract.test".to_owned(),
+                media_type: Some("application/json".to_owned()),
+                digest: contract_digest.clone(),
+                status: StageStatus::Passed,
+            }),
+            approval: Some(ApprovalSummary {
+                approval_id,
+                contract_digest,
+                plan_digest: plan_digest.clone(),
+                permission_digest,
+                expires_at_epoch_s,
+                status: approval_status,
+            }),
+            plan: Some(DigestItem {
+                id: "plan.test".to_owned(),
+                media_type: Some("application/json".to_owned()),
+                digest: plan_digest,
+                status: StageStatus::Passed,
+            }),
+            steps: Vec::new(),
+            validators: Vec::new(),
+            evidence_bundle: None,
+            replay_manifest: None,
+            certificate: None,
+            profession_capsules: Vec::new(),
+            adapters: Vec::new(),
+            trusted_keys: Vec::new(),
+            metadata: json!({
+                "control_status": match status {
+                    DesktopControlStatus::AwaitingApproval => "awaiting_approval",
+                    DesktopControlStatus::Approved => "approved",
+                    DesktopControlStatus::Executed => "executed",
+                    DesktopControlStatus::Cancelled => "cancelled",
+                    DesktopControlStatus::RolledBack => "rolled_back",
+                },
+                "approval_digest": approval_digest,
+            }),
+        })
+        .map_err(Into::into)
+    }
+
+    fn install_canonical_approval(store: &mut UserJobStore) -> Result<(), Box<dyn std::error::Error>> {
+        let awaiting = approval_snapshot(store, DesktopControlStatus::AwaitingApproval, None)?;
+        let record = issue_desktop_approval(
+            &awaiting,
+            &DesktopApprovalRequest {
+                expected_snapshot_digest: awaiting.snapshot_digest.clone(),
+                contract_digest: store.current().contract_digest.clone().ok_or("contract")?,
+                plan_digest: store.current().plan_digest.clone().ok_or("plan")?,
+                permission_digest: store.current().permission_digest.clone().ok_or("permission")?,
+            },
+            "ergaxiom.local.operator",
+            100,
+            60,
+        )?;
+        let approved = approval_snapshot(store, DesktopControlStatus::Approved, Some(&record))?;
+        let receipt = issue_desktop_command_receipt(
+            DesktopCommandAction::Approve,
+            "ergaxiom.local.operator",
+            &awaiting,
+            &approved,
+            Some(&record.approval_digest),
+            100,
+        )?;
+        let expected = store.current().state_digest.clone();
+        store.record_canonical_approval(
+            &expected,
+            ApprovalAuthorityBinding {
+                record,
+                approved_snapshot: approved,
+                approve_receipt: receipt,
+            },
+        )?;
+        Ok(())
     }
 
     #[test]
@@ -1437,6 +1597,23 @@ mod tests {
     }
 
     #[test]
+    fn incomplete_draft_can_cancel_without_fake_inputs() -> Result<(), Box<dyn std::error::Error>> {
+        let root = test_root("cancel")?;
+        let mut store = UserJobStore::create(
+            &root,
+            "job.test.cancel",
+            GraphicDesignerJobKind::BrandCompliantImageExport,
+            "2026-08-14T07:00:00Z",
+            "Cancel this before execution.",
+        )?;
+        let expected = store.current().state_digest.clone();
+        store.cancel_before_execution(&expected)?;
+        assert_eq!(store.current().phase, UserJobPhase::Cancelled);
+        fs::remove_dir_all(root)?;
+        Ok(())
+    }
+
+    #[test]
     fn stale_renderer_digest_and_history_corruption_fail_closed() -> Result<(), Box<dyn std::error::Error>> {
         let root = test_root("stale")?;
         let mut store = create_filled_store(&root)?;
@@ -1451,26 +1628,25 @@ mod tests {
     }
 
     #[test]
+    fn canonical_desktop_approval_is_required_and_persisted() -> Result<(), Box<dyn std::error::Error>> {
+        let root = test_root("approval")?;
+        let mut store = create_filled_store(&root)?;
+        compile_test_material(&mut store)?;
+        install_canonical_approval(&mut store)?;
+        assert_eq!(store.current().phase, UserJobPhase::Approved);
+        let binding = store.current().approval.as_ref().ok_or("approval")?;
+        assert!(verify_desktop_approval(&binding.record)?);
+        assert!(verify_desktop_command_receipt(&binding.approve_receipt)?);
+        fs::remove_dir_all(root)?;
+        Ok(())
+    }
+
+    #[test]
     fn accepted_job_reopens_as_recovery_required() -> Result<(), Box<dyn std::error::Error>> {
         let root = test_root("recovery")?;
         let mut store = create_filled_store(&root)?;
-        let intent = json!({"kind": "cleanup"});
-        let contract = json!({"contract_id": "contract.test"});
-        let plan = json!({"plan_id": "plan.test"});
-        let expected = store.current().state_digest.clone();
-        store.record_compiled(
-            &expected,
-            CompiledJobMaterial {
-                resolved_intent: intent,
-                contract_digest: canonical_json_sha256(&contract)?,
-                work_contract: contract,
-                plan_digest: canonical_json_sha256(&plan)?,
-                operator_plan: plan,
-                permission_digest: fake_digest('a'),
-            },
-        )?;
-        let expected = store.current().state_digest.clone();
-        store.record_approval(&expected, "approval.test.0001".to_owned(), 100, 200)?;
+        compile_test_material(&mut store)?;
+        install_canonical_approval(&mut store)?;
         let production_digest = fake_digest('b');
         let expected = store.current().state_digest.clone();
         store.record_production_observation(
@@ -1515,55 +1691,6 @@ mod tests {
         let reopened = UserJobStore::open(&root, "job.test.0001")?;
         assert_eq!(reopened.current().phase, UserJobPhase::RecoveryRequired);
         assert_eq!(reopened.current().status_detail.as_deref(), Some("restart_reverification_required"));
-        fs::remove_dir_all(root)?;
-        Ok(())
-    }
-
-    #[test]
-    fn certificate_cannot_mint_acceptance_without_verified_evidence() -> Result<(), Box<dyn std::error::Error>> {
-        let root = test_root("certificate")?;
-        let mut store = create_filled_store(&root)?;
-        let intent = json!({"kind": "cleanup"});
-        let contract = json!({"contract_id": "contract.test"});
-        let plan = json!({"plan_id": "plan.test"});
-        let expected = store.current().state_digest.clone();
-        store.record_compiled(
-            &expected,
-            CompiledJobMaterial {
-                resolved_intent: intent,
-                contract_digest: canonical_json_sha256(&contract)?,
-                work_contract: contract,
-                plan_digest: canonical_json_sha256(&plan)?,
-                operator_plan: plan,
-                permission_digest: fake_digest('a'),
-            },
-        )?;
-        let expected = store.current().state_digest.clone();
-        store.record_approval(&expected, "approval.test.0002".to_owned(), 100, 200)?;
-        let expected = store.current().state_digest.clone();
-        store.record_production_observation(
-            &expected,
-            ProductionBinding {
-                chain_state_digest: fake_digest('b'),
-                stage: "executed".to_owned(),
-            },
-        )?;
-        let bundle = json!({"claims": []});
-        let replay = json!({"steps": []});
-        let expected = store.current().state_digest.clone();
-        store.record_evidence(
-            &expected,
-            EvidenceBinding {
-                evidence_bundle_digest: canonical_json_sha256(&bundle)?,
-                evidence_bundle: bundle,
-                replay_manifest_digest: canonical_json_sha256(&replay)?,
-                replay_manifest: replay,
-                validator_results: Vec::new(),
-                failure_map: None,
-                accepted: false,
-            },
-        )?;
-        assert_eq!(store.current().phase, UserJobPhase::EvidenceRejected);
         fs::remove_dir_all(root)?;
         Ok(())
     }
