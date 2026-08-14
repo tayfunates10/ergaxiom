@@ -40,21 +40,34 @@ replace_once(
     "key governance hex formatting",
 )
 
-precedence = "decode_nibble(chunk[0])? << 4 | decode_nibble(chunk[1])?"
-parenthesized = "(decode_nibble(chunk[0])? << 4) | decode_nibble(chunk[1])?"
+precedence_patterns = [
+    (
+        "decode_nibble(chunk[0])? << 4 | decode_nibble(chunk[1])?",
+        "(decode_nibble(chunk[0])? << 4) | decode_nibble(chunk[1])?",
+    ),
+    (
+        "nibble(chunk[0])? << 4 | nibble(chunk[1])?",
+        "(nibble(chunk[0])? << 4) | nibble(chunk[1])?",
+    ),
+]
 precedence_hits = 0
 for target in Path("crates").rglob("*.rs"):
     text = target.read_text()
-    hits = text.count(precedence)
-    if hits:
-        target.write_text(text.replace(precedence, parenthesized))
-        precedence_hits += hits
+    updated = text
+    for old, new in precedence_patterns:
+        hits = updated.count(old)
+        if hits:
+            updated = updated.replace(old, new)
+            precedence_hits += hits
+    if updated != text:
+        target.write_text(updated)
 if precedence_hits == 0:
     already_fixed = any(
-        parenthesized in target.read_text() for target in Path("crates").rglob("*.rs")
+        any(new in target.read_text() for _, new in precedence_patterns)
+        for target in Path("crates").rglob("*.rs")
     )
     if not already_fixed:
-        raise SystemExit("expected signer/trust decode precedence expression was not found")
+        raise SystemExit("expected signer/trust decode precedence expressions were not found")
 
 acceptance = Path("crates/production-execution-authority-runtime/tests/persistent_chain.rs")
 text = acceptance.read_text()
