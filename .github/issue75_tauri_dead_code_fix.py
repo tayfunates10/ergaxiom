@@ -1,5 +1,6 @@
 from pathlib import Path
 
+# Trigger the verified cleanup only after the workflow itself is present on the branch.
 commands = Path("apps/desktop/src-tauri/src/commands.rs")
 text = commands.read_text()
 needle = "    pub fn approve(\n        &self,\n        request: DesktopApprovalRequest,\n"
