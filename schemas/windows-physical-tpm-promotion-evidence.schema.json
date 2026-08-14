@@ -1,0 +1,111 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ergaxiom.dev/schemas/windows-physical-tpm-promotion-evidence.schema.json",
+  "title": "Ergaxiom Windows Physical TPM Promotion Evidence",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "promotion_status",
+    "ceremony_id",
+    "recorded_at_epoch_s",
+    "execution_context",
+    "platform",
+    "hosted_ci",
+    "runner_environment",
+    "controlled_hardware_runner",
+    "elevated_administrator",
+    "machine_identity_digest",
+    "machine_inventory_digest",
+    "physical_hardware_attestation_digest",
+    "operator_quorum_digest",
+    "tpm",
+    "cng_provider",
+    "roles",
+    "installation_receipt_sha256",
+    "recovery_receipt_sha256",
+    "governance_recovery_receipt_sha256",
+    "ceremony_digest"
+  ],
+  "properties": {
+    "schema_version": { "const": "0.1.0" },
+    "promotion_status": { "const": "PROVEN_HARDWARE_BACKED" },
+    "ceremony_id": { "type": "string", "minLength": 1, "maxLength": 128 },
+    "recorded_at_epoch_s": { "type": "integer", "minimum": 1 },
+    "execution_context": { "const": "CONTROLLED_WINDOWS_MACHINE" },
+    "platform": { "const": "windows" },
+    "hosted_ci": { "const": false },
+    "runner_environment": { "enum": ["outside-ci", "self-hosted"] },
+    "controlled_hardware_runner": { "type": "boolean" },
+    "elevated_administrator": { "const": true },
+    "machine_identity_digest": { "$ref": "#/$defs/sha256" },
+    "machine_inventory_digest": { "$ref": "#/$defs/sha256" },
+    "physical_hardware_attestation_digest": { "$ref": "#/$defs/sha256" },
+    "operator_quorum_digest": { "$ref": "#/$defs/sha256" },
+    "tpm": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["present", "ready", "enabled", "activated"],
+      "properties": {
+        "present": { "const": true },
+        "ready": { "const": true },
+        "enabled": { "const": true },
+        "activated": { "const": true }
+      }
+    },
+    "cng_provider": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "implementation_flags", "hardware_flag_present", "software_flag_present"],
+      "properties": {
+        "name": { "const": "Microsoft Platform Crypto Provider" },
+        "implementation_flags": { "type": "integer", "minimum": 1 },
+        "hardware_flag_present": { "const": true },
+        "software_flag_present": { "const": false }
+      }
+    },
+    "roles": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["capability", "attestation"],
+      "properties": {
+        "capability": { "$ref": "#/$defs/roleEvidence" },
+        "attestation": { "$ref": "#/$defs/roleEvidence" }
+      }
+    },
+    "installation_receipt_sha256": { "$ref": "#/$defs/sha256" },
+    "recovery_receipt_sha256": { "$ref": "#/$defs/sha256" },
+    "governance_recovery_receipt_sha256": { "$ref": "#/$defs/sha256" },
+    "ceremony_digest": { "$ref": "#/$defs/sha256" }
+  },
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "roleEvidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "generation",
+        "provider",
+        "export_policy",
+        "key_possession_verified",
+        "provisioning_evidence_sha256",
+        "public_key_digest",
+        "receipt_digest",
+        "evidence_digest"
+      ],
+      "properties": {
+        "generation": { "type": "integer", "minimum": 1 },
+        "provider": { "const": "Microsoft Platform Crypto Provider" },
+        "export_policy": { "const": "non-exportable" },
+        "key_possession_verified": { "const": true },
+        "provisioning_evidence_sha256": { "$ref": "#/$defs/sha256" },
+        "public_key_digest": { "$ref": "#/$defs/sha256" },
+        "receipt_digest": { "$ref": "#/$defs/sha256" },
+        "evidence_digest": { "$ref": "#/$defs/sha256" }
+      }
+    }
+  }
+}

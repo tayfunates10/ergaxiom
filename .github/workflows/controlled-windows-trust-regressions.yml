@@ -1,0 +1,80 @@
+name: Controlled Windows trust regressions
+
+on:
+  pull_request:
+    paths:
+      - "crates/windows-cng-key-provider-runtime/**"
+      - "crates/windows-production-deployment-evidence-runtime/**"
+      - "crates/windows-production-installation-evidence-runtime/**"
+      - "crates/windows-production-key-governance-runtime/**"
+      - "crates/windows-production-signer-host-runtime/**"
+      - "crates/windows-production-signer-provisioning-runtime/**"
+      - "crates/windows-production-signer-service-runtime/**"
+      - "crates/windows-production-trust-state-runtime/**"
+      - "tools/windows/**"
+      - "tools/release/bind_controlled_trust_gate.py"
+      - ".github/workflows/controlled-windows-trust*.yml"
+  push:
+    branches: [main]
+    paths:
+      - "crates/windows-cng-key-provider-runtime/**"
+      - "crates/windows-production-deployment-evidence-runtime/**"
+      - "crates/windows-production-installation-evidence-runtime/**"
+      - "crates/windows-production-key-governance-runtime/**"
+      - "crates/windows-production-signer-host-runtime/**"
+      - "crates/windows-production-signer-provisioning-runtime/**"
+      - "crates/windows-production-signer-service-runtime/**"
+      - "crates/windows-production-trust-state-runtime/**"
+      - "tools/windows/**"
+      - "tools/release/bind_controlled_trust_gate.py"
+      - ".github/workflows/controlled-windows-trust*.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  operational-regressions:
+    name: Operational trust regressions (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, windows-2025]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+      - name: Lint operational trust boundary
+        run: >-
+          cargo clippy
+          -p ergaxiom-windows-cng-key-provider-runtime
+          -p ergaxiom-windows-production-deployment-evidence-runtime
+          -p ergaxiom-windows-production-installation-evidence-runtime
+          -p ergaxiom-windows-production-key-governance-runtime
+          -p ergaxiom-windows-production-signer-host-runtime
+          -p ergaxiom-windows-production-signer-provisioning-runtime
+          -p ergaxiom-windows-production-signer-service-runtime
+          -p ergaxiom-windows-production-trust-state-runtime
+          --all-targets --all-features -- -D warnings
+      - name: Run trust-state, provisioning, installation and recovery attacks
+        run: >-
+          cargo test
+          -p ergaxiom-windows-cng-key-provider-runtime
+          -p ergaxiom-windows-production-deployment-evidence-runtime
+          -p ergaxiom-windows-production-installation-evidence-runtime
+          -p ergaxiom-windows-production-key-governance-runtime
+          -p ergaxiom-windows-production-signer-host-runtime
+          -p ergaxiom-windows-production-signer-provisioning-runtime
+          -p ergaxiom-windows-production-signer-service-runtime
+          -p ergaxiom-windows-production-trust-state-runtime
+      - name: Assert hosted runner is not physical TPM evidence
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          if ("${{ runner.environment }}" -ne "github-hosted") {
+            throw "EXPECTED_HOSTED_WINDOWS_VALIDATION_RUNNER"
+          }
+          "Hosted Windows validates contracts only; it does not emit physical TPM promotion evidence." | Write-Host
