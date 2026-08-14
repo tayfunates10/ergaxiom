@@ -5,11 +5,19 @@ on:
   workflow_dispatch:
 permissions:
   contents: read
+env:
+  SOURCE_COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
+concurrency:
+  group: windows-release-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 jobs:
   policy:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.SOURCE_COMMIT }}
+          persist-credentials: false
       - uses: actions/setup-node@v4
         with:
           node-version: 24
@@ -18,6 +26,9 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt
+      - name: Reject source identity substitution
+        shell: bash
+        run: test "$(git rev-parse HEAD)" = "$SOURCE_COMMIT"
       - name: Release evidence attack tests
         run: python -m unittest tools.release.test_generate_release_evidence tools.release.test_finalize_windows_release_evidence tools.release.test_windows_release_attack_matrix
       - name: Validate release JSON and locked dependency graph
@@ -35,16 +46,22 @@ jobs:
 
   unsigned-candidate-is-blocked:
     runs-on: windows-2025
-    env:
-      SOURCE_COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.SOURCE_COMMIT }}
+          persist-credentials: false
       - uses: actions/setup-node@v4
         with:
           node-version: 24
           cache: npm
           cache-dependency-path: apps/desktop/package-lock.json
       - uses: dtolnay/rust-toolchain@stable
+      - name: Reject source identity substitution
+        shell: pwsh
+        run: |
+          $actual=(git rev-parse HEAD).Trim()
+          if($actual-ne$env:SOURCE_COMMIT){throw "Checked out $actual but expected $env:SOURCE_COMMIT"}
       - name: Parse PowerShell release runners and prove missing certificate fails closed
         shell: pwsh
         run: |
@@ -93,16 +110,22 @@ jobs:
   installer-lifecycle-test:
     name: NSIS install upgrade downgrade interruption recovery uninstall
     runs-on: windows-2025
-    env:
-      SOURCE_COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.SOURCE_COMMIT }}
+          persist-credentials: false
       - uses: actions/setup-node@v4
         with:
           node-version: 24
           cache: npm
           cache-dependency-path: apps/desktop/package-lock.json
       - uses: dtolnay/rust-toolchain@stable
+      - name: Reject source identity substitution
+        shell: pwsh
+        run: |
+          $actual=(git rev-parse HEAD).Trim()
+          if($actual-ne$env:SOURCE_COMMIT){throw "Checked out $actual but expected $env:SOURCE_COMMIT"}
       - name: Build desktop and production signer-service inputs
         shell: pwsh
         run: |
@@ -141,6 +164,9 @@ jobs:
     runs-on: windows-2025
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.SOURCE_COMMIT }}
+          persist-credentials: false
       - name: Real certificate and license must be owner-pinned
         shell: pwsh
         run: |
