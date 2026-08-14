@@ -114,7 +114,7 @@ pub struct ProductionSignerBoundAttestationPackage {
     pub certificate: ProductionSignerBoundAcceptanceCertificate,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct VerifiedAttestation {
     pub certificate_id: String,
     pub certificate_digest: String,
