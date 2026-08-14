@@ -130,6 +130,7 @@ impl ProductionExecutionRuntime {
             trusted_now_epoch_s,
         )
         .map_err(|_| ProductionExecutionBoundaryError::ConfigurationRejected)?;
+        validate_loaded_configuration_acl(&deployment)?;
 
         // The executor/device subject is derived from the pinned backend/deployment identity. It is
         // never supplied by the renderer and therefore cannot be widened at invocation time.
@@ -138,11 +139,13 @@ impl ProductionExecutionRuntime {
         let chain_store_root = execution_store_root.join(DESKTOP_JOB_ID);
         let authority = PersistentProductionExecutionAuthority::load_or_create(
             policy_store_root,
-            chain_store_root,
+            &chain_store_root,
             DESKTOP_JOB_ID,
             executor_id,
             device_id,
         )?;
+        validate_administrator_controlled_directory(&chain_store_root)
+            .map_err(|_| ProductionExecutionBoundaryError::StoreAclRejected)?;
 
         Ok(Self {
             deployment,
@@ -202,6 +205,24 @@ impl ProductionExecutionRuntime {
         }
         Ok(lease)
     }
+}
+
+fn validate_loaded_configuration_acl(
+    deployment: &LoadedBackendProductionDeployment,
+) -> Result<(), ProductionExecutionBoundaryError> {
+    let signer_manifest = &deployment.signer.manifest;
+    for path in [
+        deployment.manifest.signer_service_manifest_path.as_str(),
+        signer_manifest.executable_path.as_str(),
+        signer_manifest.governance_policy_path.as_str(),
+        signer_manifest.caller_allowlist_path.as_str(),
+        signer_manifest.deployment_policy_path.as_str(),
+    ] {
+        validate_administrator_controlled_file(Path::new(path))
+            .map_err(|_| ProductionExecutionBoundaryError::ConfigurationAclRejected)?;
+    }
+    validate_administrator_controlled_directory(Path::new(&signer_manifest.trust_store_root))
+        .map_err(|_| ProductionExecutionBoundaryError::ConfigurationAclRejected)
 }
 
 fn fixed_absolute_path(value: &str) -> Result<PathBuf, ProductionExecutionBoundaryError> {
