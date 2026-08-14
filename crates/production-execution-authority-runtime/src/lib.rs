@@ -1,5 +1,6 @@
 #![forbid(unsafe_code)]
 
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 
 use ergaxiom_attestation_issuance_runtime::{
@@ -16,13 +17,15 @@ use ergaxiom_capability_issuance_runtime::{
 use ergaxiom_capability_runtime::AuthorizationReceipt;
 use ergaxiom_contract_runtime::CompiledContract;
 use ergaxiom_desktop_shell_runtime::{
-    DesktopApprovalRecord, DesktopCommandReceipt, DesktopShellSnapshot,
+    DesktopApprovalRecord, DesktopCommandReceipt, DesktopShellSnapshot, StageStatus,
 };
+use ergaxiom_evidence_runtime::{ArtifactRole, DigestAlgorithm, EvidenceBundle};
+use ergaxiom_occupational_twin_runtime::{OperationOutcome, OperationReceipt};
 use ergaxiom_operator_plan_runtime::CompiledPlan;
 use ergaxiom_production_execution_runtime::{
     ProductionExecutionChainState, ProductionExecutionChainStore, ProductionExecutionStoreError,
 };
-use ergaxiom_proof_kernel::AssuranceLevel;
+use ergaxiom_proof_kernel::{AssuranceLevel, HashingError, canonical_json_sha256};
 use ergaxiom_windows_production_governed_issuance_runtime::{
     GovernedCapabilityAuthorizer, GovernedProductionAttestationIssuanceAuthority,
     GovernedProductionCapabilityIssuanceAuthority, GovernedProductionIssuanceError,
@@ -32,7 +35,11 @@ use ergaxiom_windows_production_trust_state_runtime::{
     VerifiedProductionSignerTrustLease, VerifiedProductionTrustState,
 };
 use serde_json::Value;
+use sha2::{Digest, Sha256};
 use thiserror::Error;
+
+const INLINE_OPERATION_RECEIPT_PREFIX: &str = "ergaxiom-inline-hex:";
+const OPERATION_RECEIPT_ARTIFACT_PREFIX: &str = "execution_receipt.";
 
 /// Backend-owned persistent authority for one production execution chain.
 ///
@@ -119,6 +126,9 @@ impl PersistentProductionExecutionAuthority {
             BackendIssuanceKind::Capability,
             trusted_now_epoch_s,
         )?;
+
+        // Persist the terminal intent reservation before the signer side effect. A rejected signer
+        // request can never be retried through a software/development fallback after restart.
         self.policy_store.commit(&self.policy)?;
         let token = capability_authority.issue(draft)?;
         self.chain_store
@@ -165,6 +175,9 @@ impl PersistentProductionExecutionAuthority {
             &self.executor_id,
             self.device_id.as_deref(),
         )?;
+
+        // Receipt persistence precedes returning authorization to the executor. If this commit is
+        // not durable, the caller never receives a receipt and execution must not begin.
         self.chain_store
             .record_capability_consumption(token_id, receipt.clone())?;
         Ok(receipt)
@@ -177,6 +190,7 @@ impl PersistentProductionExecutionAuthority {
         evidence_bundle: Value,
         replay_manifest: ergaxiom_attestation_runtime::ReplayManifest,
     ) -> Result<(), PersistentProductionExecutionAuthorityError> {
+        self.verify_execution_evidence_binding(&evidence_bundle, &executed_snapshot)?;
         self.chain_store.record_execution(
             executed_snapshot,
             execute_receipt,
@@ -208,6 +222,7 @@ impl PersistentProductionExecutionAuthority {
         A: ProductionAttestationSignerTransport,
     {
         lease.validate_at(accepted, deployment_policy, trusted_now_epoch_s)?;
+        self.verify_execution_evidence_binding(bundle_value, snapshot)?;
         let attestation_authority = GovernedProductionAttestationIssuanceAuthority::new(
             transport,
             lease.attestation_trust().clone(),
@@ -230,6 +245,8 @@ impl PersistentProductionExecutionAuthority {
             BackendIssuanceKind::Attestation,
             trusted_now_epoch_s,
         )?;
+
+        // Production attestation follows the same terminal-before-side-effect persistence rule.
         self.policy_store.commit(&self.policy)?;
         let package = attestation_authority.issue(
             compiled_contract,
@@ -273,6 +290,71 @@ impl PersistentProductionExecutionAuthority {
         Ok(())
     }
 
+    /// Cross-binds persisted production Capability consumption receipts to the exact Evidence
+    /// Bundle trace, then decodes and validates every real Twin OperationReceipt embedded in the
+    /// bundle against the executed desktop step summaries.
+    pub fn verify_execution_evidence_binding(
+        &self,
+        bundle_value: &Value,
+        executed_snapshot: &DesktopShellSnapshot,
+    ) -> Result<(), PersistentProductionExecutionAuthorityError> {
+        let bundle: EvidenceBundle = serde_json::from_value(bundle_value.clone())?;
+        self.verify_capability_receipt_binding(&bundle)?;
+        verify_operation_receipt_artifacts(&bundle, executed_snapshot)?;
+        Ok(())
+    }
+
+    fn verify_capability_receipt_binding(
+        &self,
+        bundle: &EvidenceBundle,
+    ) -> Result<(), PersistentProductionExecutionAuthorityError> {
+        let capabilities = &self.chain_store.current().capabilities;
+        if bundle.trace.authorization_receipts.len() != capabilities.len() {
+            return Err(PersistentProductionExecutionAuthorityError::EvidenceReceiptBindingMismatch);
+        }
+        let mut bundle_by_token = BTreeMap::new();
+        for record in &bundle.trace.authorization_receipts {
+            if canonical_json_sha256(&serde_json::to_value(&record.receipt)?)?
+                != record.receipt_digest
+                || bundle_by_token
+                    .insert(record.receipt.token_id.as_str(), record)
+                    .is_some()
+            {
+                return Err(
+                    PersistentProductionExecutionAuthorityError::EvidenceReceiptBindingMismatch,
+                );
+            }
+        }
+        for capability in capabilities {
+            let persisted_receipt = capability
+                .consumption_receipt
+                .as_ref()
+                .ok_or(
+                    PersistentProductionExecutionAuthorityError::EvidenceReceiptBindingMismatch,
+                )?;
+            let persisted_digest = capability
+                .consumption_receipt_digest
+                .as_deref()
+                .ok_or(
+                    PersistentProductionExecutionAuthorityError::EvidenceReceiptBindingMismatch,
+                )?;
+            let bundled = bundle_by_token
+                .get(persisted_receipt.token_id.as_str())
+                .ok_or(
+                    PersistentProductionExecutionAuthorityError::EvidenceReceiptBindingMismatch,
+                )?;
+            if &bundled.receipt != persisted_receipt
+                || bundled.receipt_digest != persisted_digest
+                || persisted_receipt.token_digest != capability.token_digest
+            {
+                return Err(
+                    PersistentProductionExecutionAuthorityError::EvidenceReceiptBindingMismatch,
+                );
+            }
+        }
+        Ok(())
+    }
+
     #[must_use]
     pub const fn chain_state(&self) -> &ProductionExecutionChainState {
         self.chain_store.current()
@@ -294,6 +376,102 @@ impl PersistentProductionExecutionAuthority {
     }
 }
 
+fn verify_operation_receipt_artifacts(
+    bundle: &EvidenceBundle,
+    executed_snapshot: &DesktopShellSnapshot,
+) -> Result<(), PersistentProductionExecutionAuthorityError> {
+    let artifacts = bundle
+        .artifacts
+        .iter()
+        .filter(|artifact| artifact.artifact_id.starts_with(OPERATION_RECEIPT_ARTIFACT_PREFIX))
+        .collect::<Vec<_>>();
+    if artifacts.len() != executed_snapshot.steps.len() || artifacts.is_empty() {
+        return Err(PersistentProductionExecutionAuthorityError::OperationReceiptBindingMismatch);
+    }
+
+    let mut matched_steps = BTreeSet::new();
+    for artifact in artifacts {
+        if artifact.role != ArtifactRole::Evidence
+            || artifact.algorithm != DigestAlgorithm::Sha256
+            || artifact.media_type.as_deref() != Some("application/json")
+        {
+            return Err(
+                PersistentProductionExecutionAuthorityError::OperationReceiptBindingMismatch,
+            );
+        }
+        let encoded = artifact
+            .uri
+            .strip_prefix(INLINE_OPERATION_RECEIPT_PREFIX)
+            .ok_or(
+                PersistentProductionExecutionAuthorityError::OperationReceiptBindingMismatch,
+            )?;
+        let bytes = decode_hex(encoded)?;
+        if bytes.len() as u64 != artifact.size_bytes || sha256_hex(&bytes) != artifact.digest {
+            return Err(
+                PersistentProductionExecutionAuthorityError::OperationReceiptBindingMismatch,
+            );
+        }
+        let receipt: OperationReceipt = serde_json::from_slice(&bytes)?;
+        if artifact.artifact_id
+            != format!("{OPERATION_RECEIPT_ARTIFACT_PREFIX}{}", receipt.operation_id)
+            || receipt.outcome != OperationOutcome::Succeeded
+            || !receipt.violations.is_empty()
+        {
+            return Err(
+                PersistentProductionExecutionAuthorityError::OperationReceiptBindingMismatch,
+            );
+        }
+        let step = executed_snapshot
+            .steps
+            .iter()
+            .find(|step| step.operator_id == receipt.operator_id)
+            .ok_or(
+                PersistentProductionExecutionAuthorityError::OperationReceiptBindingMismatch,
+            )?;
+        if step.status != StageStatus::Passed
+            || step.before_digest.as_deref() != Some(receipt.before_snapshot_digest.as_str())
+            || step.after_digest.as_deref() != Some(receipt.after_snapshot_digest.as_str())
+            || !matched_steps.insert(step.step_id.as_str())
+        {
+            return Err(
+                PersistentProductionExecutionAuthorityError::OperationReceiptBindingMismatch,
+            );
+        }
+    }
+    if matched_steps.len() != executed_snapshot.steps.len() {
+        return Err(PersistentProductionExecutionAuthorityError::OperationReceiptBindingMismatch);
+    }
+    Ok(())
+}
+
+fn decode_hex(value: &str) -> Result<Vec<u8>, PersistentProductionExecutionAuthorityError> {
+    if value.len() % 2 != 0 || !value.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+        return Err(PersistentProductionExecutionAuthorityError::OperationReceiptBindingMismatch);
+    }
+    value
+        .as_bytes()
+        .chunks_exact(2)
+        .map(|chunk| {
+            let high = hex_nibble(chunk[0])?;
+            let low = hex_nibble(chunk[1])?;
+            Ok((high << 4) | low)
+        })
+        .collect()
+}
+
+fn hex_nibble(value: u8) -> Result<u8, PersistentProductionExecutionAuthorityError> {
+    match value {
+        b'0'..=b'9' => Ok(value - b'0'),
+        b'a'..=b'f' => Ok(value - b'a' + 10),
+        b'A'..=b'F' => Ok(value - b'A' + 10),
+        _ => Err(PersistentProductionExecutionAuthorityError::OperationReceiptBindingMismatch),
+    }
+}
+
+fn sha256_hex(bytes: &[u8]) -> String {
+    format!("{:x}", Sha256::digest(bytes))
+}
+
 #[derive(Debug, Error)]
 pub enum PersistentProductionExecutionAuthorityError {
     #[error(transparent)]
@@ -306,10 +484,16 @@ pub enum PersistentProductionExecutionAuthorityError {
     Lease(#[from] ProductionSignerIdentityProofError),
     #[error(transparent)]
     Governed(#[from] GovernedProductionIssuanceError),
+    #[error(transparent)]
+    Hashing(#[from] HashingError),
     #[error("production Capability token is unknown to the persisted execution chain")]
     UnknownCapability,
     #[error("production Capability token was already durably consumed")]
     CapabilityAlreadyConsumed,
-    #[error("failed to encode production execution authority material: {0}")]
+    #[error("Evidence Bundle authorization receipts do not exactly match persisted production consumption receipts")]
+    EvidenceReceiptBindingMismatch,
+    #[error("Evidence Bundle operation receipts do not exactly match the executed Twin steps")]
+    OperationReceiptBindingMismatch,
+    #[error("failed to encode or decode production execution authority material: {0}")]
     Json(#[from] serde_json::Error),
 }
