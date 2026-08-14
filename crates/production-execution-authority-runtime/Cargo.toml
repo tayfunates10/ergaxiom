@@ -1,0 +1,25 @@
+[package]
+name = "ergaxiom-production-execution-authority-runtime"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+publish = false
+
+[dependencies]
+ergaxiom-attestation-issuance-runtime = { path = "../attestation-issuance-runtime" }
+ergaxiom-backend-issuance-runtime = { path = "../backend-issuance-runtime" }
+ergaxiom-capability-issuance-runtime = { path = "../capability-issuance-runtime" }
+ergaxiom-capability-runtime = { path = "../capability-runtime" }
+ergaxiom-contract-runtime = { path = "../contract-runtime" }
+ergaxiom-desktop-shell-runtime = { path = "../desktop-shell-runtime" }
+ergaxiom-operator-plan-runtime = { path = "../operator-plan-runtime" }
+ergaxiom-production-execution-runtime = { path = "../production-execution-runtime" }
+ergaxiom-proof-kernel = { path = "../proof-kernel" }
+ergaxiom-windows-production-governed-issuance-runtime = { path = "../windows-production-governed-issuance-runtime" }
+ergaxiom-windows-production-trust-state-runtime = { path = "../windows-production-trust-state-runtime" }
+serde_json.workspace = true
+thiserror.workspace = true
+
+[lints]
+workspace = true
