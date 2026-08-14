@@ -9,15 +9,15 @@ mod production_startup;
 #[cfg(windows)]
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    let control_state = match commands::DesktopControlState::new() {
+    let production_execution_state = production_execution::ProductionExecutionState::initialize();
+    let control_state = match commands::DesktopControlState::recover_or_new(&production_execution_state) {
         Ok(state) => state,
         Err(error) => {
-            eprintln!("ergaxiom desktop control authority failed to initialize: {error}");
+            eprintln!("ergaxiom desktop control authority failed restart recovery: {error}");
             std::process::exit(1);
         }
     };
     let production_state = production_startup::ProductionStartupState::initialize();
-    let production_execution_state = production_execution::ProductionExecutionState::initialize();
     let result = tauri::Builder::default()
         .manage(control_state)
         .manage(production_state)
@@ -43,7 +43,8 @@ pub fn run() {
 #[cfg(not(windows))]
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    let control_state = match commands::DesktopControlState::new() {
+    let production_execution_state = production_execution::ProductionExecutionState::initialize();
+    let control_state = match commands::DesktopControlState::recover_or_new(&production_execution_state) {
         Ok(state) => state,
         Err(error) => {
             eprintln!("ergaxiom desktop control authority failed to initialize: {error}");
@@ -51,7 +52,6 @@ pub fn run() {
         }
     };
     let production_state = production_startup::ProductionStartupState::initialize();
-    let production_execution_state = production_execution::ProductionExecutionState::initialize();
 
     // Ergaxiom Product Alpha is Windows-first. Constructing the complete command boundary keeps
     // non-Windows compilation and fail-closed startup tests honest without generating a runnable
