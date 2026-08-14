@@ -1,4 +1,4 @@
-name: Issue 75 Lock And Toolchain Export
+name: Issue 75 Non Workflow Sync
 
 on:
   push:
@@ -6,11 +6,11 @@ on:
       - codex/issue-75
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
-  export:
-    if: github.event.head_commit.message == 'issue75-export-lock-toolchain-sync'
+  sync:
+    if: github.event.head_commit.message == 'issue75-commit-lock-and-key-source'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -21,7 +21,7 @@ jobs:
         with:
           toolchain: "1.85.0"
           components: rustfmt, clippy
-      - name: Apply deterministic source and workflow sync
+      - name: Apply key-governance source repair
         run: python .github/scripts/issue75_lock_toolchain_sync.py
       - name: Regenerate desktop lockfile with pinned Rust
         run: cargo +1.85.0 generate-lockfile --manifest-path apps/desktop/src-tauri/Cargo.toml
@@ -31,11 +31,13 @@ jobs:
         run: cargo +1.85.0 clippy --locked -p ergaxiom-key-governance-runtime --all-targets -- -D warnings
       - name: Verify desktop lockfile is closed
         run: cargo +1.85.0 metadata --locked --manifest-path apps/desktop/src-tauri/Cargo.toml --no-deps --format-version 1 > /dev/null
-      - uses: actions/upload-artifact@v4
-        with:
-          name: issue75-lock-toolchain-sync
-          if-no-files-found: error
-          path: |
-            crates/key-governance-runtime/src/lib.rs
-            .github/workflows/production-execution-chain.yml
-            apps/desktop/src-tauri/Cargo.lock
+      - name: Commit only non-workflow verified files
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name Tayfun
+          git config user.email tayfuna766@gmail.com
+          git add crates/key-governance-runtime/src/lib.rs apps/desktop/src-tauri/Cargo.lock
+          git diff --cached --check
+          git commit -m 'issue75: sync pinned desktop lock and key encoding'
+          git push origin HEAD:codex/issue-75
