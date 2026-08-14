@@ -3,11 +3,11 @@
 use std::collections::BTreeMap;
 use std::fs::{self, OpenOptions};
 use std::io::Write;
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 use std::process::Command;
 
-use ergaxiom_contract_runtime::CompiledContract;
-use ergaxiom_operator_plan_runtime::CompiledPlan;
+use ergaxiom_contract_runtime::{WorkContract, compile_contract};
+use ergaxiom_operator_plan_runtime::compile_plan;
 use ergaxiom_production_execution_runtime::{
     ProductionExecutionChainStore, ProductionExecutionStage, verify_recovered_certified_chain,
 };
@@ -55,24 +55,48 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     let envelope: ProductionTrustStateEnvelope = read_json_arg(&args, "trust-state-envelope")?;
     let accepted = envelope.verify(&governance, trusted_now_epoch_s)?;
     if accepted.binding().signer_service_executable_digest != service_sha256 {
-        return Err("accepted trust state signer-service digest does not match signed release artifact".into());
+        return Err(
+            "accepted trust state signer-service digest does not match signed release artifact"
+                .into(),
+        );
     }
 
     let deployment: ProductionSignerDeploymentPolicy = read_json_arg(&args, "deployment-policy")?;
     deployment.validate_seal()?;
     let challenge: ProductionSignerIdentityChallenge = read_json_arg(&args, "identity-challenge")?;
     let proof: DeployedProductionSignerIdentityProof = read_json_arg(&args, "identity-proof")?;
-    let lease = proof.verify_trust_lease(&challenge, &accepted, &deployment, trusted_now_epoch_s)?;
+    let lease = proof.verify_trust_lease(
+        &challenge,
+        &accepted,
+        &deployment,
+        trusted_now_epoch_s,
+    )?;
     if lease.service_identity().executable_sha256 != service_sha256 {
         return Err("live signer identity digest does not match signed release artifact".into());
     }
 
-    let compiled_contract: CompiledContract = read_json_arg(&args, "compiled-contract")?;
-    let compiled_plan: CompiledPlan = read_json_arg(&args, "compiled-plan")?;
+    // The legacy flag names are retained for the release-runner CLI contract, but these are raw
+    // canonical Work Contract and Operator Plan JSON documents. The verifier independently resolves
+    // the profession capsule from the exact checked-out catalog and recompiles both objects.
+    let work_contract_value = read_json_value_arg(&args, "compiled-contract")?;
+    let operator_plan_value = read_json_value_arg(&args, "compiled-plan")?;
+    let work_contract: WorkContract = serde_json::from_value(work_contract_value.clone())?;
+    let profession_capsule = resolve_profession_capsule(&repo_root, &work_contract)?;
+    let compiled_contract = compile_contract(&work_contract_value, &profession_capsule)?;
+    let compiled_plan = compile_plan(
+        &operator_plan_value,
+        &profession_capsule,
+        &compiled_contract,
+    )?;
+
     let store = ProductionExecutionChainStore::load_or_create(&chain_root, job_id)?;
     let state = store.current();
     if state.stage != ProductionExecutionStage::Certified {
-        return Err(format!("release requires certified production chain, observed {:?}", state.stage).into());
+        return Err(format!(
+            "release requires certified production chain, observed {:?}",
+            state.stage
+        )
+        .into());
     }
 
     let verified = verify_recovered_certified_chain(
@@ -81,7 +105,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         &accepted,
         &deployment,
         trusted_now_epoch_s,
-        compiled_contract.clone(),
+        compiled_contract,
         &compiled_plan,
         assurance,
         expected_executor_id,
@@ -89,8 +113,14 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     )?;
 
     let input_digests = json!({
-        "compiled_contract": digest(&compiled_contract)?,
-        "compiled_plan": digest(&compiled_plan)?,
+        "compiled_contract": canonical_json_sha256(&json!({
+            "profession_capsule": &profession_capsule,
+            "work_contract": &work_contract_value,
+        }))?,
+        "compiled_plan": canonical_json_sha256(&json!({
+            "operator_plan": &operator_plan_value,
+            "profession_capsule": &profession_capsule,
+        }))?,
         "deployment_policy": digest(&deployment)?,
         "governance_policy": digest(&governance)?,
         "identity_challenge": digest(&challenge)?,
@@ -126,6 +156,60 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
+fn resolve_profession_capsule(
+    repo_root: &Path,
+    contract: &WorkContract,
+) -> Result<Value, Box<dyn std::error::Error>> {
+    let catalog_path = repo_root.join("professions").join("catalog.json");
+    let catalog = read_bounded_json_file(&catalog_path, "profession catalog")?;
+    if catalog.get("schema_version") != Some(&Value::String("0.1.0".to_owned()))
+        || catalog.get("catalog_id")
+            != Some(&Value::String("ergaxiom.profession-catalog".to_owned()))
+    {
+        return Err("profession catalog identity rejected".into());
+    }
+    let entries = catalog
+        .get("entries")
+        .and_then(Value::as_array)
+        .ok_or("profession catalog entries missing")?;
+    let matching: Vec<&Value> = entries
+        .iter()
+        .filter(|entry| {
+            entry.get("capsule_id").and_then(Value::as_str)
+                == Some(contract.profession.capsule_id.as_str())
+                && entry.get("capsule_version").and_then(Value::as_str)
+                    == Some(contract.profession.capsule_version.as_str())
+        })
+        .collect();
+    if matching.len() != 1 {
+        return Err("profession capsule catalog cardinality rejected".into());
+    }
+    let entry = matching[0];
+    let relative = entry
+        .get("capsule_path")
+        .and_then(Value::as_str)
+        .ok_or("profession capsule path missing")?;
+    let relative_path = Path::new(relative);
+    if relative_path.is_absolute()
+        || relative_path
+            .components()
+            .any(|component| !matches!(component, Component::Normal(_)))
+    {
+        return Err("profession capsule path rejected".into());
+    }
+    let capsule_path = repo_root.join("professions").join(relative_path);
+    let capsule = read_bounded_json_file(&capsule_path, "profession capsule")?;
+    let expected_digest = entry
+        .get("capsule_digest")
+        .and_then(Value::as_str)
+        .ok_or("profession capsule digest missing")?;
+    require_lower_hex(expected_digest, 64, "profession capsule digest")?;
+    if canonical_json_sha256(&capsule)? != expected_digest {
+        return Err("profession capsule catalog digest mismatch".into());
+    }
+    Ok(capsule)
+}
+
 fn parse_args() -> Result<BTreeMap<String, String>, Box<dyn std::error::Error>> {
     let raw: Vec<String> = std::env::args().skip(1).collect();
     if raw.len() % 2 != 0 {
@@ -133,13 +217,28 @@ fn parse_args() -> Result<BTreeMap<String, String>, Box<dyn std::error::Error>> 
     }
     let mut result = BTreeMap::new();
     for pair in raw.chunks_exact(2) {
-        let flag = pair[0].strip_prefix("--").ok_or("unexpected positional argument")?;
-        if !matches!(flag,
-            "repo-root" | "chain-root" | "job-id" | "governance-policy" |
-            "trust-state-envelope" | "deployment-policy" | "identity-challenge" |
-            "identity-proof" | "compiled-contract" | "compiled-plan" | "assurance-level" |
-            "expected-executor-id" | "expected-device-id" | "trusted-now-epoch-s" |
-            "source-commit" | "expected-signed-service-sha256" | "output"
+        let flag = pair[0]
+            .strip_prefix("--")
+            .ok_or("unexpected positional argument")?;
+        if !matches!(
+            flag,
+            "repo-root"
+                | "chain-root"
+                | "job-id"
+                | "governance-policy"
+                | "trust-state-envelope"
+                | "deployment-policy"
+                | "identity-challenge"
+                | "identity-proof"
+                | "compiled-contract"
+                | "compiled-plan"
+                | "assurance-level"
+                | "expected-executor-id"
+                | "expected-device-id"
+                | "trusted-now-epoch-s"
+                | "source-commit"
+                | "expected-signed-service-sha256"
+                | "output"
         ) {
             return Err(format!("unknown verifier flag: --{flag}").into());
         }
@@ -150,20 +249,46 @@ fn parse_args() -> Result<BTreeMap<String, String>, Box<dyn std::error::Error>> 
     Ok(result)
 }
 
-fn required<'a>(args: &'a BTreeMap<String, String>, name: &str) -> Result<&'a str, Box<dyn std::error::Error>> {
-    args.get(name).map(String::as_str).filter(|value| !value.is_empty())
+fn required<'a>(
+    args: &'a BTreeMap<String, String>,
+    name: &str,
+) -> Result<&'a str, Box<dyn std::error::Error>> {
+    args.get(name)
+        .map(String::as_str)
+        .filter(|value| !value.is_empty())
         .ok_or_else(|| format!("missing --{name}").into())
 }
 
-fn read_json_arg<T: DeserializeOwned>(args: &BTreeMap<String, String>, name: &str) -> Result<T, Box<dyn std::error::Error>> {
+fn read_json_arg<T: DeserializeOwned>(
+    args: &BTreeMap<String, String>,
+    name: &str,
+) -> Result<T, Box<dyn std::error::Error>> {
+    Ok(serde_json::from_value(read_json_value_arg(args, name)?)?)
+}
+
+fn read_json_value_arg(
+    args: &BTreeMap<String, String>,
+    name: &str,
+) -> Result<Value, Box<dyn std::error::Error>> {
     let path = absolute_file(required(args, name)?, name)?;
-    let metadata = fs::symlink_metadata(&path)?;
-    if metadata.file_type().is_symlink() || !metadata.is_file() || metadata.len() == 0 || metadata.len() > MAX_INPUT_BYTES {
-        return Err(format!("{name} is not a bounded regular file").into());
+    read_bounded_json_file(&path, name)
+}
+
+fn read_bounded_json_file(
+    path: &Path,
+    label: &str,
+) -> Result<Value, Box<dyn std::error::Error>> {
+    let metadata = fs::symlink_metadata(path)?;
+    if metadata.file_type().is_symlink()
+        || !metadata.is_file()
+        || metadata.len() == 0
+        || metadata.len() > MAX_INPUT_BYTES
+    {
+        return Err(format!("{label} is not a bounded regular file").into());
     }
-    let bytes = fs::read(&path)?;
+    let bytes = fs::read(path)?;
     if bytes.is_empty() || bytes.len() as u64 > MAX_INPUT_BYTES {
-        return Err(format!("{name} size is invalid").into());
+        return Err(format!("{label} size is invalid").into());
     }
     Ok(serde_json::from_slice(&bytes)?)
 }
@@ -191,7 +316,9 @@ fn absolute_existing_chain_root(value: &str) -> Result<PathBuf, Box<dyn std::err
     for entry in fs::read_dir(&root)? {
         let entry = entry?;
         let name = entry.file_name();
-        let Some(name) = name.to_str() else { return Err("chain-root contains non-UTF8 entry".into()); };
+        let Some(name) = name.to_str() else {
+            return Err("chain-root contains non-UTF8 entry".into());
+        };
         if name.starts_with("production-execution-state-") && name.ends_with(".json") {
             records = records.saturating_add(1);
         }
@@ -215,7 +342,11 @@ fn absolute_output(value: &str) -> Result<PathBuf, Box<dyn std::error::Error>> {
 }
 
 fn verify_checkout(repo_root: &Path, expected: &str) -> Result<(), Box<dyn std::error::Error>> {
-    let output = Command::new("git").arg("-C").arg(repo_root).args(["rev-parse", "HEAD"]).output()?;
+    let output = Command::new("git")
+        .arg("-C")
+        .arg(repo_root)
+        .args(["rev-parse", "HEAD"])
+        .output()?;
     if !output.status.success() {
         return Err("git rev-parse HEAD failed".into());
     }
@@ -226,8 +357,16 @@ fn verify_checkout(repo_root: &Path, expected: &str) -> Result<(), Box<dyn std::
     Ok(())
 }
 
-fn require_lower_hex(value: &str, len: usize, label: &str) -> Result<(), Box<dyn std::error::Error>> {
-    if value.len() != len || !value.bytes().all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte)) {
+fn require_lower_hex(
+    value: &str,
+    len: usize,
+    label: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
+    if value.len() != len
+        || !value
+            .bytes()
+            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+    {
         return Err(format!("{label} must be {len} lowercase hex characters").into());
     }
     Ok(())
