@@ -1,0 +1,41 @@
+name: Issue 75 Desktop Format Fix
+
+on:
+  push:
+    branches:
+      - codex/issue-75
+
+permissions:
+  contents: write
+
+jobs:
+  format:
+    if: github.event.head_commit.message == 'issue75-run-desktop-format-fix'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: codex/issue-75
+          fetch-depth: 0
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.85.0"
+          components: rustfmt
+      - name: Format independent Tauri workspace
+        run: cargo +1.85.0 fmt --manifest-path apps/desktop/src-tauri/Cargo.toml --all
+      - name: Verify exact Tauri format
+        run: cargo +1.85.0 fmt --manifest-path apps/desktop/src-tauri/Cargo.toml --all -- --check
+      - name: Commit formatted desktop sources
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name Tayfun
+          git config user.email tayfuna766@gmail.com
+          git add apps/desktop/src-tauri/src
+          git diff --cached --check
+          if git diff --cached --quiet; then
+            echo 'No desktop formatting changes were required.'
+            exit 0
+          fi
+          git commit -m 'issue75: format independent Tauri production workspace'
+          git push origin HEAD:codex/issue-75
