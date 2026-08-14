@@ -22,5 +22,19 @@ ergaxiom-windows-production-trust-state-runtime = { path = "../windows-productio
 serde_json.workspace = true
 thiserror.workspace = true
 
+[dev-dependencies]
+base64.workspace = true
+ed25519-dalek = { workspace = true, features = ["rand_core"] }
+ergaxiom-evidence-runtime = { path = "../evidence-runtime" }
+ergaxiom-key-governance-runtime = { path = "../key-governance-runtime" }
+ergaxiom-windows-production-key-governance-runtime = { path = "../windows-production-key-governance-runtime" }
+ergaxiom-windows-production-signer-protocol-runtime = { path = "../windows-production-signer-protocol-runtime" }
+ergaxiom-windows-production-signer-runtime = { path = "../windows-production-signer-runtime" }
+ergaxiom-windows-production-signer-service-runtime = { path = "../windows-production-signer-service-runtime" }
+ergaxiom-windows-signer-protocol-runtime = { path = "../windows-signer-protocol-runtime" }
+ergaxiom-windows-signer-service-identity-runtime = { path = "../windows-signer-service-identity-runtime" }
+p256.workspace = true
+sha2.workspace = true
+
 [lints]
 workspace = true
