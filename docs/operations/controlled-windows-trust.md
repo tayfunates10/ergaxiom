@@ -8,8 +8,9 @@ This runbook is the operational contract for Issue #77 and complements the produ
 
 - `PROVEN_HARDWARE_BACKED` requires one bound evidence set from a controlled Windows machine.
 - Missing, incomplete, malformed, substituted, hosted-runner or software-backed evidence yields `UNKNOWN` and `hardware_operational_eligible=false`.
-- A physical evidence file committed to the repository is not, by itself, authoritative. Release evidence consumes the artifact digest from the controlled-hardware workflow or an equivalent reviewed outside-CI ceremony.
+- A physical evidence file committed to the repository is not, by itself, authoritative. Release evidence consumes the exact reviewed evidence files and their digests from the controlled-hardware workflow or an equivalent reviewed outside-CI ceremony.
 - Hosted GitHub runners are verifier/test environments only. They never execute the promotion ceremony and never upload a physical-TPM artifact.
+- `tools/release/bind_controlled_trust_gate.py` adds the hardware-operational result to the release manifest. With no physical evidence it deterministically adds `CONTROLLED_WINDOWS_HARDWARE_OPERATIONAL_GATE_NOT_PROVEN`; it never changes top-level `release_eligible` to true and it updates the release-manifest entry in `SHA256SUMS` after binding.
 
 ## Physical TPM promotion evidence
 
@@ -21,10 +22,12 @@ The JSON contract is `schemas/windows-physical-tpm-promotion-evidence.schema.jso
 4. Windows TPM present/ready/enabled/activated observations;
 5. exact `Microsoft Platform Crypto Provider` identity;
 6. CNG hardware implementation flag present and software flag absent;
-7. Capability and Attestation generations, public-key digests and provisioning-evidence digests;
-8. non-exportable signing policy and key-possession evidence for both roles;
+7. Capability and Attestation generations, public-key digests and exact provisioning-evidence file digests;
+8. non-exportable signing policy and independently verified P-256 key-possession evidence for both roles;
 9. exact installation, recovery and governance-recovery receipt file digests;
 10. a canonical ceremony digest over the complete public evidence document.
+
+The platform-neutral verifier re-parses both provisioning documents. It recomputes the fixed production policy digest, exact generation-derived CNG key-name digest, public-key digest, provisioning receipt seal and evidence seal, and verifies the P1363 ECDSA P-256 proof-of-possession signature against the SEC1 public key. Provisioning evidence is required to remain `UNPROVEN`; only the complete physical ceremony can promote the separate hardware-operational gate.
 
 The provider hardware bit is necessary but not sufficient to claim that a machine is approved physical hardware. The controlled runner label plus reviewed machine/hardware/operator digests are separate mandatory inputs. This prevents hosted or generic virtualized CNG observations from silently upgrading themselves.
 
@@ -40,11 +43,45 @@ The ceremony fails before promotion unless the process is elevated, `Get-Tpm` re
 
 Only public evidence is uploaded. Provisioning output contains public keys, hashes, policy statements and proof-of-possession signatures; no CNG signing-key material is exported.
 
+## Independent gate verification
+
+An independent reviewer can reproduce the hardware-operational decision from the six public evidence files without trusting a hosted-runner success flag:
+
+```text
+python tools/windows/controlled_trust_gate.py verify \
+  --physical physical-tpm-evidence.json \
+  --governance governance-recovery.json \
+  --installation installation.json \
+  --recovery recovery.json \
+  --capability-provisioning capability-provisioning.json \
+  --attestation-provisioning attestation-provisioning.json \
+  --output controlled-trust-gate.json
+```
+
+The verifier requires the installation `active_keys` set to contain exactly the fixed Capability and Attestation identities and cross-binds each active generation, public-key digest, policy digest and CNG hardware/software flags to the provisioning and physical evidence. The recovery receipt must preserve the deployment, machine, manifest, trust-state binding, enabled identities and active keys while proving the signer process identity actually changed.
+
+To bind a successful controlled evidence set into an existing fail-closed release manifest, pass the same six files:
+
+```text
+python tools/release/bind_controlled_trust_gate.py \
+  --manifest ergaxiom-release-manifest.json \
+  --output ergaxiom-release-manifest.json \
+  --checksums SHA256SUMS \
+  --physical physical-tpm-evidence.json \
+  --governance governance-recovery.json \
+  --installation installation.json \
+  --recovery recovery.json \
+  --capability-provisioning capability-provisioning.json \
+  --attestation-provisioning attestation-provisioning.json
+```
+
+Omitting all six evidence files is valid only for an unsigned/non-production candidate and yields `hardware_operational.status=UNKNOWN`. Supplying only part of the evidence set is a hard error.
+
 ## Signer service installation and recovery
 
 The existing signer host remains the authority for SCM configuration. Installation validation checks the exact service identity and command line, `LocalSystem`, delayed automatic start, restricted privilege set, service SID, restart actions, service DACL, running process identity, executable path/digest, trust-state binding, caller allowlist and active CNG generations.
 
-The recovery exercise captures before/after receipts around a real service restart. Validation requires the same deployment, machine, manifest, governance policy, trust state, enabled key identities and executable while requiring a new process identity. Substituting the machine, service process, executable, key generation or trust state is a hard failure.
+The recovery exercise captures before/after receipts around a real service restart. Validation requires the same deployment, machine, manifest, governance policy, trust state, enabled key identities and exact active key records while requiring a new process identity. Substituting the machine, service process, executable, key generation, public key or trust state is a hard failure.
 
 ## Governance-key custody and rotation
 
@@ -82,7 +119,7 @@ Source-complete acceptance can be reviewed and tested in normal CI. Hardware-exe
 3. ensure the runner account can perform the elevated ceremony and the signer manifest/trust paths are administrator-controlled;
 4. manually dispatch `Controlled Windows trust` with `run_controlled_hardware=true`;
 5. review the uploaded `controlled-windows-trust-<run_id>` artifact;
-6. independently verify both provisioning evidence documents, `installation.json`, `recovery.json`, the governance recovery receipt, `physical-tpm-evidence.json`, and `controlled-trust-gate.json`;
-7. record the exact artifact digests in release evidence.
+6. independently run the six-file verifier above and inspect both provisioning evidence documents, `installation.json`, `recovery.json`, the governance recovery receipt, `physical-tpm-evidence.json`, and `controlled-trust-gate.json`;
+7. bind the same six evidence files into release evidence and record the resulting exact evidence digests.
 
 Until those steps produce a successful controlled-hardware artifact, physical TPM assurance is **UNKNOWN**. No hosted CI result can substitute for it.
