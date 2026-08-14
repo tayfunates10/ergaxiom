@@ -9,11 +9,17 @@ use ergaxiom_desktop_shell_runtime::{
     verify_desktop_approval_for_execution, verify_desktop_command_receipt,
     verify_desktop_shell_snapshot,
 };
+use ergaxiom_production_execution_runtime::{
+    ProductionExecutionChainState, ProductionExecutionStage, verify_recovered_certified_chain,
+};
+use ergaxiom_proof_kernel::AssuranceLevel;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
-use crate::pipeline::{PipelineSnapshotMode, build_pipeline_snapshot};
-use crate::production_execution::ProductionExecutionState;
+use crate::pipeline::{
+    PipelineSnapshotMode, build_pipeline_snapshot, prepare_desktop_job,
+};
+use crate::production_execution::{ProductionExecutionBoundaryError, ProductionExecutionState};
 use crate::production_pipeline::execute_approved_job;
 
 const LOCAL_ACTOR_ID: &str = "ergaxiom.local.operator";
@@ -63,6 +69,143 @@ impl DesktopControlState {
                 snapshot,
                 approval: None,
                 receipts: Vec::new(),
+            }),
+        })
+    }
+
+    pub fn recover_or_new(production: &ProductionExecutionState) -> Result<Self, String> {
+        let prepared = prepare_desktop_job()?;
+        let recovered = production.with_fresh_lease(|authority, lease, deployment, _client, now| {
+            let state = authority.chain_state().clone();
+            if state.stage == ProductionExecutionStage::Certified {
+                verify_recovered_certified_chain(
+                    &state,
+                    lease,
+                    &deployment.signer.accepted,
+                    &deployment.signer.deployment_policy,
+                    now,
+                    prepared.compiled_contract.clone(),
+                    &prepared.compiled_plan,
+                    AssuranceLevel::E3,
+                    authority.executor_id(),
+                    authority.device_id(),
+                )
+                .map_err(|_| ProductionExecutionBoundaryError::TrustLeaseRejected)?;
+            }
+            Ok(state)
+        });
+        match recovered {
+            Ok(state) => Self::from_chain_state(state),
+            Err(error)
+                if matches!(
+                    production.startup_code(),
+                    "production_execution_configuration_missing"
+                        | "production_execution_unsupported_platform"
+                ) =>
+            {
+                Self::new()
+            }
+            Err(error) => Err(format!(
+                "production restart recovery rejected [{}]: {error}",
+                error.public_code()
+            )),
+        }
+    }
+
+    fn from_chain_state(state: ProductionExecutionChainState) -> Result<Self, String> {
+        match state.stage {
+            ProductionExecutionStage::Initial => Self::new(),
+            ProductionExecutionStage::Approved
+            | ProductionExecutionStage::CapabilitiesIssued
+            | ProductionExecutionStage::CapabilitiesConsumed => {
+                let snapshot = state
+                    .approved_snapshot
+                    .ok_or_else(|| "recovered chain is missing approved snapshot".to_owned())?;
+                let approval = state
+                    .approval
+                    .ok_or_else(|| "recovered chain is missing approval record".to_owned())?;
+                let receipt = state
+                    .approve_receipt
+                    .ok_or_else(|| "recovered chain is missing approval receipt".to_owned())?;
+                Self::from_recovered(snapshot, Some(approval), vec![receipt])
+            }
+            ProductionExecutionStage::Executed => {
+                let snapshot = state
+                    .executed_snapshot
+                    .ok_or_else(|| "recovered chain is missing executed snapshot".to_owned())?;
+                let approval = state
+                    .approval
+                    .ok_or_else(|| "recovered chain is missing approval record".to_owned())?;
+                let approve = state
+                    .approve_receipt
+                    .ok_or_else(|| "recovered chain is missing approval receipt".to_owned())?;
+                let execute = state
+                    .execute_receipt
+                    .ok_or_else(|| "recovered chain is missing execute receipt".to_owned())?;
+                Self::from_recovered(snapshot, Some(approval), vec![approve, execute])
+            }
+            ProductionExecutionStage::Certified => {
+                let snapshot = state
+                    .final_snapshot
+                    .ok_or_else(|| "recovered chain is missing certified snapshot".to_owned())?;
+                let approval = state
+                    .approval
+                    .ok_or_else(|| "recovered chain is missing approval record".to_owned())?;
+                let approve = state
+                    .approve_receipt
+                    .ok_or_else(|| "recovered chain is missing approval receipt".to_owned())?;
+                let execute = state
+                    .execute_receipt
+                    .ok_or_else(|| "recovered chain is missing execute receipt".to_owned())?;
+                Self::from_recovered(snapshot, Some(approval), vec![approve, execute])
+            }
+            ProductionExecutionStage::Cancelled => {
+                let approval = state.approval;
+                let snapshot = build_pipeline_snapshot(PipelineSnapshotMode::Cancelled(
+                    approval.as_ref(),
+                ))?;
+                let cancel = state
+                    .cancel_receipt
+                    .ok_or_else(|| "recovered chain is missing cancellation receipt".to_owned())?;
+                if cancel.post_snapshot_digest != snapshot.snapshot_digest {
+                    return Err("recovered cancellation snapshot digest mismatch".to_owned());
+                }
+                let mut receipts = Vec::new();
+                if let Some(approve) = state.approve_receipt {
+                    receipts.push(approve);
+                }
+                receipts.push(cancel);
+                Self::from_recovered(snapshot, approval, receipts)
+            }
+            ProductionExecutionStage::RolledBack => Err(
+                "rolled-back production chain requires certified-chain recovery verification"
+                    .to_owned(),
+            ),
+        }
+    }
+
+    fn from_recovered(
+        snapshot: DesktopShellSnapshot,
+        approval: Option<DesktopApprovalRecord>,
+        receipts: Vec<DesktopCommandReceipt>,
+    ) -> Result<Self, String> {
+        if !verify_desktop_shell_snapshot(&snapshot)
+            .map_err(|error| format!("recovered snapshot verification failed: {error}"))?
+        {
+            return Err("recovered desktop snapshot digest mismatch".to_owned());
+        }
+        for receipt in &receipts {
+            if !verify_desktop_command_receipt(receipt)
+                .map_err(|error| format!("recovered receipt verification failed: {error}"))?
+            {
+                return Err("recovered desktop receipt digest mismatch".to_owned());
+            }
+        }
+        Ok(Self {
+            inner: Mutex::new(DesktopControlSession {
+                snapshot,
+                approval,
+                receipts,
             }),
         })
     }
@@ -131,9 +274,6 @@ impl DesktopControlState {
             now,
         )
         .map_err(|error| format!("approval receipt construction failed: {error}"))?;
-
-        // Production persistence is part of the transaction. The renderer never observes an
-        // Approved snapshot if durable backend state could not be committed.
         persist(&post_snapshot, &approval, &receipt)?;
         session.snapshot = post_snapshot;
         session.approval = Some(approval);
@@ -180,6 +320,7 @@ impl DesktopControlState {
 
     pub fn cancel(
         &self,
+        production: Option<&ProductionExecutionState>,
         request: DesktopSnapshotRequest,
     ) -> Result<DesktopSnapshotResponse, String> {
         let now = current_epoch_s()?;
@@ -208,6 +349,22 @@ impl DesktopControlState {
             now,
         )
         .map_err(|error| format!("cancellation receipt construction failed: {error}"))?;
+        if status == DesktopControlStatus::Approved {
+            let production = production.ok_or_else(|| {
+                "approved production cancellation requires persistent authority".to_owned()
+            })?;
+            production
+                .with_fresh_lease(|authority, _lease, _deployment, _client, _now| {
+                    authority.record_cancellation(receipt.clone())?;
+                    Ok(())
+                })
+                .map_err(|error| {
+                    format!(
+                        "production cancellation persistence rejected [{}]: {error}",
+                        error.public_code()
+                    )
+                })?;
+        }
         session.snapshot = post_snapshot;
         session.receipts.push(receipt);
         response_from_session(&session)
@@ -215,6 +372,7 @@ impl DesktopControlState {
 
     pub fn rollback(
         &self,
+        production: &ProductionExecutionState,
         request: DesktopApprovedActionRequest,
     ) -> Result<DesktopSnapshotResponse, String> {
         let now = current_epoch_s()?;
@@ -244,6 +402,17 @@ impl DesktopControlState {
             now,
         )
         .map_err(|error| format!("rollback receipt construction failed: {error}"))?;
+        production
+            .with_fresh_lease(|authority, _lease, _deployment, _client, _now| {
+                authority.record_rollback(receipt.clone())?;
+                Ok(())
+            })
+            .map_err(|error| {
+                format!(
+                    "production rollback persistence rejected [{}]: {error}",
+                    error.public_code()
+                )
+            })?;
         session.snapshot = post_snapshot;
         session.receipts.push(receipt);
         response_from_session(&session)
@@ -278,17 +447,19 @@ pub fn start_desktop_job_execution(
 #[tauri::command]
 pub fn cancel_desktop_job(
     state: tauri::State<'_, DesktopControlState>,
+    production: tauri::State<'_, ProductionExecutionState>,
     request: DesktopSnapshotRequest,
 ) -> Result<DesktopSnapshotResponse, String> {
-    state.cancel(request)
+    state.cancel(Some(&production), request)
 }
 
 #[tauri::command]
 pub fn rollback_desktop_job(
     state: tauri::State<'_, DesktopControlState>,
+    production: tauri::State<'_, ProductionExecutionState>,
     request: DesktopApprovedActionRequest,
 ) -> Result<DesktopSnapshotResponse, String> {
-    state.rollback(request)
+    state.rollback(&production, request)
 }
 
 fn terminal_snapshot(
@@ -418,9 +589,12 @@ mod tests {
         let authority = DesktopControlState::new().expect("control authority must initialize");
         assert!(
             authority
-                .cancel(DesktopSnapshotRequest {
-                    expected_snapshot_digest: "0".repeat(64),
-                })
+                .cancel(
+                    None,
+                    DesktopSnapshotRequest {
+                        expected_snapshot_digest: "0".repeat(64),
+                    },
+                )
                 .is_err()
         );
     }
