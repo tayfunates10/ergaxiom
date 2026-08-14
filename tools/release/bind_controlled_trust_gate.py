@@ -3,9 +3,10 @@
 
 This tool never infers physical TPM assurance from CI success. With no controlled
 hardware evidence it records an UNKNOWN hardware-operational gate. When evidence
-files are supplied, it re-runs the repository verifier over the exact physical
-TPM, governance, installation and recovery receipts before binding their digests.
-It never promotes top-level release eligibility.
+files are supplied, it re-runs the repository verifier over exact Capability and
+Attestation provisioning evidence plus physical TPM, governance, installation and
+recovery receipts before binding all evidence digests. It never promotes top-level
+release eligibility.
 """
 
 from __future__ import annotations
@@ -23,6 +24,14 @@ UNKNOWN = "UNKNOWN"
 PROVEN = "PROVEN_HARDWARE_BACKED"
 HARDWARE_BLOCKER = "CONTROLLED_WINDOWS_HARDWARE_OPERATIONAL_GATE_NOT_PROVEN"
 CHECKSUM_RE = re.compile(r"^([0-9a-f]{64})  (.+)$")
+EXPECTED_EVIDENCE_DIGEST_KEYS = {
+    "physical_tpm_evidence",
+    "governance_recovery_receipt",
+    "installation_receipt",
+    "recovery_receipt",
+    "capability_provisioning_evidence",
+    "attestation_provisioning_evidence",
+}
 
 
 class BindingError(RuntimeError):
@@ -102,10 +111,19 @@ def verified_hardware_gate(
     governance: Path,
     installation: Path,
     recovery: Path,
+    capability_provisioning: Path,
+    attestation_provisioning: Path,
 ) -> dict[str, Any]:
     gate = load_controlled_gate_module()
     try:
-        summary, code = gate.make_gate_summary(physical, governance, installation, recovery)
+        summary, code = gate.make_gate_summary(
+            physical,
+            governance,
+            installation,
+            recovery,
+            capability_provisioning,
+            attestation_provisioning,
+        )
     except Exception as exc:  # verifier owns the detailed fail-closed error type
         raise BindingError(f"controlled hardware evidence rejected: {exc}") from exc
     if code != 0:
@@ -117,12 +135,7 @@ def verified_hardware_gate(
     if summary.get("blockers") != []:
         raise BindingError("controlled hardware gate contains blockers")
     evidence_digests = summary.get("evidence_digests")
-    if not isinstance(evidence_digests, dict) or set(evidence_digests) != {
-        "physical_tpm_evidence",
-        "governance_recovery_receipt",
-        "installation_receipt",
-        "recovery_receipt",
-    }:
+    if not isinstance(evidence_digests, dict) or set(evidence_digests) != EXPECTED_EVIDENCE_DIGEST_KEYS:
         raise BindingError("controlled hardware evidence digest set is incomplete")
     return {
         "status": PROVEN,
@@ -142,7 +155,6 @@ def bind_manifest(manifest: dict[str, Any], hardware_gate: dict[str, Any]) -> di
         isinstance(item, str) and item for item in blocking_reasons
     ):
         raise BindingError("release manifest blocking_reasons are invalid")
-
     result = dict(manifest)
     result["hardware_operational"] = hardware_gate
     reasons = [item for item in blocking_reasons if item != HARDWARE_BLOCKER]
@@ -162,21 +174,32 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("--governance", type=Path)
     parser.add_argument("--installation", type=Path)
     parser.add_argument("--recovery", type=Path)
+    parser.add_argument("--capability-provisioning", type=Path)
+    parser.add_argument("--attestation-provisioning", type=Path)
     return parser.parse_args(argv)
 
 
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(sys.argv[1:] if argv is None else argv)
-    evidence = [args.physical, args.governance, args.installation, args.recovery]
+    evidence = [
+        args.physical,
+        args.governance,
+        args.installation,
+        args.recovery,
+        args.capability_provisioning,
+        args.attestation_provisioning,
+    ]
     try:
         if any(item is not None for item in evidence) and not all(item is not None for item in evidence):
-            raise BindingError("all four controlled hardware evidence paths are required together")
+            raise BindingError("all six controlled hardware evidence paths are required together")
         hardware_gate = (
             verified_hardware_gate(
                 args.physical,
                 args.governance,
                 args.installation,
                 args.recovery,
+                args.capability_provisioning,
+                args.attestation_provisioning,
             )
             if all(item is not None for item in evidence)
             else unknown_hardware_gate()
