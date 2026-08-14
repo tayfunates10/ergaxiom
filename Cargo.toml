@@ -21,6 +21,7 @@ members = [
   "crates/graphic-inkscape-certified-delivery-runtime",
   "crates/graphic-inkscape-final-certified-delivery-runtime",
   "crates/graphic-inkscape-srgb-certified-delivery-runtime",
+  "crates/graphic-production-evidence-runtime",
   "crates/inkscape-adapter-runtime",
   "crates/inkscape-execution-evidence-runtime",
   "crates/intent-contract-compiler-runtime",
