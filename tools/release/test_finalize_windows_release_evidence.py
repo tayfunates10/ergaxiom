@@ -17,7 +17,8 @@ def life(test=False):
 def gate(n): return {"schema_version":"0.1.0","gate":n,"source_commit":C,"verified":True,"evidence_artifacts":[{"name":n,"sha256":"e"*64}]}
 def lic(): return {"schema_version":"0.1.0","source_commit":C,"owner_approved":True,"spdx_expression":"Apache-2.0"}
 def canonical_prod():
-    value={"schema_version":"0.1.0","verifier_id":M.PRODUCTION_VERIFIER_ID,"gate":M.PRODUCTION_GATE,"verified":True,"source_commit":C,"job_id":"job.release.1","chain_stage":"certified","chain_revision":7,"chain_state_digest":"e"*64,"signer_service_sha256":V,"trust_state_binding_digest":"f"*64,"signer_identity_proof_digest":"1"*64,"certificate_id":"cert.release.1","certificate_digest":"2"*64,"replay_manifest_digest":"3"*64,"evidence_bundle_digest":"4"*64,"decision":"ACCEPTED","assurance_level":"E5","input_digests":{k:chr(97+i)*64 for i,k in enumerate(sorted(M.PRODUCTION_INPUTS))},"verification_digest":""}
+    hex_digits="0123456789abcdef"
+    value={"schema_version":"0.1.0","verifier_id":M.PRODUCTION_VERIFIER_ID,"gate":M.PRODUCTION_GATE,"verified":True,"source_commit":C,"job_id":"job.release.1","chain_stage":"certified","chain_revision":7,"chain_state_digest":"e"*64,"signer_service_sha256":V,"trust_state_binding_digest":"f"*64,"signer_identity_proof_digest":"1"*64,"certificate_id":"cert.release.1","certificate_digest":"2"*64,"replay_manifest_digest":"3"*64,"evidence_bundle_digest":"4"*64,"decision":"ACCEPTED","assurance_level":"E5","input_digests":{k:hex_digits[i]*64 for i,k in enumerate(sorted(M.PRODUCTION_INPUTS))},"verification_digest":""}
     value["verification_digest"]=M.sha(value)
     return value
 
