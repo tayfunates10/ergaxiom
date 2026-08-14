@@ -28,6 +28,8 @@ thiserror.workspace = true
 [dev-dependencies]
 base64.workspace = true
 ed25519-dalek = { workspace = true, features = ["rand_core"] }
+ergaxiom-graphic-designer-twin-runtime = { path = "../graphic-designer-twin-runtime" }
+ergaxiom-graphic-production-evidence-runtime = { path = "../graphic-production-evidence-runtime" }
 ergaxiom-key-governance-runtime = { path = "../key-governance-runtime" }
 ergaxiom-windows-production-key-governance-runtime = { path = "../windows-production-key-governance-runtime" }
 ergaxiom-windows-production-signer-protocol-runtime = { path = "../windows-production-signer-protocol-runtime" }

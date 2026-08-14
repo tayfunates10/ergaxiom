@@ -1013,6 +1013,8 @@ dependencies = [
  "ergaxiom-contract-runtime",
  "ergaxiom-desktop-shell-runtime",
  "ergaxiom-evidence-runtime",
+ "ergaxiom-graphic-designer-twin-runtime",
+ "ergaxiom-graphic-production-evidence-runtime",
  "ergaxiom-key-governance-runtime",
  "ergaxiom-occupational-twin-runtime",
  "ergaxiom-operator-plan-runtime",
