@@ -1,0 +1,47 @@
+name: Issue 75 Graphic E3 Production Chain
+
+on:
+  push:
+    branches:
+      - codex/issue-75
+
+permissions:
+  contents: write
+
+jobs:
+  prove:
+    if: github.event.head_commit.message == 'issue75-run-e3-production-chain'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: codex/issue-75
+          fetch-depth: 0
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.85.0"
+          components: rustfmt, clippy
+      - name: Apply E3 production-chain integration test
+        run: python .github/scripts/issue75_e3_chain_test.py
+      - name: Synchronize workspace lockfile
+        run: cargo +1.85.0 generate-lockfile
+      - name: Format
+        run: cargo +1.85.0 fmt --all
+      - name: Verify formatting
+        run: cargo +1.85.0 fmt --all -- --check
+      - name: Strict authority clippy
+        run: cargo +1.85.0 clippy --locked -p ergaxiom-production-execution-authority-runtime --all-targets --keep-going -- -D warnings
+      - name: Full persistent production-chain tests
+        run: cargo +1.85.0 test --locked -p ergaxiom-production-execution-authority-runtime --test persistent_chain
+      - name: Graphic E3 evidence regressions
+        run: cargo +1.85.0 test --locked -p ergaxiom-graphic-production-evidence-runtime
+      - name: Commit verified E3 integration proof
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name Tayfun
+          git config user.email tayfuna766@gmail.com
+          git add Cargo.lock crates/production-execution-authority-runtime/Cargo.toml crates/production-execution-authority-runtime/tests/persistent_chain.rs
+          git diff --cached --check
+          git commit -m 'issue75: prove four-token Graphic Designer E3 chain'
+          git push origin HEAD:codex/issue-75
