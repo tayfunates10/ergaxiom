@@ -6,114 +6,146 @@ param(
   [Parameter(Mandatory)][string]$SourceCommit,
   [Parameter(Mandatory)][string]$EvidenceOut
 )
-$ErrorActionPreference='Stop'; Set-StrictMode -Version Latest
+$ErrorActionPreference = 'Stop'
+Set-StrictMode -Version Latest
 
-if($SourceCommit -notmatch '^[0-9a-f]{40}$'){throw 'SOURCE_COMMIT_REJECTED'}
-$policy=Get-Content (Resolve-Path $PolicyPath) -Raw|ConvertFrom-Json -Depth 32
-if($policy.policy_id-ne'ergaxiom.windows-production-release' -or $policy.canonical_installer-ne'nsis'){throw 'POLICY_REJECTED'}
-if($policy.packaging.install_mode-ne'perMachine' -or $policy.packaging.allow_downgrades-ne$false -or $policy.packaging.install_root-ne'%ProgramFiles%\Ergaxiom' -or $policy.packaging.production_state_root-ne'%ProgramData%\Ergaxiom' -or $policy.packaging.uninstall_preserves_production_state-ne$true){throw 'LIFECYCLE_POLICY_REJECTED'}
-$principal=[Security.Principal.WindowsPrincipal]::new([Security.Principal.WindowsIdentity]::GetCurrent())
-if(-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)){throw 'ADMINISTRATOR_REQUIRED'}
+if ($SourceCommit -notmatch '^[0-9a-f]{40}$') { throw 'SOURCE_COMMIT_REJECTED' }
+$policy = Get-Content (Resolve-Path $PolicyPath) -Raw | ConvertFrom-Json -Depth 32
+if ($policy.policy_id -ne 'ergaxiom.windows-production-release' -or $policy.canonical_installer -ne 'nsis') { throw 'POLICY_REJECTED' }
+if (
+  $policy.packaging.install_mode -ne 'perMachine' -or
+  $policy.packaging.allow_downgrades -ne $false -or
+  $policy.packaging.install_root -ne '%ProgramFiles%\Ergaxiom' -or
+  $policy.packaging.production_state_root -ne '%ProgramData%\Ergaxiom' -or
+  $policy.packaging.uninstall_preserves_production_state -ne $true
+) { throw 'LIFECYCLE_POLICY_REJECTED' }
+$principal = [Security.Principal.WindowsPrincipal]::new([Security.Principal.WindowsIdentity]::GetCurrent())
+if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) { throw 'ADMINISTRATOR_REQUIRED' }
 
-$previous=(Resolve-Path $PreviousInstaller).Path; $current=(Resolve-Path $CurrentInstaller).Path
-if($previous-eq$current){throw 'INSTALLER_SUBSTITUTION'}
-$installRoot=Join-Path ([Environment]::GetFolderPath('ProgramFiles')) 'Ergaxiom'
-$stateRoot=Join-Path $env:ProgramData 'Ergaxiom'
-$sentinel=Join-Path $stateRoot 'ci-lifecycle-state.txt'
-$marker=[Guid]::NewGuid().ToString('N')
+$previous = (Resolve-Path $PreviousInstaller).Path
+$current = (Resolve-Path $CurrentInstaller).Path
+if ($previous -eq $current) { throw 'INSTALLER_SUBSTITUTION' }
+$installRoot = Join-Path ([Environment]::GetFolderPath('ProgramFiles')) 'Ergaxiom'
+$stateRoot = Join-Path $env:ProgramData 'Ergaxiom'
+$sentinel = Join-Path $stateRoot 'ci-lifecycle-state.txt'
+$marker = [Guid]::NewGuid().ToString('N')
+$processTimeoutMs = 180000
 
-function RunInstaller([string]$path,[bool]$expectSuccess){
-  $p=Start-Process -FilePath $path -ArgumentList '/S' -Wait -PassThru
-  if($expectSuccess -and $p.ExitCode-ne0){throw "INSTALLER_FAILED: $($p.ExitCode)"}
-  return $p.ExitCode
+function RunProcess([string]$path, [string[]]$arguments) {
+  $process = Start-Process -FilePath $path -ArgumentList $arguments -PassThru
+  if (-not $process.WaitForExit($processTimeoutMs)) {
+    try { $process.Kill($true) } catch {}
+    throw "PROCESS_TIMEOUT: $([IO.Path]::GetFileName($path))"
+  }
+  return $process.ExitCode
+}
+function RunInstaller([string]$path, [bool]$expectSuccess) {
+  $exitCode = RunProcess $path @('/S')
+  if ($expectSuccess -and $exitCode -ne 0) { throw "INSTALLER_FAILED: $exitCode" }
+  return $exitCode
 }
 function Entries {
-  $out=@()
-  foreach($root in @('HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*','HKLM:\Software\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*')){
-    $out += @(Get-ItemProperty $root -ErrorAction SilentlyContinue|Where-Object{$_.DisplayName-eq'Ergaxiom'})
+  $result = @()
+  foreach ($root in @('HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*', 'HKLM:\Software\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*')) {
+    $result += @(Get-ItemProperty $root -ErrorAction SilentlyContinue | Where-Object { $_.DisplayName -eq 'Ergaxiom' })
   }
-  return @($out)
+  return @($result)
 }
-function OneEntry([string]$version){
-  $entries=@(Entries)
-  if($entries.Count-ne1){throw "UNINSTALL_REGISTRY_CARDINALITY: $($entries.Count)"}
-  if([string]$entries[0].DisplayVersion-ne$version){throw "VERSION_MISMATCH: expected=$version actual=$($entries[0].DisplayVersion)"}
+function OneEntry([string]$version) {
+  $entries = @(Entries)
+  if ($entries.Count -ne 1) { throw "UNINSTALL_REGISTRY_CARDINALITY: $($entries.Count)" }
+  if ([string]$entries[0].DisplayVersion -ne $version) { throw "VERSION_MISMATCH: expected=$version actual=$($entries[0].DisplayVersion)" }
   return $entries[0]
 }
-function AssertInstalled([string]$version){
-  $entry=OneEntry $version
-  if(-not(Test-Path $installRoot)){throw 'INSTALL_ROOT_MISSING'}
-  $desktop=@(Get-ChildItem $installRoot -Recurse -File -Filter 'ergaxiom-desktop.exe')
-  $service=@(Get-ChildItem $installRoot -Recurse -File -Filter 'ergaxiom-windows-production-signer-service.exe')
-  if($desktop.Count-ne1 -or $service.Count-ne1){throw 'INSTALLED_ARTIFACT_INVENTORY_MISMATCH'}
+function AssertInstalled([string]$version) {
+  $entry = OneEntry $version
+  if (-not (Test-Path $installRoot)) { throw 'INSTALL_ROOT_MISSING' }
+  $desktop = @(Get-ChildItem $installRoot -Recurse -File -Filter 'ergaxiom-desktop.exe')
+  $service = @(Get-ChildItem $installRoot -Recurse -File -Filter 'ergaxiom-windows-production-signer-service.exe')
+  if ($desktop.Count -ne 1 -or $service.Count -ne 1) { throw 'INSTALLED_ARTIFACT_INVENTORY_MISMATCH' }
   return $entry
 }
 function UninstallCurrent {
-  $entry=OneEntry '0.1.0'
-  $text=[string]$entry.UninstallString
-  if([string]::IsNullOrWhiteSpace($text)){throw 'UNINSTALL_STRING_MISSING'}
-  $exe=$text.Trim().Trim('"')
-  if($exe.Contains('"') -or $exe.Contains(' /') -or $exe.Contains(' -')){throw 'UNINSTALL_COMMAND_REJECTED'}
-  $full=[IO.Path]::GetFullPath($exe)
-  if(-not $full.StartsWith(([IO.Path]::GetFullPath($installRoot)+[IO.Path]::DirectorySeparatorChar),[StringComparison]::OrdinalIgnoreCase)){throw 'UNINSTALL_PATH_OUTSIDE_INSTALL_ROOT'}
-  if(-not(Test-Path $full)){throw 'UNINSTALLER_MISSING'}
-  $p=Start-Process -FilePath $full -ArgumentList '/S' -Wait -PassThru
-  if($p.ExitCode-ne0){throw "UNINSTALL_FAILED: $($p.ExitCode)"}
+  $entry = OneEntry '0.1.0'
+  $text = [string]$entry.UninstallString
+  if ([string]::IsNullOrWhiteSpace($text)) { throw 'UNINSTALL_STRING_MISSING' }
+  $exe = $text.Trim().Trim('"')
+  if ($exe.Contains('"') -or $exe.Contains(' /') -or $exe.Contains(' -')) { throw 'UNINSTALL_COMMAND_REJECTED' }
+  $full = [IO.Path]::GetFullPath($exe)
+  $rootWithSeparator = [IO.Path]::GetFullPath($installRoot) + [IO.Path]::DirectorySeparatorChar
+  if (-not $full.StartsWith($rootWithSeparator, [StringComparison]::OrdinalIgnoreCase)) { throw 'UNINSTALL_PATH_OUTSIDE_INSTALL_ROOT' }
+  if (-not (Test-Path $full)) { throw 'UNINSTALLER_MISSING' }
+  $exitCode = RunProcess $full @('/S')
+  if ($exitCode -ne 0) { throw "UNINSTALL_FAILED: $exitCode" }
   Start-Sleep -Seconds 1
-  if(@(Entries).Count-ne0){throw 'UNINSTALL_REGISTRY_REMAINS'}
+  if (@(Entries).Count -ne 0) { throw 'UNINSTALL_REGISTRY_REMAINS' }
 }
-function AssertSentinel { if(-not(Test-Path $sentinel) -or (Get-Content $sentinel -Raw).Trim()-ne$marker){throw 'PRODUCTION_STATE_SENTINEL_LOST'} }
+function AssertSentinel {
+  if (-not (Test-Path $sentinel) -or (Get-Content $sentinel -Raw).Trim() -ne $marker) { throw 'PRODUCTION_STATE_SENTINEL_LOST' }
+}
 
-if(Test-Path $installRoot -or @(Entries).Count-ne0){throw 'RUNNER_NOT_CLEAN'}
-New-Item -ItemType Directory -Force $stateRoot|Out-Null
+if ((Test-Path $installRoot) -or @(Entries).Count -ne 0) { throw 'RUNNER_NOT_CLEAN' }
+New-Item -ItemType Directory -Force $stateRoot | Out-Null
 Set-Content -Path $sentinel -Value $marker -Encoding ascii -NoNewline
 
-# Clean install of the previous version.
-RunInstaller $previous $true|Out-Null; AssertInstalled '0.0.9'|Out-Null; AssertSentinel
-$clean=$true
+RunInstaller $previous $true | Out-Null
+AssertInstalled '0.0.9' | Out-Null
+AssertSentinel
+$clean = $true
 
-# Normal upgrade to the current version.
-RunInstaller $current $true|Out-Null; AssertInstalled '0.1.0'|Out-Null; AssertSentinel
-$upgrade=$true
+RunInstaller $current $true | Out-Null
+AssertInstalled '0.1.0' | Out-Null
+AssertSentinel
+$upgrade = $true
 
-# A downgrade must not replace the installed current version, regardless of whether NSIS returns 0 or non-zero.
-$downgradeExit=RunInstaller $previous $false
-AssertInstalled '0.1.0'|Out-Null; AssertSentinel
-$downgradeRejected=$true
+$downgradeExit = RunInstaller $previous $false
+AssertInstalled '0.1.0' | Out-Null
+AssertSentinel
+$downgradeRejected = $true
 
-# Reset only application files. The ProgramData sentinel must survive uninstall.
-UninstallCurrent; AssertSentinel
-RunInstaller $previous $true|Out-Null; AssertInstalled '0.0.9'|Out-Null; AssertSentinel
+UninstallCurrent
+AssertSentinel
+RunInstaller $previous $true | Out-Null
+AssertInstalled '0.0.9' | Out-Null
+AssertSentinel
 
-# Inject an interrupted upgrade before file replacement, then prove the old installation and state survived.
-$env:ERGA_CI_INTERRUPT='1'
-try{$interruptExit=RunInstaller $current $false}finally{Remove-Item Env:ERGA_CI_INTERRUPT -ErrorAction SilentlyContinue}
-if($interruptExit-eq0){throw 'INTERRUPTED_UPGRADE_UNEXPECTED_SUCCESS'}
-AssertInstalled '0.0.9'|Out-Null; AssertSentinel
-$interrupted=$true
+$env:ERGA_CI_INTERRUPT = '1'
+try { $interruptExit = RunInstaller $current $false } finally { Remove-Item Env:ERGA_CI_INTERRUPT -ErrorAction SilentlyContinue }
+if ($interruptExit -eq 0) { throw 'INTERRUPTED_UPGRADE_UNEXPECTED_SUCCESS' }
+AssertInstalled '0.0.9' | Out-Null
+AssertSentinel
+$interrupted = $true
 
-# Recovery is rerunning the exact current installer after the injected interruption.
-RunInstaller $current $true|Out-Null; AssertInstalled '0.1.0'|Out-Null; AssertSentinel
-$recovery=$true
+RunInstaller $current $true | Out-Null
+AssertInstalled '0.1.0' | Out-Null
+AssertSentinel
+$recovery = $true
 
-# Final uninstall removes application registration/files while preserving the protected-state sentinel.
-UninstallCurrent; AssertSentinel
-$uninstall=$true
-$statePreserved=$true
+UninstallCurrent
+AssertSentinel
+$uninstall = $true
+$statePreserved = $true
 
-$evidence=[ordered]@{
-  schema_version='0.1.0'; source_commit=$SourceCommit; test_mode=$true
-  installer_name=[IO.Path]::GetFileName($current)
-  installer_sha256=(Get-FileHash $current -Algorithm SHA256).Hash.ToLowerInvariant()
-  previous_installer_name=[IO.Path]::GetFileName($previous)
-  previous_installer_sha256=(Get-FileHash $previous -Algorithm SHA256).Hash.ToLowerInvariant()
-  observed_versions=[ordered]@{previous='0.0.9';current='0.1.0'}
-  attack_observations=[ordered]@{downgrade_exit_code=$downgradeExit;interrupted_upgrade_exit_code=$interruptExit}
-  phases=[ordered]@{
-    clean_install=$clean; upgrade=$upgrade; downgrade_rejected=$downgradeRejected
-    interrupted_upgrade_preserved_state=$interrupted; recovery_install=$recovery
-    uninstall=$uninstall; production_state_preserved=$statePreserved
+$evidence = [ordered]@{
+  schema_version = '0.1.0'
+  source_commit = $SourceCommit
+  test_mode = $true
+  installer_name = [IO.Path]::GetFileName($current)
+  installer_sha256 = (Get-FileHash $current -Algorithm SHA256).Hash.ToLowerInvariant()
+  previous_installer_name = [IO.Path]::GetFileName($previous)
+  previous_installer_sha256 = (Get-FileHash $previous -Algorithm SHA256).Hash.ToLowerInvariant()
+  observed_versions = [ordered]@{ previous = '0.0.9'; current = '0.1.0' }
+  attack_observations = [ordered]@{ downgrade_exit_code = $downgradeExit; interrupted_upgrade_exit_code = $interruptExit }
+  phases = [ordered]@{
+    clean_install = $clean
+    upgrade = $upgrade
+    downgrade_rejected = $downgradeRejected
+    interrupted_upgrade_preserved_state = $interrupted
+    recovery_install = $recovery
+    uninstall = $uninstall
+    production_state_preserved = $statePreserved
   }
 }
-$out=[IO.Path]::GetFullPath($EvidenceOut);New-Item -ItemType Directory -Force (Split-Path $out)|Out-Null
-$evidence|ConvertTo-Json -Depth 8|Set-Content $out -Encoding utf8NoBOM
+$out = [IO.Path]::GetFullPath($EvidenceOut)
+New-Item -ItemType Directory -Force (Split-Path $out) | Out-Null
+$evidence | ConvertTo-Json -Depth 8 | Set-Content $out -Encoding utf8NoBOM
