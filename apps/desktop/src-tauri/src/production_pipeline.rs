@@ -1,8 +1,9 @@
 use ergaxiom_attestation_issuance_runtime::AttestationCertificateDraft;
-use ergaxiom_attestation_runtime::{ReplayManifest, build_replay_manifest};
+use ergaxiom_attestation_runtime::{ReplayManifest, VerifiedAttestation, build_replay_manifest};
 use ergaxiom_capability_issuance_runtime::CapabilityTokenDraft;
 use ergaxiom_capability_runtime::{
     AuthorizationReceipt, CapabilityBindings, CapabilityGrant, CapabilitySubject,
+    ProductionSignerBoundCapabilityToken,
 };
 use ergaxiom_contract_runtime::{CompiledContract, PermissionAccess};
 use ergaxiom_desktop_shell_runtime::{
@@ -15,12 +16,20 @@ use ergaxiom_evidence_runtime::{EvidenceBundle, assess_bundle};
 use ergaxiom_graphic_production_evidence_runtime::{
     ProductionGraphicEvidence, ProductionGraphicEvidenceRequest, build_production_graphic_evidence,
 };
+use ergaxiom_occupational_twin_runtime::OperationReceipt;
 use ergaxiom_operator_plan_runtime::{CompiledPlan, PlanStep};
+use ergaxiom_production_execution_runtime::{
+    PersistedProductionCapability, ProductionExecutionStage,
+};
 use ergaxiom_proof_kernel::{AssuranceLevel, DecisionStatus, canonical_json_sha256};
-use ergaxiom_windows_production_governed_issuance_runtime::verify_governed_production_attestation_against_bundle;
+use ergaxiom_windows_production_governed_issuance_runtime::{
+    GovernedCapabilityAuthorizer, verify_governed_production_attestation_against_bundle,
+};
 use serde_json::{Value, json};
 
-use crate::pipeline::{GENERATED_AT, PreparedDesktopJob, prepare_desktop_job, sha256_hex, twin_workspace};
+use crate::pipeline::{
+    GENERATED_AT, PreparedDesktopJob, prepare_desktop_job, sha256_hex, twin_workspace,
+};
 use crate::production_execution::{ProductionExecutionBoundaryError, ProductionExecutionState};
 
 const LOCAL_ACTOR_ID: &str = "ergaxiom.local.operator";
@@ -45,12 +54,159 @@ pub(crate) fn execute_approved_job(
     let prepared = prepare_desktop_job()?;
     validate_approved_bindings(&prepared, approved_snapshot, approval, approve_receipt)?;
 
-    // Issue and consume one narrowly scoped production token per mandatory step. Both issuance and
-    // consumption acquire a fresh signed signer trust lease. No token reaches the Twin before its
-    // AuthorizationReceipt has been durably committed by the backend authority.
+    let stage = production
+        .with_fresh_lease(|authority, _lease, _deployment, _client, _now| {
+            Ok(authority.chain_state().stage)
+        })
+        .map_err(boundary_error)?;
+    if stage == ProductionExecutionStage::Executed {
+        return resume_attestation(production, &prepared, approval);
+    }
+    if !matches!(
+        stage,
+        ProductionExecutionStage::Approved
+            | ProductionExecutionStage::CapabilitiesIssued
+            | ProductionExecutionStage::CapabilitiesConsumed
+    ) {
+        return Err(format!(
+            "production execution cannot start or resume from persisted stage {stage:?}"
+        ));
+    }
+
+    ensure_capabilities(
+        production,
+        &prepared,
+        approved_snapshot,
+        approval,
+        approve_receipt,
+    )?;
+    let authorization_receipts = collect_authorization_receipts(production, &prepared)?;
+
+    // The Occupational Twin is invoked only after every max_uses=1 production Capability has a
+    // durable AuthorizationReceipt. A restart from CapabilitiesConsumed re-verifies and reuses the
+    // receipts rather than consuming the tokens again.
+    let mut workspace = twin_workspace()?;
+    let production_evidence = build_production_graphic_evidence(ProductionGraphicEvidenceRequest {
+        workspace: &mut workspace,
+        compiled_contract: &prepared.compiled_contract,
+        contract_value: &prepared.contract,
+        compiled_plan: &prepared.compiled_plan,
+        job: &prepared.job,
+        authorization_receipts: &authorization_receipts,
+        assurance_level: AssuranceLevel::E3,
+        bundle_id: BUNDLE_ID,
+        run_id: RUN_ID,
+        trace_id: TRACE_ID,
+    })
+    .map_err(|error| format!("production Twin/evidence rejected: {error}"))?;
+
+    let (bundle, bundle_value) = bundle_with_operation_receipts(&production_evidence)?;
+    let assessment = assess_bundle(
+        prepared.compiled_contract.clone(),
+        &prepared.compiled_plan,
+        &bundle_value,
+        AssuranceLevel::E3,
+    )
+    .map_err(|error| format!("production Evidence Bundle reassessment failed: {error}"))?;
+    if assessment.decision.status != DecisionStatus::Accepted
+        || assessment.mandatory_failed != 0
+        || assessment.mandatory_unknown != 0
+    {
+        return Err(
+            "production Evidence Bundle is not ACCEPTED with zero failed/unknown mandatory obligations"
+                .to_owned(),
+        );
+    }
+    let replay_manifest = build_replay_manifest(
+        MANIFEST_ID,
+        &prepared.compiled_plan,
+        &bundle,
+        &assessment.bundle_digest,
+        assessment.decision.status,
+        AssuranceLevel::E3,
+        assessment.mandatory_passed,
+        assessment.mandatory_failed,
+        assessment.mandatory_unknown,
+    )
+    .map_err(|error| format!("Replay Manifest construction failed: {error}"))?;
+
+    let executed_snapshot = build_executed_snapshot(
+        &prepared,
+        approval,
+        &production_evidence,
+        &assessment.bundle_digest,
+        &replay_manifest,
+    )?;
+    let execute_at = trusted_epoch_s()?;
+    let execute_receipt = issue_desktop_command_receipt(
+        DesktopCommandAction::Execute,
+        LOCAL_ACTOR_ID,
+        approved_snapshot,
+        &executed_snapshot,
+        Some(&approval.approval_digest),
+        execute_at,
+    )
+    .map_err(|error| format!("production Execute receipt construction failed: {error}"))?;
+
+    production
+        .with_fresh_lease(|authority, _lease, _deployment, _client, _now| {
+            authority.record_execution(
+                executed_snapshot.clone(),
+                execute_receipt.clone(),
+                bundle_value.clone(),
+                replay_manifest.clone(),
+            )?;
+            Ok(())
+        })
+        .map_err(boundary_error)?;
+
+    let final_snapshot = issue_and_record_certificate(
+        production,
+        &prepared,
+        approval,
+        &executed_snapshot,
+        &execute_receipt,
+        &bundle_value,
+        &assessment.bundle_digest,
+    )?;
+
+    Ok(ProductionExecutionResult {
+        final_snapshot,
+        execute_receipt,
+    })
+}
+
+fn ensure_capabilities(
+    production: &ProductionExecutionState,
+    prepared: &PreparedDesktopJob,
+    approved_snapshot: &DesktopShellSnapshot,
+    approval: &DesktopApprovalRecord,
+    approve_receipt: &DesktopCommandReceipt,
+) -> Result<(), String> {
     for step in &prepared.compiled_plan.steps {
         production
             .with_fresh_lease(|authority, lease, deployment, client, now| {
+                let existing = authority
+                    .chain_state()
+                    .capabilities
+                    .iter()
+                    .find(|capability| {
+                        capability.token.payload.bindings.step_id == step.step_id
+                    })
+                    .cloned();
+                if let Some(existing) = existing {
+                    verify_persisted_token(
+                        &existing,
+                        lease,
+                        authority.executor_id(),
+                        authority.device_id(),
+                        approval,
+                        &prepared.compiled_contract,
+                        &prepared.compiled_plan,
+                        step,
+                    )?;
+                    return Ok(());
+                }
                 let draft = capability_draft(
                     authority.executor_id(),
                     authority.device_id(),
@@ -78,15 +234,62 @@ pub(crate) fn execute_approved_job(
             })
             .map_err(boundary_error)?;
     }
+    Ok(())
+}
 
-    let mut authorization_receipts = Vec::with_capacity(prepared.compiled_plan.steps.len());
+fn collect_authorization_receipts(
+    production: &ProductionExecutionState,
+    prepared: &PreparedDesktopJob,
+) -> Result<Vec<AuthorizationReceipt>, String> {
+    let mut receipts = Vec::with_capacity(prepared.compiled_plan.steps.len());
     for step in &prepared.compiled_plan.steps {
-        let token_id = step
-            .capability_token_ids
-            .first()
-            .ok_or_else(|| format!("plan step {} has no Capability token ID", step.step_id))?;
         let receipt = production
             .with_fresh_lease(|authority, lease, deployment, _client, now| {
+                let persisted = authority
+                    .chain_state()
+                    .capabilities
+                    .iter()
+                    .find(|capability| {
+                        capability.token.payload.bindings.step_id == step.step_id
+                    })
+                    .cloned()
+                    .ok_or(ProductionExecutionBoundaryError::TrustLeaseRejected)?;
+                if let Some(receipt) = persisted.consumption_receipt.clone() {
+                    let token_value = serde_json::to_value(&persisted.token)
+                        .map_err(|_| ProductionExecutionBoundaryError::TrustLeaseRejected)?;
+                    persisted
+                        .token
+                        .signer_package
+                        .verify_governed(
+                            lease.capability_trust(),
+                            lease.registry(),
+                            persisted.token.payload.issued_at_epoch_s,
+                        )
+                        .map_err(|_| ProductionExecutionBoundaryError::TrustLeaseRejected)?;
+                    let mut authorizer = GovernedCapabilityAuthorizer::new(
+                        lease.capability_trust().clone(),
+                        lease.registry().clone(),
+                    )
+                    .map_err(|_| ProductionExecutionBoundaryError::TrustLeaseRejected)?;
+                    let verified = authorizer
+                        .authorize(
+                            &token_value,
+                            &prepared.compiled_contract,
+                            &prepared.compiled_plan,
+                            receipt.authorized_at_epoch_s,
+                            authority.executor_id(),
+                            authority.device_id(),
+                        )
+                        .map_err(|_| ProductionExecutionBoundaryError::TrustLeaseRejected)?;
+                    if verified != receipt {
+                        return Err(ProductionExecutionBoundaryError::TrustLeaseRejected);
+                    }
+                    return Ok(receipt);
+                }
+                let token_id = step
+                    .capability_token_ids
+                    .first()
+                    .ok_or(ProductionExecutionBoundaryError::TrustLeaseRejected)?;
                 authority
                     .consume_capability(
                         token_id,
@@ -100,84 +303,82 @@ pub(crate) fn execute_approved_job(
                     .map_err(ProductionExecutionBoundaryError::from)
             })
             .map_err(boundary_error)?;
-        authorization_receipts.push(receipt);
+        receipts.push(receipt);
     }
+    Ok(receipts)
+}
 
-    let mut workspace = twin_workspace()?;
-    let production_evidence = build_production_graphic_evidence(ProductionGraphicEvidenceRequest {
-        workspace: &mut workspace,
-        compiled_contract: &prepared.compiled_contract,
-        contract_value: &prepared.contract,
-        compiled_plan: &prepared.compiled_plan,
-        job: &prepared.job,
-        authorization_receipts: &authorization_receipts,
-        assurance_level: AssuranceLevel::E3,
-        bundle_id: BUNDLE_ID,
-        run_id: RUN_ID,
-        trace_id: TRACE_ID,
-    })
-    .map_err(|error| format!("production Twin/evidence rejected: {error}"))?;
-
-    let bundle_value = serde_json::to_value(&production_evidence.evidence_bundle)
-        .map_err(|error| format!("Evidence Bundle encoding failed: {error}"))?;
+fn resume_attestation(
+    production: &ProductionExecutionState,
+    prepared: &PreparedDesktopJob,
+    approval: &DesktopApprovalRecord,
+) -> Result<ProductionExecutionResult, String> {
+    let (executed_snapshot, execute_receipt, bundle_value, expected_bundle_digest) = production
+        .with_fresh_lease(|authority, _lease, _deployment, _client, _now| {
+            let state = authority.chain_state();
+            let executed_snapshot = state
+                .executed_snapshot
+                .clone()
+                .ok_or(ProductionExecutionBoundaryError::TrustLeaseRejected)?;
+            let execute_receipt = state
+                .execute_receipt
+                .clone()
+                .ok_or(ProductionExecutionBoundaryError::TrustLeaseRejected)?;
+            let bundle_value = state
+                .evidence_bundle
+                .clone()
+                .ok_or(ProductionExecutionBoundaryError::TrustLeaseRejected)?;
+            let expected_bundle_digest = state
+                .evidence_bundle_digest
+                .clone()
+                .ok_or(ProductionExecutionBoundaryError::TrustLeaseRejected)?;
+            Ok((
+                executed_snapshot,
+                execute_receipt,
+                bundle_value,
+                expected_bundle_digest,
+            ))
+        })
+        .map_err(boundary_error)?;
     let assessment = assess_bundle(
         prepared.compiled_contract.clone(),
         &prepared.compiled_plan,
         &bundle_value,
         AssuranceLevel::E3,
     )
-    .map_err(|error| format!("production Evidence Bundle reassessment failed: {error}"))?;
-    if assessment.decision.status != DecisionStatus::Accepted
+    .map_err(|error| format!("recovered production Evidence Bundle rejected: {error}"))?;
+    if assessment.bundle_digest != expected_bundle_digest
+        || assessment.decision.status != DecisionStatus::Accepted
         || assessment.mandatory_failed != 0
         || assessment.mandatory_unknown != 0
     {
-        return Err("production Evidence Bundle is not ACCEPTED with zero failed/unknown mandatory obligations".to_owned());
+        return Err("recovered production execution material failed reassessment".to_owned());
     }
-    let replay_manifest = build_replay_manifest(
-        MANIFEST_ID,
-        &prepared.compiled_plan,
-        &production_evidence.evidence_bundle,
-        &assessment.bundle_digest,
-        assessment.decision.status,
-        AssuranceLevel::E3,
-        assessment.mandatory_passed,
-        assessment.mandatory_failed,
-        assessment.mandatory_unknown,
-    )
-    .map_err(|error| format!("Replay Manifest construction failed: {error}"))?;
-
-    let executed_snapshot = build_executed_snapshot(
-        &prepared,
+    let final_snapshot = issue_and_record_certificate(
+        production,
+        prepared,
         approval,
-        &production_evidence,
-        &assessment.bundle_digest,
-        &replay_manifest,
-        None,
-    )?;
-    let execute_at = trusted_epoch_s()?;
-    let execute_receipt = issue_desktop_command_receipt(
-        DesktopCommandAction::Execute,
-        LOCAL_ACTOR_ID,
-        approved_snapshot,
         &executed_snapshot,
-        Some(&approval.approval_digest),
-        execute_at,
-    )
-    .map_err(|error| format!("production Execute receipt construction failed: {error}"))?;
+        &execute_receipt,
+        &bundle_value,
+        &assessment.bundle_digest,
+    )?;
+    Ok(ProductionExecutionResult {
+        final_snapshot,
+        execute_receipt,
+    })
+}
 
+fn issue_and_record_certificate(
+    production: &ProductionExecutionState,
+    prepared: &PreparedDesktopJob,
+    approval: &DesktopApprovalRecord,
+    executed_snapshot: &DesktopShellSnapshot,
+    execute_receipt: &DesktopCommandReceipt,
+    bundle_value: &Value,
+    expected_bundle_digest: &str,
+) -> Result<DesktopShellSnapshot, String> {
     production
-        .with_fresh_lease(|authority, _lease, _deployment, _client, _now| {
-            authority.record_execution(
-                executed_snapshot.clone(),
-                execute_receipt.clone(),
-                bundle_value.clone(),
-                replay_manifest.clone(),
-            )?;
-            Ok(())
-        })
-        .map_err(boundary_error)?;
-
-    let final_snapshot = production
         .with_fresh_lease(|authority, lease, deployment, client, now| {
             let draft = AttestationCertificateDraft {
                 manifest_id: MANIFEST_ID.to_owned(),
@@ -189,12 +390,12 @@ pub(crate) fn execute_approved_job(
                 lease,
                 &deployment.signer.accepted,
                 &deployment.signer.deployment_policy,
-                &executed_snapshot,
+                executed_snapshot,
                 approval,
-                &execute_receipt,
+                execute_receipt,
                 prepared.compiled_contract.clone(),
                 &prepared.compiled_plan,
-                &bundle_value,
+                bundle_value,
                 AssuranceLevel::E3,
                 draft,
                 now,
@@ -206,41 +407,25 @@ pub(crate) fn execute_approved_job(
                 lease.registry(),
                 prepared.compiled_contract.clone(),
                 &prepared.compiled_plan,
-                &bundle_value,
+                bundle_value,
                 AssuranceLevel::E3,
-            )?;
+            )
+            .map_err(|_| ProductionExecutionBoundaryError::TrustLeaseRejected)?;
             if verified.decision != DecisionStatus::Accepted
-                || verified.evidence_bundle_digest != assessment.bundle_digest
+                || verified.evidence_bundle_digest != expected_bundle_digest
             {
                 return Err(ProductionExecutionBoundaryError::TrustLeaseRejected);
             }
-            let final_snapshot = build_executed_snapshot(
-                &prepared,
-                approval,
-                &production_evidence,
-                &assessment.bundle_digest,
-                &issuance.package.replay_manifest,
-                Some(CertificatePresentation {
-                    certificate_id: verified.certificate_id.clone(),
-                    certificate_digest: verified.certificate_digest.clone(),
-                    evidence_bundle_digest: verified.evidence_bundle_digest.clone(),
-                    attestation_key_digest: lease
-                        .attestation_trust()
-                        .key
-                        .public_key_digest
-                        .clone(),
-                    attestation_generation: lease.attestation_trust().key.generation,
-                }),
+            let final_snapshot = build_final_snapshot(
+                executed_snapshot,
+                &verified,
+                lease.attestation_trust().key.public_key_digest.clone(),
+                lease.attestation_trust().key.generation,
             )?;
             authority.record_certificate(issuance, final_snapshot.clone())?;
             Ok(final_snapshot)
         })
-        .map_err(boundary_error)?;
-
-    Ok(ProductionExecutionResult {
-        final_snapshot,
-        execute_receipt,
-    })
+        .map_err(boundary_error)
 }
 
 fn validate_approved_bindings(
@@ -262,6 +447,60 @@ fn validate_approved_bindings(
         || approve_receipt.approval_digest.as_deref() != Some(approval.approval_digest.as_str())
     {
         return Err("approved desktop snapshot does not bind the canonical production job".to_owned());
+    }
+    Ok(())
+}
+
+fn verify_persisted_token(
+    persisted: &PersistedProductionCapability,
+    lease: &ergaxiom_windows_production_trust_state_runtime::VerifiedProductionSignerTrustLease,
+    executor_id: &str,
+    device_id: Option<&str>,
+    approval: &DesktopApprovalRecord,
+    contract: &CompiledContract,
+    plan: &CompiledPlan,
+    step: &PlanStep,
+) -> Result<(), ProductionExecutionBoundaryError> {
+    let token = &persisted.token;
+    token
+        .signer_package
+        .verify_governed(
+            lease.capability_trust(),
+            lease.registry(),
+            token.payload.issued_at_epoch_s,
+        )
+        .map_err(|_| ProductionExecutionBoundaryError::TrustLeaseRejected)?;
+    let expected_token_id = step
+        .capability_token_ids
+        .first()
+        .ok_or(ProductionExecutionBoundaryError::TrustLeaseRejected)?;
+    let (capability, resource, access) = expected_permission(step)?;
+    let permission = contract
+        .permissions
+        .iter()
+        .find(|permission| {
+            permission.capability == capability
+                && permission.resource == resource
+                && permission.access == access
+        })
+        .ok_or(ProductionExecutionBoundaryError::TrustLeaseRejected)?;
+    if &token.payload.token_id != expected_token_id
+        || token.payload.subject.executor_id != executor_id
+        || token.payload.subject.device_id.as_deref() != device_id
+        || token.payload.max_uses != 1
+        || token.payload.expires_at_epoch_s != approval.expires_at_epoch_s
+        || token.payload.bindings.contract_digest != contract.seal.contract_digest
+        || token.payload.bindings.capsule_digest != contract.seal.capsule_digest
+        || token.payload.bindings.plan_id != plan.plan_id
+        || token.payload.bindings.plan_digest != plan.plan_digest
+        || token.payload.bindings.step_id != step.step_id
+        || token.payload.bindings.operator_id != step.operator_id
+        || token.payload.grant.capability != permission.capability
+        || token.payload.grant.resource != permission.resource
+        || token.payload.grant.access != permission.access
+        || token.payload.grant.constraints != permission.constraints
+    {
+        return Err(ProductionExecutionBoundaryError::TrustLeaseRejected);
     }
     Ok(())
 }
@@ -344,12 +583,37 @@ fn expected_permission(
     }
 }
 
-struct CertificatePresentation {
-    certificate_id: String,
-    certificate_digest: String,
-    evidence_bundle_digest: String,
-    attestation_key_digest: String,
-    attestation_generation: u64,
+fn bundle_with_operation_receipts(
+    evidence: &ProductionGraphicEvidence,
+) -> Result<(EvidenceBundle, Value), String> {
+    let mut value = serde_json::to_value(&evidence.evidence_bundle)
+        .map_err(|error| format!("Evidence Bundle encoding failed: {error}"))?;
+    let artifacts = value
+        .get_mut("artifacts")
+        .and_then(Value::as_array_mut)
+        .ok_or_else(|| "Evidence Bundle artifacts collection is invalid".to_owned())?;
+    for receipt in &evidence.operation_receipts {
+        let bytes = serde_json::to_vec(receipt)
+            .map_err(|error| format!("operation receipt encoding failed: {error}"))?;
+        let artifact_id = format!("execution_receipt.{}", receipt.operation_id);
+        if artifacts.iter().any(|artifact| {
+            artifact.get("artifact_id").and_then(Value::as_str) == Some(artifact_id.as_str())
+        }) {
+            return Err(format!("duplicate operation receipt artifact {artifact_id}"));
+        }
+        artifacts.push(json!({
+            "artifact_id": artifact_id,
+            "role": "evidence",
+            "uri": format!("bundle://artifacts/execution_receipt.{}", receipt.operation_id),
+            "media_type": "application/json",
+            "algorithm": "sha256",
+            "digest": sha256_hex(&bytes),
+            "size_bytes": bytes.len() as u64,
+        }));
+    }
+    let bundle: EvidenceBundle = serde_json::from_value(value.clone())
+        .map_err(|error| format!("receipt-complete Evidence Bundle decode failed: {error}"))?;
+    Ok((bundle, value))
 }
 
 fn build_executed_snapshot(
@@ -358,7 +622,6 @@ fn build_executed_snapshot(
     evidence: &ProductionGraphicEvidence,
     evidence_bundle_digest: &str,
     replay_manifest: &ReplayManifest,
-    certificate: Option<CertificatePresentation>,
 ) -> Result<DesktopShellSnapshot, ProductionExecutionBoundaryError> {
     let replay_manifest_digest = canonical_json_sha256(
         &serde_json::to_value(replay_manifest)
@@ -402,27 +665,6 @@ fn build_executed_snapshot(
                 .then(|| "production validation observation failed".to_owned()),
         })
         .collect();
-    let certificate_verification = certificate.as_ref().map(|certificate| CertificateVerification {
-        certificate_id: certificate.certificate_id.clone(),
-        certificate_digest: certificate.certificate_digest.clone(),
-        evidence_bundle_digest: certificate.evidence_bundle_digest.clone(),
-        signature_verified: true,
-        bundle_verified: true,
-        decision_accepted: true,
-        mandatory_unknowns: 0,
-        mandatory_failures: 0,
-    });
-    let trusted_keys = certificate
-        .as_ref()
-        .map(|certificate| {
-            vec![TrustComponentStatus {
-                component_id: "ergaxiom.production.attestation".to_owned(),
-                version: format!("generation-{}", certificate.attestation_generation),
-                digest: certificate.attestation_key_digest.clone(),
-                trusted: true,
-            }]
-        })
-        .unwrap_or_default();
 
     build_desktop_shell_snapshot(DesktopShellMaterial {
         generated_at: GENERATED_AT.to_owned(),
@@ -460,10 +702,10 @@ fn build_executed_snapshot(
         replay_manifest: Some(DigestItem {
             id: replay_manifest.manifest_id.clone(),
             media_type: Some("application/json".to_owned()),
-            digest: replay_manifest_digest,
+            digest: replay_manifest_digest.clone(),
             status: StageStatus::Passed,
         }),
-        certificate: certificate_verification,
+        certificate: None,
         profession_capsules: vec![TrustComponentStatus {
             component_id: "ergaxiom.profession.graphic-designer".to_owned(),
             version: prepared
@@ -481,9 +723,9 @@ fn build_executed_snapshot(
             digest: sha256_hex(b"ergaxiom.design-document-model@0.1.0"),
             trusted: true,
         }],
-        trusted_keys,
+        trusted_keys: Vec::new(),
         metadata: json!({
-            "pipeline": "approved_snapshot -> fresh_signer_lease -> production_capabilities -> durable_consumption -> occupational_twin -> evidence_bundle -> replay_manifest -> production_attestation",
+            "pipeline": "approved_snapshot -> fresh_signer_lease -> production_capabilities -> durable_consumption -> occupational_twin -> evidence_bundle -> replay_manifest",
             "control_status": DesktopControlStatus::Executed,
             "approval_digest": approval.approval_digest,
             "execution_material_exposed": true,
@@ -492,7 +734,58 @@ fn build_executed_snapshot(
             "operation_receipt_count": evidence.operation_receipts.len(),
             "evidence_bundle_digest": evidence_bundle_digest,
             "replay_manifest_digest": replay_manifest_digest,
-            "production_certificate_verified": certificate.is_some(),
+            "production_certificate_verified": false,
+        }),
+    })
+    .map_err(|_| ProductionExecutionBoundaryError::TrustLeaseRejected)
+}
+
+fn build_final_snapshot(
+    executed: &DesktopShellSnapshot,
+    verified: &VerifiedAttestation,
+    attestation_key_digest: String,
+    attestation_generation: u64,
+) -> Result<DesktopShellSnapshot, ProductionExecutionBoundaryError> {
+    let mut trusted_keys = executed.trusted_keys.clone();
+    trusted_keys.push(TrustComponentStatus {
+        component_id: "ergaxiom.production.attestation".to_owned(),
+        version: format!("generation-{attestation_generation}"),
+        digest: attestation_key_digest,
+        trusted: true,
+    });
+    build_desktop_shell_snapshot(DesktopShellMaterial {
+        generated_at: executed.generated_at.clone(),
+        job_id: executed.job_id.clone(),
+        unresolved: executed.unresolved.clone(),
+        staged_inputs: executed.staged_inputs.clone(),
+        contract: executed.contract.clone(),
+        approval: executed.approval.clone(),
+        plan: executed.plan.clone(),
+        steps: executed.steps.clone(),
+        validators: executed.validators.clone(),
+        evidence_bundle: executed.evidence_bundle.clone(),
+        replay_manifest: executed.replay_manifest.clone(),
+        certificate: Some(CertificateVerification {
+            certificate_id: verified.certificate_id.clone(),
+            certificate_digest: verified.certificate_digest.clone(),
+            evidence_bundle_digest: verified.evidence_bundle_digest.clone(),
+            signature_verified: true,
+            bundle_verified: true,
+            decision_accepted: true,
+            mandatory_unknowns: 0,
+            mandatory_failures: 0,
+        }),
+        profession_capsules: executed.profession_capsules.clone(),
+        adapters: executed.adapters.clone(),
+        trusted_keys,
+        metadata: json!({
+            "pipeline": "persisted_execution -> fresh_signer_lease -> production_attestation -> independent_verification",
+            "control_status": DesktopControlStatus::Executed,
+            "approval_digest": executed.metadata.get("approval_digest").cloned(),
+            "execution_material_exposed": true,
+            "twin_executed": true,
+            "evidence_bundle_digest": verified.evidence_bundle_digest,
+            "production_certificate_verified": true,
         }),
     })
     .map_err(|_| ProductionExecutionBoundaryError::TrustLeaseRejected)
@@ -501,7 +794,13 @@ fn build_executed_snapshot(
 fn random_nonce() -> Result<String, ProductionExecutionBoundaryError> {
     let mut bytes = [0_u8; 32];
     getrandom::fill(&mut bytes).map_err(|_| ProductionExecutionBoundaryError::NonceUnavailable)?;
-    Ok(bytes.iter().map(|byte| format!("{byte:02x}")).collect())
+    let mut encoded = String::with_capacity(64);
+    for byte in bytes {
+        use std::fmt::Write as _;
+        write!(&mut encoded, "{byte:02x}")
+            .map_err(|_| ProductionExecutionBoundaryError::NonceUnavailable)?;
+    }
+    Ok(encoded)
 }
 
 fn trusted_epoch_s() -> Result<u64, String> {
@@ -513,5 +812,8 @@ fn trusted_epoch_s() -> Result<u64, String> {
 }
 
 fn boundary_error(error: ProductionExecutionBoundaryError) -> String {
-    format!("production execution rejected [{}]: {error}", error.public_code())
+    format!(
+        "production execution rejected [{}]: {error}",
+        error.public_code()
+    )
 }
