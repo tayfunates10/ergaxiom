@@ -6,6 +6,7 @@ on:
       - codex/issue-75
   pull_request:
     paths:
+      - "crates/graphic-production-evidence-runtime/**"
       - "crates/production-execution-authority-runtime/**"
       - "crates/production-execution-runtime/**"
       - "crates/backend-issuance-runtime/**"
@@ -41,12 +42,18 @@ jobs:
         run: cargo clippy -p ergaxiom-production-execution-runtime --all-targets -- -D warnings
       - name: Clippy persistent production authority
         run: cargo clippy -p ergaxiom-production-execution-authority-runtime --all-targets -- -D warnings
+      - name: Clippy production evidence
+        run: cargo clippy -p ergaxiom-graphic-production-evidence-runtime --all-targets -- -D warnings
       - name: Runtime tests
         run: cargo test -p ergaxiom-production-execution-runtime
       - name: Authority tests
         run: cargo test -p ergaxiom-production-execution-authority-runtime
+      - name: Production evidence tests
+        run: cargo test -p ergaxiom-graphic-production-evidence-runtime
       - name: Backend persistent issuance regression
         run: cargo test -p ergaxiom-backend-issuance-runtime --test persistent_production_capability
+      - name: Backend production issuance regression
+        run: cargo test -p ergaxiom-backend-issuance-runtime --test production_authorization
       - name: Enforce formatting gate
         if: always()
         shell: bash
