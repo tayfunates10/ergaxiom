@@ -10,7 +10,6 @@ permissions:
 
 jobs:
   repair:
-    if: github.event.head_commit.message == 'issue75: run deterministic repair'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -21,9 +20,14 @@ jobs:
         with:
           toolchain: "1.85.0"
           components: rustfmt
-      - name: Apply exact runtime repair
+      - name: Repair and commit when explicitly triggered
         shell: bash
         run: |
+          set -euo pipefail
+          if [ "$(git log -1 --pretty=%s)" != "issue75: run deterministic repair" ]; then
+            echo "No repair requested for this commit."
+            exit 0
+          fi
           python - <<'PY'
           from pathlib import Path
           path = Path('crates/production-execution-runtime/src/lib.rs')
@@ -40,11 +44,7 @@ jobs:
           text = text.replace(old, new, 1)
           path.write_text(text)
           PY
-      - name: Format with pinned toolchain
-        run: cargo +1.85.0 fmt --all
-      - name: Commit repaired source
-        shell: bash
-        run: |
+          cargo +1.85.0 fmt --all
           git config user.name "Tayfun"
           git config user.email "tayfuna766@gmail.com"
           git add crates/production-execution-runtime/src/lib.rs
