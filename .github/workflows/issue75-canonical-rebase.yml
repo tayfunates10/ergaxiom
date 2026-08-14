@@ -1,0 +1,88 @@
+name: Issue 75 Canonical Rebase
+
+on:
+  push:
+    branches:
+      - codex/issue-75
+
+permissions:
+  contents: write
+
+jobs:
+  rebase:
+    if: github.event.head_commit.message == 'issue75-run-canonical-rebase'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: codex/issue-75
+          fetch-depth: 0
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.85.0"
+          components: rustfmt, clippy
+      - name: Rebase exactly onto canonical PR 73 head
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE_SHA='1af095d4d6dfd133c97895dfc84590a2cf3442b9'
+          OLD_HEAD="$(git rev-parse HEAD)"
+          git config user.name Tayfun
+          git config user.email tayfuna766@gmail.com
+          git fetch origin codex/release-readiness-profession-platform
+          ACTUAL_BASE="$(git rev-parse FETCH_HEAD)"
+          if [ "$ACTUAL_BASE" != "$BASE_SHA" ]; then
+            echo "Canonical PR #73 head changed: expected $BASE_SHA, got $ACTUAL_BASE" >&2
+            exit 1
+          fi
+
+          set +e
+          GIT_EDITOR=true git rebase "$BASE_SHA"
+          status=$?
+          set -e
+          while [ "$status" -ne 0 ]; do
+            mapfile -t conflicts < <(git diff --name-only --diff-filter=U)
+            if [ "${#conflicts[@]}" -eq 0 ]; then
+              echo 'Rebase stopped without resolvable lockfile conflicts.' >&2
+              git rebase --abort || true
+              exit 1
+            fi
+            for path in "${conflicts[@]}"; do
+              case "$path" in
+                Cargo.lock|apps/desktop/src-tauri/Cargo.lock)
+                  git checkout --ours -- "$path"
+                  git add "$path"
+                  ;;
+                *)
+                  echo "Source conflict requires review: $path" >&2
+                  git rebase --abort || true
+                  exit 1
+                  ;;
+              esac
+            done
+            set +e
+            if git diff --cached --quiet; then
+              GIT_EDITOR=true git rebase --skip
+            else
+              GIT_EDITOR=true git rebase --continue
+            fi
+            status=$?
+            set -e
+          done
+
+          cargo +1.85.0 check -p ergaxiom-production-execution-authority-runtime --tests
+          cargo +1.85.0 metadata --manifest-path apps/desktop/src-tauri/Cargo.toml --no-deps --format-version 1 > /dev/null
+          cargo +1.85.0 fmt --all
+          cargo +1.85.0 fmt --all -- --check
+          cargo +1.85.0 clippy --locked -p ergaxiom-production-execution-runtime --all-targets --keep-going -- -D warnings
+          cargo +1.85.0 clippy --locked -p ergaxiom-production-execution-authority-runtime --all-targets --keep-going -- -D warnings
+          cargo +1.85.0 clippy --locked -p ergaxiom-graphic-production-evidence-runtime --all-targets --keep-going -- -D warnings
+          cargo +1.85.0 test --locked -p ergaxiom-production-execution-authority-runtime --test persistent_chain
+          cargo +1.85.0 test --locked -p ergaxiom-graphic-production-evidence-runtime
+          git add Cargo.lock apps/desktop/src-tauri/Cargo.lock
+          if ! git diff --cached --quiet; then
+            git commit -m 'issue75: sync lockfiles after canonical rebase'
+          fi
+          git diff --check
+          git merge-base --is-ancestor "$BASE_SHA" HEAD
+          git push --force-with-lease=refs/heads/codex/issue-75:"$OLD_HEAD" origin HEAD:refs/heads/codex/issue-75
