@@ -4,7 +4,10 @@ on:
   pull_request:
     paths:
       - "tools/windows/controlled_trust_gate.py"
+      - "tools/release/bind_controlled_trust_gate.py"
+      - "tools/release/test_bind_controlled_trust_gate.py"
       - "schemas/windows-physical-tpm-promotion-evidence.schema.json"
+      - "schemas/windows-governance-recovery-receipt.schema.json"
       - "docs/operations/controlled-windows-trust.md"
       - ".github/workflows/controlled-windows-trust.yml"
       - "apps/windows-production-signer-provisioner/**"
@@ -18,7 +21,10 @@ on:
     branches: [main]
     paths:
       - "tools/windows/controlled_trust_gate.py"
+      - "tools/release/bind_controlled_trust_gate.py"
+      - "tools/release/test_bind_controlled_trust_gate.py"
       - "schemas/windows-physical-tpm-promotion-evidence.schema.json"
+      - "schemas/windows-governance-recovery-receipt.schema.json"
       - "docs/operations/controlled-windows-trust.md"
       - ".github/workflows/controlled-windows-trust.yml"
   workflow_dispatch:
@@ -41,8 +47,14 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: Compile verifier
-        run: python -m py_compile tools/windows/controlled_trust_gate.py
+      - name: Compile verifiers
+        run: >-
+          python -m py_compile
+          tools/windows/controlled_trust_gate.py
+          tools/release/bind_controlled_trust_gate.py
+          tools/release/test_bind_controlled_trust_gate.py
+      - name: Test release hardware-operational binding
+        run: python -m unittest tools.release.test_bind_controlled_trust_gate
       - name: Prove missing evidence stays UNKNOWN
         shell: bash
         run: |
@@ -125,14 +137,19 @@ jobs:
       - name: Confirm no physical evidence is emitted
         shell: pwsh
         run: |
-          python tools/windows/controlled_trust_gate.py verify `
-            --physical "$env:RUNNER_TEMP\absent-physical.json" `
-            --governance "$env:RUNNER_TEMP\absent-governance.json" `
-            --installation "$env:RUNNER_TEMP\absent-installation.json" `
-            --recovery "$env:RUNNER_TEMP\absent-recovery.json" `
-            --output "$env:RUNNER_TEMP\gate.json"
-          if ($LASTEXITCODE -ne 2) { throw "HOSTED_RUNNER_FAIL_CLOSED_REJECTED" }
-          $gate = Get-Content "$env:RUNNER_TEMP\gate.json" -Raw | ConvertFrom-Json
+          $gatePath = Join-Path $env:RUNNER_TEMP "gate.json"
+          $arguments = @(
+            "tools/windows/controlled_trust_gate.py",
+            "verify",
+            "--physical", (Join-Path $env:RUNNER_TEMP "absent-physical.json"),
+            "--governance", (Join-Path $env:RUNNER_TEMP "absent-governance.json"),
+            "--installation", (Join-Path $env:RUNNER_TEMP "absent-installation.json"),
+            "--recovery", (Join-Path $env:RUNNER_TEMP "absent-recovery.json"),
+            "--output", $gatePath
+          )
+          $process = Start-Process -FilePath "python" -ArgumentList $arguments -NoNewWindow -Wait -PassThru
+          if ($process.ExitCode -ne 2) { throw "HOSTED_RUNNER_FAIL_CLOSED_REJECTED" }
+          $gate = Get-Content $gatePath -Raw | ConvertFrom-Json
           if ($gate.hardware_operational_gate -ne "UNKNOWN" -or $gate.hardware_operational_eligible) {
             throw "HOSTED_RUNNER_WAS_PROMOTED"
           }
