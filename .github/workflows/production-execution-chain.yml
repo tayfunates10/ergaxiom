@@ -6,6 +6,7 @@ on:
       - codex/issue-75
   pull_request:
     paths:
+      - "crates/production-execution-authority-runtime/**"
       - "crates/production-execution-runtime/**"
       - "crates/backend-issuance-runtime/**"
       - "apps/desktop/src-tauri/**"
@@ -36,21 +37,14 @@ jobs:
           echo "$status" > "$RUNNER_TEMP/issue75-rustfmt-status"
           cargo fmt --all
           exit 0
-      - name: Clippy
-        shell: bash
-        run: |
-          set +e
-          output="$(cargo clippy -p ergaxiom-production-execution-runtime --all-targets -- -D warnings 2>&1)"
-          status=$?
-          if [ "$status" -ne 0 ]; then
-            escaped="${output//'%'/'%25'}"
-            escaped="${escaped//$'\r'/'%0D'}"
-            escaped="${escaped//$'\n'/'%0A'}"
-            echo "::error title=production runtime clippy failed::$escaped"
-            exit "$status"
-          fi
+      - name: Clippy production execution store
+        run: cargo clippy -p ergaxiom-production-execution-runtime --all-targets -- -D warnings
+      - name: Clippy persistent production authority
+        run: cargo clippy -p ergaxiom-production-execution-authority-runtime --all-targets -- -D warnings
       - name: Runtime tests
         run: cargo test -p ergaxiom-production-execution-runtime
+      - name: Authority tests
+        run: cargo test -p ergaxiom-production-execution-authority-runtime
       - name: Backend persistent issuance regression
         run: cargo test -p ergaxiom-backend-issuance-runtime --test persistent_production_capability
       - name: Enforce formatting gate
