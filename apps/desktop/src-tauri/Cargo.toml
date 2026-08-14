@@ -19,6 +19,7 @@ path = "src/main.rs"
 tauri-build = { version = "=2.6.3", features = [] }
 
 [dependencies]
+ed25519-dalek = "2.1"
 ergaxiom-attestation-issuance-runtime = { path = "../../../crates/attestation-issuance-runtime" }
 ergaxiom-attestation-runtime = { path = "../../../crates/attestation-runtime" }
 ergaxiom-backend-issuance-runtime = { path = "../../../crates/backend-issuance-runtime" }
@@ -33,6 +34,7 @@ ergaxiom-evidence-runtime = { path = "../../../crates/evidence-runtime" }
 ergaxiom-execution-runtime = { path = "../../../crates/execution-runtime" }
 ergaxiom-graphic-designer-twin-runtime = { path = "../../../crates/graphic-designer-twin-runtime" }
 ergaxiom-graphic-production-evidence-runtime = { path = "../../../crates/graphic-production-evidence-runtime" }
+ergaxiom-inkscape-adapter-runtime = { path = "../../../crates/inkscape-adapter-runtime" }
 ergaxiom-intent-contract-compiler-runtime = { path = "../../../crates/intent-contract-compiler-runtime" }
 ergaxiom-occupational-twin-runtime = { path = "../../../crates/occupational-twin-runtime" }
 ergaxiom-operator-plan-runtime = { path = "../../../crates/operator-plan-runtime" }
