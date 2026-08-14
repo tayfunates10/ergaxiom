@@ -1,0 +1,96 @@
+name: Issue 75 Final Source Repair
+
+on:
+  push:
+    branches:
+      - codex/issue-75
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    if: github.event.head_commit.message == 'issue75: run final source repair'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: codex/issue-75
+          fetch-depth: 0
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: '1.85.0'
+          components: rustfmt
+      - name: Apply exact fail-closed source repairs
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+
+          def replace_once(path, old, new):
+              p = Path(path)
+              text = p.read_text()
+              if old not in text:
+                  raise SystemExit(f'anchor not found in {path}: {old[:80]!r}')
+              p.write_text(text.replace(old, new, 1))
+
+          # Evidence Bundle carries the exact OperationReceipt JSON bytes, not a digest-only URI.
+          replace_once(
+              'apps/desktop/src-tauri/src/production_pipeline.rs',
+              '    ProductionSignerBoundCapabilityToken,\n',
+              '',
+          )
+          replace_once(
+              'apps/desktop/src-tauri/src/production_pipeline.rs',
+              'use ergaxiom_occupational_twin_runtime::OperationReceipt;\n',
+              '',
+          )
+          replace_once(
+              'apps/desktop/src-tauri/src/production_pipeline.rs',
+              '            "uri": format!("bundle://artifacts/execution_receipt.{}", receipt.operation_id),\n',
+              '            "uri": format!("ergaxiom-inline-hex:{}", hex_encode(&bytes)),\n',
+          )
+          replace_once(
+              'apps/desktop/src-tauri/src/production_pipeline.rs',
+              'fn random_nonce() -> Result<String, ProductionExecutionBoundaryError> {\n',
+              '''fn hex_encode(bytes: &[u8]) -> String {\n    let mut encoded = String::with_capacity(bytes.len() * 2);\n    for byte in bytes {\n        use std::fmt::Write as _;\n        let _ = write!(&mut encoded, "{byte:02x}");\n    }\n    encoded\n}\n\nfn random_nonce() -> Result<String, ProductionExecutionBoundaryError> {\n''',
+          )
+
+          # Certified and RolledBack restart recovery both re-bind exact persisted Evidence receipts.
+          replace_once(
+              'apps/desktop/src-tauri/src/commands.rs',
+              '            if state.stage == ProductionExecutionStage::Certified {\n                verify_recovered_certified_chain(\n',
+              '''            if matches!(\n                state.stage,\n                ProductionExecutionStage::Certified | ProductionExecutionStage::RolledBack\n            ) {\n                let bundle = state\n                    .evidence_bundle\n                    .as_ref()\n                    .ok_or(ProductionExecutionBoundaryError::TrustLeaseRejected)?;\n                let executed_snapshot = state\n                    .executed_snapshot\n                    .as_ref()\n                    .ok_or(ProductionExecutionBoundaryError::TrustLeaseRejected)?;\n                authority\n                    .verify_execution_evidence_binding(bundle, executed_snapshot)\n                    .map_err(ProductionExecutionBoundaryError::from)?;\n                verify_recovered_certified_chain(\n''',
+          )
+          replace_once(
+              'apps/desktop/src-tauri/src/commands.rs',
+              '''            ProductionExecutionStage::RolledBack => Err(\n                "rolled-back production chain requires certified-chain recovery verification"\n                    .to_owned(),\n            ),\n''',
+              '''            ProductionExecutionStage::RolledBack => {\n                let certified = state\n                    .final_snapshot\n                    .ok_or_else(|| "recovered chain is missing certified snapshot".to_owned())?;\n                let approval = state\n                    .approval\n                    .ok_or_else(|| "recovered chain is missing approval record".to_owned())?;\n                let approve = state\n                    .approve_receipt\n                    .ok_or_else(|| "recovered chain is missing approval receipt".to_owned())?;\n                let execute = state\n                    .execute_receipt\n                    .ok_or_else(|| "recovered chain is missing execute receipt".to_owned())?;\n                let rollback = state\n                    .rollback_receipt\n                    .ok_or_else(|| "recovered chain is missing rollback receipt".to_owned())?;\n                let snapshot = terminal_snapshot(&certified, DesktopControlStatus::RolledBack)?;\n                if rollback.post_snapshot_digest != snapshot.snapshot_digest {\n                    return Err("recovered rollback snapshot digest mismatch".to_owned());\n                }\n                Self::from_recovered(\n                    snapshot,\n                    Some(approval),\n                    vec![approve, execute, rollback],\n                )\n            }\n''',
+          )
+
+          # A rollback preserves the certified chain and must remain independently recoverable.
+          replace_once(
+              'crates/production-execution-runtime/src/lib.rs',
+              '''    if state.stage != ProductionExecutionStage::Certified {\n        return Err(ProductionExecutionVerifyError::NotCertified);\n    }\n''',
+              '''    if !matches!(\n        state.stage,\n        ProductionExecutionStage::Certified | ProductionExecutionStage::RolledBack\n    ) {\n        return Err(ProductionExecutionVerifyError::NotCertified);\n    }\n''',
+          )
+
+          # Public signer status reflects actual live production issuance readiness only.
+          replace_once(
+              'apps/desktop/src-tauri/src/production_startup.rs',
+              '''    status.last_identity_proof_epoch_s = last_identity_proof_epoch_s;\n    status\n}\n''',
+              '''    status.last_identity_proof_epoch_s = last_identity_proof_epoch_s;\n    status.production_issuance_enabled = phase == ProductionSignerStartupPhase::LiveVerified\n        && live_service_identity_verified\n        && !recovery_required;\n    status\n}\n''',
+          )
+          PY
+          cargo +1.85.0 fmt --all
+          cargo +1.85.0 check -p ergaxiom-production-execution-runtime --all-targets
+          cargo +1.85.0 check -p ergaxiom-production-execution-authority-runtime --all-targets
+          cargo +1.85.0 check -p ergaxiom-graphic-production-evidence-runtime --all-targets
+          rm .github/workflows/issue75-final-source-repair.yml
+          git config user.name 'Tayfun'
+          git config user.email 'tayfuna766@gmail.com'
+          git add -A
+          git diff --cached --check
+          git commit -m 'issue75: close receipt and rollback recovery bindings'
+          git push origin HEAD:codex/issue-75
