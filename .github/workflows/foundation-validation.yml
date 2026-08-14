@@ -75,7 +75,7 @@ jobs:
           python tools/validate_foundation.py 2>&1 | tee "$RUNNER_TEMP/foundation-validation.log"
 
       - name: Reject whitespace and patch errors
-        run: git diff --check HEAD^
+        run: git diff --check
 
       - name: Upload foundation diagnostics
         if: always()
