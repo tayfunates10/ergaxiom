@@ -251,6 +251,7 @@ impl DesktopControlState {
         response_from_session(&session)
     }
 
+    #[cfg(test)]
     pub fn approve(
         &self,
         request: DesktopApprovalRequest,
