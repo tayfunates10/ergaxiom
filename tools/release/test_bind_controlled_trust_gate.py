@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import importlib.util
 import json
 import sys
@@ -57,16 +58,49 @@ class ControlledTrustReleaseBindingTests(unittest.TestCase):
         self.assertIn("AUTHENTICODE_NOT_VERIFIED", bound["blocking_reasons"])
         self.assertIn("INSTALLER_PROVENANCE_NOT_VERIFIED", bound["blocking_reasons"])
 
-    def test_cli_without_evidence_is_deterministic(self) -> None:
+    def test_cli_without_evidence_is_deterministic_and_rebinds_checksum(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
-            manifest = root / "manifest.json"
-            manifest.write_text(json.dumps(self.base_manifest()), encoding="utf-8")
+            source = root / "source.json"
+            source.write_text(json.dumps(self.base_manifest()), encoding="utf-8")
             first = root / "first.json"
             second = root / "second.json"
-            self.assertEqual(0, MODULE.main(["--manifest", str(manifest), "--output", str(first)]))
-            self.assertEqual(0, MODULE.main(["--manifest", str(manifest), "--output", str(second)]))
+            checksum_a = root / "SHA256SUMS-a"
+            checksum_b = root / "SHA256SUMS-b"
+            checksum_a.write_text(f"{'0' * 64}  first.json\n{'1' * 64}  artifact.exe\n", encoding="utf-8")
+            checksum_b.write_text(f"{'0' * 64}  second.json\n{'1' * 64}  artifact.exe\n", encoding="utf-8")
+            self.assertEqual(
+                0,
+                MODULE.main(
+                    [
+                        "--manifest",
+                        str(source),
+                        "--output",
+                        str(first),
+                        "--checksums",
+                        str(checksum_a),
+                    ]
+                ),
+            )
+            self.assertEqual(
+                0,
+                MODULE.main(
+                    [
+                        "--manifest",
+                        str(source),
+                        "--output",
+                        str(second),
+                        "--checksums",
+                        str(checksum_b),
+                    ]
+                ),
+            )
             self.assertEqual(first.read_bytes(), second.read_bytes())
+            expected_first = hashlib.sha256(first.read_bytes()).hexdigest()
+            expected_second = hashlib.sha256(second.read_bytes()).hexdigest()
+            self.assertIn(f"{expected_first}  first.json", checksum_a.read_text(encoding="utf-8"))
+            self.assertIn(f"{expected_second}  second.json", checksum_b.read_text(encoding="utf-8"))
+            self.assertIn(f"{'1' * 64}  artifact.exe", checksum_a.read_text(encoding="utf-8"))
 
     def test_partial_controlled_evidence_is_rejected(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
