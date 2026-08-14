@@ -31,6 +31,23 @@ jobs:
       - name: Rust format
         run: cargo fmt --all -- --check
 
+  dependency-lock-refresh:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Resolve patched parser versions
+        run: |
+          cargo update -p quick-xml --precise 0.41.0
+          cargo update -p lopdf --precise 0.42.0
+          cargo check -p ergaxiom-inkscape-adapter-runtime -p ergaxiom-brand-compliant-export-certified-path-runtime -p ergaxiom-print-ready-poster-preflight-certified-path-runtime
+      - uses: actions/upload-artifact@v4
+        with:
+          name: issue-78-patched-cargo-lock
+          path: Cargo.lock
+          if-no-files-found: error
+          retention-days: 1
+
   unsigned-candidate-is-blocked:
     runs-on: windows-2025
     env:
