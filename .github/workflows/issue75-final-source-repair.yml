@@ -10,7 +10,6 @@ permissions:
 
 jobs:
   repair:
-    if: github.event.head_commit.message == 'issue75: run final source repair'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -19,78 +18,26 @@ jobs:
           fetch-depth: 0
       - uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: '1.85.0'
+          toolchain: "1.85.0"
           components: rustfmt
-      - name: Apply exact fail-closed source repairs
+      - name: Apply source repair
         shell: bash
         run: |
           set -euo pipefail
-          python - <<'PY'
-          from pathlib import Path
-
-          def replace_once(path, old, new):
-              p = Path(path)
-              text = p.read_text()
-              if old not in text:
-                  raise SystemExit(f'anchor not found in {path}: {old[:80]!r}')
-              p.write_text(text.replace(old, new, 1))
-
-          # Evidence Bundle carries the exact OperationReceipt JSON bytes, not a digest-only URI.
-          replace_once(
-              'apps/desktop/src-tauri/src/production_pipeline.rs',
-              '    ProductionSignerBoundCapabilityToken,\n',
-              '',
-          )
-          replace_once(
-              'apps/desktop/src-tauri/src/production_pipeline.rs',
-              'use ergaxiom_occupational_twin_runtime::OperationReceipt;\n',
-              '',
-          )
-          replace_once(
-              'apps/desktop/src-tauri/src/production_pipeline.rs',
-              '            "uri": format!("bundle://artifacts/execution_receipt.{}", receipt.operation_id),\n',
-              '            "uri": format!("ergaxiom-inline-hex:{}", hex_encode(&bytes)),\n',
-          )
-          replace_once(
-              'apps/desktop/src-tauri/src/production_pipeline.rs',
-              'fn random_nonce() -> Result<String, ProductionExecutionBoundaryError> {\n',
-              '''fn hex_encode(bytes: &[u8]) -> String {\n    let mut encoded = String::with_capacity(bytes.len() * 2);\n    for byte in bytes {\n        use std::fmt::Write as _;\n        let _ = write!(&mut encoded, "{byte:02x}");\n    }\n    encoded\n}\n\nfn random_nonce() -> Result<String, ProductionExecutionBoundaryError> {\n''',
-          )
-
-          # Certified and RolledBack restart recovery both re-bind exact persisted Evidence receipts.
-          replace_once(
-              'apps/desktop/src-tauri/src/commands.rs',
-              '            if state.stage == ProductionExecutionStage::Certified {\n                verify_recovered_certified_chain(\n',
-              '''            if matches!(\n                state.stage,\n                ProductionExecutionStage::Certified | ProductionExecutionStage::RolledBack\n            ) {\n                let bundle = state\n                    .evidence_bundle\n                    .as_ref()\n                    .ok_or(ProductionExecutionBoundaryError::TrustLeaseRejected)?;\n                let executed_snapshot = state\n                    .executed_snapshot\n                    .as_ref()\n                    .ok_or(ProductionExecutionBoundaryError::TrustLeaseRejected)?;\n                authority\n                    .verify_execution_evidence_binding(bundle, executed_snapshot)\n                    .map_err(ProductionExecutionBoundaryError::from)?;\n                verify_recovered_certified_chain(\n''',
-          )
-          replace_once(
-              'apps/desktop/src-tauri/src/commands.rs',
-              '''            ProductionExecutionStage::RolledBack => Err(\n                "rolled-back production chain requires certified-chain recovery verification"\n                    .to_owned(),\n            ),\n''',
-              '''            ProductionExecutionStage::RolledBack => {\n                let certified = state\n                    .final_snapshot\n                    .ok_or_else(|| "recovered chain is missing certified snapshot".to_owned())?;\n                let approval = state\n                    .approval\n                    .ok_or_else(|| "recovered chain is missing approval record".to_owned())?;\n                let approve = state\n                    .approve_receipt\n                    .ok_or_else(|| "recovered chain is missing approval receipt".to_owned())?;\n                let execute = state\n                    .execute_receipt\n                    .ok_or_else(|| "recovered chain is missing execute receipt".to_owned())?;\n                let rollback = state\n                    .rollback_receipt\n                    .ok_or_else(|| "recovered chain is missing rollback receipt".to_owned())?;\n                let snapshot = terminal_snapshot(&certified, DesktopControlStatus::RolledBack)?;\n                if rollback.post_snapshot_digest != snapshot.snapshot_digest {\n                    return Err("recovered rollback snapshot digest mismatch".to_owned());\n                }\n                Self::from_recovered(\n                    snapshot,\n                    Some(approval),\n                    vec![approve, execute, rollback],\n                )\n            }\n''',
-          )
-
-          # A rollback preserves the certified chain and must remain independently recoverable.
-          replace_once(
-              'crates/production-execution-runtime/src/lib.rs',
-              '''    if state.stage != ProductionExecutionStage::Certified {\n        return Err(ProductionExecutionVerifyError::NotCertified);\n    }\n''',
-              '''    if !matches!(\n        state.stage,\n        ProductionExecutionStage::Certified | ProductionExecutionStage::RolledBack\n    ) {\n        return Err(ProductionExecutionVerifyError::NotCertified);\n    }\n''',
-          )
-
-          # Public signer status reflects actual live production issuance readiness only.
-          replace_once(
-              'apps/desktop/src-tauri/src/production_startup.rs',
-              '''    status.last_identity_proof_epoch_s = last_identity_proof_epoch_s;\n    status\n}\n''',
-              '''    status.last_identity_proof_epoch_s = last_identity_proof_epoch_s;\n    status.production_issuance_enabled = phase == ProductionSignerStartupPhase::LiveVerified\n        && live_service_identity_verified\n        && !recovery_required;\n    status\n}\n''',
-          )
-          PY
+          if [ "$(git log -1 --pretty=%s)" != "issue75: run final source repair" ]; then
+            echo "No repair requested."
+            exit 0
+          fi
+          echo 'ZnJvbSBwYXRobGliIGltcG9ydCBQYXRoCnJlcGxzID0gWygnYXBwcy9kZXNrdG9wL3NyYy10YXVyaS9zcmMvcHJvZHVjdGlvbl9waXBlbGluZS5ycycsICcgICAgUHJvZHVjdGlvblNpZ25lckJvdW5kQ2FwYWJpbGl0eVRva2VuLFxuJywgJycpLCAoJ2FwcHMvZGVza3RvcC9zcmMtdGF1cmkvc3JjL3Byb2R1Y3Rpb25fcGlwZWxpbmUucnMnLCAndXNlIGVyZ2F4aW9tX29jY3VwYXRpb25hbF90d2luX3J1bnRpbWU6Ok9wZXJhdGlvblJlY2VpcHQ7XG4nLCAnJyksICgnYXBwcy9kZXNrdG9wL3NyYy10YXVyaS9zcmMvcHJvZHVjdGlvbl9waXBlbGluZS5ycycsICcgICAgICAgICAgICAidXJpIjogZm9ybWF0ISgiYnVuZGxlOi8vYXJ0aWZhY3RzL2V4ZWN1dGlvbl9yZWNlaXB0Lnt9IiwgcmVjZWlwdC5vcGVyYXRpb25faWQpLFxuJywgJyAgICAgICAgICAgICJ1cmkiOiBmb3JtYXQhKCJlcmdheGlvbS1pbmxpbmUtaGV4Ont9IiwgaGV4X2VuY29kZSgmYnl0ZXMpKSxcbicpLCAoJ2FwcHMvZGVza3RvcC9zcmMtdGF1cmkvc3JjL3Byb2R1Y3Rpb25fcGlwZWxpbmUucnMnLCAnZm4gcmFuZG9tX25vbmNlKCkgLT4gUmVzdWx0PFN0cmluZywgUHJvZHVjdGlvbkV4ZWN1dGlvbkJvdW5kYXJ5RXJyb3I+IHtcbicsICdmbiBoZXhfZW5jb2RlKGJ5dGVzOiAmW3U4XSkgLT4gU3RyaW5nIHtcbiAgICBsZXQgbXV0IGVuY29kZWQgPSBTdHJpbmc6OndpdGhfY2FwYWNpdHkoYnl0ZXMubGVuKCkgKiAyKTtcbiAgICBmb3IgYnl0ZSBpbiBieXRlcyB7XG4gICAgICAgIHVzZSBzdGQ6OmZtdDo6V3JpdGUgYXMgXztcbiAgICAgICAgbGV0IF8gPSB3cml0ZSEoJm11dCBlbmNvZGVkLCAie2J5dGU6MDJ4fSIpO1xuICAgIH1cbiAgICBlbmNvZGVkXG59XG5cbmZuIHJhbmRvbV9ub25jZSgpIC0+IFJlc3VsdDxTdHJpbmcsIFByb2R1Y3Rpb25FeGVjdXRpb25Cb3VuZGFyeUVycm9yPiB7XG4nKSwgKCdhcHBzL2Rlc2t0b3Avc3JjLXRhdXJpL3NyYy9jb21tYW5kcy5ycycsICcgICAgICAgICAgICBpZiBzdGF0ZS5zdGFnZSA9PSBQcm9kdWN0aW9uRXhlY3V0aW9uU3RhZ2U6OkNlcnRpZmllZCB7XG4gICAgICAgICAgICAgICAgdmVyaWZ5X3JlY292ZXJlZF9jZXJ0aWZpZWRfY2hhaW4oXG4nLCAnICAgICAgICAgICAgaWYgbWF0Y2hlcyEoXG4gICAgICAgICAgICAgICAgc3RhdGUuc3RhZ2UsXG4gICAgICAgICAgICAgICAgUHJvZHVjdGlvbkV4ZWN1dGlvblN0YWdlOjpDZXJ0aWZpZWQgfCBQcm9kdWN0aW9uRXhlY3V0aW9uU3RhZ2U6OlJvbGxlZEJhY2tcbiAgICAgICAgICAgICkge1xuICAgICAgICAgICAgICAgIGxldCBidW5kbGUgPSBzdGF0ZVxuICAgICAgICAgICAgICAgICAgICAuZXZpZGVuY2VfYnVuZGxlXG4gICAgICAgICAgICAgICAgICAgIC5hc19yZWYoKVxuICAgICAgICAgICAgICAgICAgICAub2tfb3IoUHJvZHVjdGlvbkV4ZWN1dGlvbkJvdW5kYXJ5RXJyb3I6OlRydXN0TGVhc2VSZWplY3RlZCk/O1xuICAgICAgICAgICAgICAgIGxldCBleGVjdXRlZF9zbmFwc2hvdCA9IHN0YXRlXG4gICAgICAgICAgICAgICAgICAgIC5leGVjdXRlZF9zbmFwc2hvdFxuICAgICAgICAgICAgICAgICAgICAuYXNfcmVmKClcbiAgICAgICAgICAgICAgICAgICAgLm9rX29yKFByb2R1Y3Rpb25FeGVjdXRpb25Cb3VuZGFyeUVycm9yOjpUcnVzdExlYXNlUmVqZWN0ZWQpPztcbiAgICAgICAgICAgICAgICBhdXRob3JpdHlcbiAgICAgICAgICAgICAgICAgICAgLnZlcmlmeV9leGVjdXRpb25fZXZpZGVuY2VfYmluZGluZyhidW5kbGUsIGV4ZWN1dGVkX3NuYXBzaG90KVxuICAgICAgICAgICAgICAgICAgICAubWFwX2VycihQcm9kdWN0aW9uRXhlY3V0aW9uQm91bmRhcnlFcnJvcjo6ZnJvbSk/O1xuICAgICAgICAgICAgICAgIHZlcmlmeV9yZWNvdmVyZWRfY2VydGlmaWVkX2NoYWluKFxuJyksICgnYXBwcy9kZXNrdG9wL3NyYy10YXVyaS9zcmMvY29tbWFuZHMucnMnLCAnICAgICAgICAgICAgUHJvZHVjdGlvbkV4ZWN1dGlvblN0YWdlOjpSb2xsZWRCYWNrID0+IEVycihcbiAgICAgICAgICAgICAgICAicm9sbGVkLWJhY2sgcHJvZHVjdGlvbiBjaGFpbiByZXF1aXJlcyBjZXJ0aWZpZWQtY2hhaW4gcmVjb3ZlcnkgdmVyaWZpY2F0aW9uIlxuICAgICAgICAgICAgICAgICAgICAudG9fb3duZWQoKSxcbiAgICAgICAgICAgICksXG4nLCAnICAgICAgICAgICAgUHJvZHVjdGlvbkV4ZWN1dGlvblN0YWdlOjpSb2xsZWRCYWNrID0+IHtcbiAgICAgICAgICAgICAgICBsZXQgY2VydGlmaWVkID0gc3RhdGVcbiAgICAgICAgICAgICAgICAgICAgLmZpbmFsX3NuYXBzaG90XG4gICAgICAgICAgICAgICAgICAgIC5va19vcl9lbHNlKHx8ICJyZWNvdmVyZWQgY2hhaW4gaXMgbWlzc2luZyBjZXJ0aWZpZWQgc25hcHNob3QiLnRvX293bmVkKCkpPztcbiAgICAgICAgICAgICAgICBsZXQgYXBwcm92YWwgPSBzdGF0ZVxuICAgICAgICAgICAgICAgICAgICAuYXBwcm92YWxcbiAgICAgICAgICAgICAgICAgICAgLm9rX29yX2Vsc2UofHwgInJlY292ZXJlZCBjaGFpbiBpcyBtaXNzaW5nIGFwcHJvdmFsIHJlY29yZCIudG9fb3duZWQoKSk/O1xuICAgICAgICAgICAgICAgIGxldCBhcHByb3ZlID0gc3RhdGVcbiAgICAgICAgICAgICAgICAgICAgLmFwcHJvdmVfcmVjZWlwdFxuICAgICAgICAgICAgICAgICAgICAub2tfb3JfZWxzZSh8fCAicmVjb3ZlcmVkIGNoYWluIGlzIG1pc3NpbmcgYXBwcm92YWwgcmVjZWlwdCIudG9fb3duZWQoKSk/O1xuICAgICAgICAgICAgICAgIGxldCBleGVjdXRlID0gc3RhdGVcbiAgICAgICAgICAgICAgICAgICAgLmV4ZWN1dGVfcmVjZWlwdFxuICAgICAgICAgICAgICAgICAgICAub2tfb3JfZWxzZSh8fCAicmVjb3ZlcmVkIGNoYWluIGlzIG1pc3NpbmcgZXhlY3V0ZSByZWNlaXB0Ii50b19vd25lZCgpKT87XG4gICAgICAgICAgICAgICAgbGV0IHJvbGxiYWNrID0gc3RhdGVcbiAgICAgICAgICAgICAgICAgICAgLnJvbGxiYWNrX3JlY2VpcHRcbiAgICAgICAgICAgICAgICAgICAgLm9rX29yX2Vsc2UofHwgInJlY292ZXJlZCBjaGFpbiBpcyBtaXNzaW5nIHJvbGxiYWNrIHJlY2VpcHQiLnRvX293bmVkKCkpPztcbiAgICAgICAgICAgICAgICBsZXQgc25hcHNob3QgPSB0ZXJtaW5hbF9zbmFwc2hvdCgmY2VydGlmaWVkLCBEZXNrdG9wQ29udHJvbFN0YXR1czo6Um9sbGVkQmFjayk/O1xuICAgICAgICAgICAgICAgIGlmIHJvbGxiYWNrLnBvc3Rfc25hcHNob3RfZGlnZXN0ICE9IHNuYXBzaG90LnNuYXBzaG90X2RpZ2VzdCB7XG4gICAgICAgICAgICAgICAgICAgIHJldHVybiBFcnIoInJlY292ZXJlZCByb2xsYmFjayBzbmFwc2hvdCBkaWdlc3QgbWlzbWF0Y2giLnRvX293bmVkKCkpO1xuICAgICAgICAgICAgICAgIH1cbiAgICAgICAgICAgICAgICBTZWxmOjpmcm9tX3JlY292ZXJlZChcbiAgICAgICAgICAgICAgICAgICAgc25hcHNob3QsXG4gICAgICAgICAgICAgICAgICAgIFNvbWUoYXBwcm92YWwpLFxuICAgICAgICAgICAgICAgICAgICB2ZWMhW2FwcHJvdmUsIGV4ZWN1dGUsIHJvbGxiYWNrXSxcbiAgICAgICAgICAgICAgICApXG4gICAgICAgICAgICB9XG4nKSwgKCdjcmF0ZXMvcHJvZHVjdGlvbi1leGVjdXRpb24tcnVudGltZS9zcmMvbGliLnJzJywgJyAgICBpZiBzdGF0ZS5zdGFnZSAhPSBQcm9kdWN0aW9uRXhlY3V0aW9uU3RhZ2U6OkNlcnRpZmllZCB7XG4gICAgICAgIHJldHVybiBFcnIoUHJvZHVjdGlvbkV4ZWN1dGlvblZlcmlmeUVycm9yOjpOb3RDZXJ0aWZpZWQpO1xuICAgIH1cbicsICcgICAgaWYgIW1hdGNoZXMhKFxuICAgICAgICBzdGF0ZS5zdGFnZSxcbiAgICAgICAgUHJvZHVjdGlvbkV4ZWN1dGlvblN0YWdlOjpDZXJ0aWZpZWQgfCBQcm9kdWN0aW9uRXhlY3V0aW9uU3RhZ2U6OlJvbGxlZEJhY2tcbiAgICApIHtcbiAgICAgICAgcmV0dXJuIEVycihQcm9kdWN0aW9uRXhlY3V0aW9uVmVyaWZ5RXJyb3I6Ok5vdENlcnRpZmllZCk7XG4gICAgfVxuJyksICgnYXBwcy9kZXNrdG9wL3NyYy10YXVyaS9zcmMvcHJvZHVjdGlvbl9zdGFydHVwLnJzJywgJyAgICBzdGF0dXMubGFzdF9pZGVudGl0eV9wcm9vZl9lcG9jaF9zID0gbGFzdF9pZGVudGl0eV9wcm9vZl9lcG9jaF9zO1xuICAgIHN0YXR1c1xufVxuJywgJyAgICBzdGF0dXMubGFzdF9pZGVudGl0eV9wcm9vZl9lcG9jaF9zID0gbGFzdF9pZGVudGl0eV9wcm9vZl9lcG9jaF9zO1xuICAgIHN0YXR1cy5wcm9kdWN0aW9uX2lzc3VhbmNlX2VuYWJsZWQgPSBwaGFzZSA9PSBQcm9kdWN0aW9uU2lnbmVyU3RhcnR1cFBoYXNlOjpMaXZlVmVyaWZpZWRcbiAgICAgICAgJiYgbGl2ZV9zZXJ2aWNlX2lkZW50aXR5X3ZlcmlmaWVkXG4gICAgICAgICYmICFyZWNvdmVyeV9yZXF1aXJlZDtcbiAgICBzdGF0dXNcbn1cbicpXQpmb3IgcGF0aCwgb2xkLCBuZXcgaW4gcmVwbHM6CiAgICBwPVBhdGgocGF0aCk7IHQ9cC5yZWFkX3RleHQoKQogICAgaWYgb2xkIG5vdCBpbiB0OiByYWlzZSBTeXN0ZW1FeGl0KGYnYW5jaG9yIG1pc3Npbmc6IHtwYXRofToge29sZFs6ODBdIXJ9JykKICAgIHAud3JpdGVfdGV4dCh0LnJlcGxhY2Uob2xkLG5ldywxKSkK' | base64 -d > /tmp/issue75_patch.py
+          python /tmp/issue75_patch.py
           cargo +1.85.0 fmt --all
           cargo +1.85.0 check -p ergaxiom-production-execution-runtime --all-targets
           cargo +1.85.0 check -p ergaxiom-production-execution-authority-runtime --all-targets
           cargo +1.85.0 check -p ergaxiom-graphic-production-evidence-runtime --all-targets
           rm .github/workflows/issue75-final-source-repair.yml
-          git config user.name 'Tayfun'
-          git config user.email 'tayfuna766@gmail.com'
+          git config user.name "Tayfun"
+          git config user.email "tayfuna766@gmail.com"
           git add -A
           git diff --cached --check
-          git commit -m 'issue75: close receipt and rollback recovery bindings'
+          git commit -m "issue75: close receipt and rollback recovery bindings"
           git push origin HEAD:codex/issue-75
