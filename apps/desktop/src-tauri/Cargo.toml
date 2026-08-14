@@ -37,6 +37,7 @@ ergaxiom-occupational-twin-runtime = { path = "../../../crates/occupational-twin
 ergaxiom-operator-plan-runtime = { path = "../../../crates/operator-plan-runtime" }
 ergaxiom-operator-simulation-runtime = { path = "../../../crates/operator-simulation-runtime" }
 ergaxiom-print-ready-poster-preflight-certified-path-runtime = { path = "../../../crates/print-ready-poster-preflight-certified-path-runtime" }
+ergaxiom-production-execution-authority-runtime = { path = "../../../crates/production-execution-authority-runtime" }
 ergaxiom-production-execution-runtime = { path = "../../../crates/production-execution-runtime" }
 ergaxiom-proof-kernel = { path = "../../../crates/proof-kernel" }
 ergaxiom-typed-planner-runtime = { path = "../../../crates/typed-planner-runtime" }
