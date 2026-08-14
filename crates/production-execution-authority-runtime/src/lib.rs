@@ -119,14 +119,8 @@ impl PersistentProductionExecutionAuthority {
             BackendIssuanceKind::Capability,
             trusted_now_epoch_s,
         )?;
-
-        // Persist the terminal intent reservation before the production signer side effect. A
-        // signer rejection or process restart cannot turn the same approved intent into a second
-        // signing attempt.
         self.policy_store.commit(&self.policy)?;
         let token = capability_authority.issue(draft)?;
-
-        // Do not expose the signer result until it is also part of the immutable execution chain.
         self.chain_store
             .record_capability_issuance(authorization.clone(), token.clone())?;
         Ok(AuthorizedProductionCapabilityIssuance {
@@ -171,10 +165,6 @@ impl PersistentProductionExecutionAuthority {
             &self.executor_id,
             self.device_id.as_deref(),
         )?;
-
-        // Persist before returning the receipt to the executor boundary. If persistence fails, no
-        // caller receives an authorization receipt and execution must not begin. If the process
-        // crashes after this commit, restart recovery sees the token as consumed and rejects replay.
         self.chain_store
             .record_capability_consumption(token_id, receipt.clone())?;
         Ok(receipt)
@@ -240,9 +230,6 @@ impl PersistentProductionExecutionAuthority {
             BackendIssuanceKind::Attestation,
             trusted_now_epoch_s,
         )?;
-
-        // As with Capability issuance, persist consumption before the signer side effect. There is
-        // no direct-Ed25519, DPAPI, software-CNG or in-process retry path here.
         self.policy_store.commit(&self.policy)?;
         let package = attestation_authority.issue(
             compiled_contract,
@@ -267,6 +254,22 @@ impl PersistentProductionExecutionAuthority {
             issuance.package,
             final_snapshot,
         )?;
+        Ok(())
+    }
+
+    pub fn record_cancellation(
+        &mut self,
+        receipt: DesktopCommandReceipt,
+    ) -> Result<(), PersistentProductionExecutionAuthorityError> {
+        self.chain_store.record_cancellation(receipt)?;
+        Ok(())
+    }
+
+    pub fn record_rollback(
+        &mut self,
+        receipt: DesktopCommandReceipt,
+    ) -> Result<(), PersistentProductionExecutionAuthorityError> {
+        self.chain_store.record_rollback(receipt)?;
         Ok(())
     }
 
