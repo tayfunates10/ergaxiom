@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   repair:
-    if: ${{ github.event.head_commit.message == 'issue75-run-source-repair-v2' }}
+    if: ${{ github.event.head_commit.message == 'issue75-run-source-repair-v3' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -21,11 +21,46 @@ jobs:
         with:
           toolchain: "1.85.0"
           components: rustfmt, clippy
-      - name: Repair verification error conversion
+      - name: Repair Issue 75 source and strict clippy blocker
         shell: bash
         run: |
           set -euo pipefail
-          python -c "from pathlib import Path; p=Path('crates/production-execution-runtime/src/lib.rs'); s=p.read_text(); old='    #[error(transparent)]\\n    Lease(#[from] ProductionSignerIdentityProofError),\\n'; new=old+'    #[error(transparent)]\\n    DesktopShell(#[from] DesktopShellError),\\n'; assert new in s or old in s; p.write_text(s if new in s else s.replace(old,new,1))"
+          python - <<'PY'
+          from pathlib import Path
+
+          runtime = Path('crates/production-execution-runtime/src/lib.rs')
+          text = runtime.read_text()
+          old = "    #[error(transparent)]\n    Lease(#[from] ProductionSignerIdentityProofError),\n"
+          new = old + "    #[error(transparent)]\n    DesktopShell(#[from] DesktopShellError),\n"
+          if new not in text:
+              if old not in text:
+                  raise SystemExit('production verification error anchor missing')
+              runtime.write_text(text.replace(old, new, 1))
+
+          governance = Path('crates/key-governance-runtime/src/lib.rs')
+          text = governance.read_text()
+          old = '''                public_key_hex: record
+                    .verifying_key
+                    .to_bytes()
+                    .iter()
+                    .map(|byte| format!("{byte:02x}"))
+                    .collect(),
+'''
+          new = '''                public_key_hex: record.verifying_key.to_bytes().iter().fold(
+                    String::with_capacity(64),
+                    |mut output, byte| {
+                        use std::fmt::Write as _;
+                        write!(&mut output, "{byte:02x}")
+                            .expect("writing hexadecimal bytes to String cannot fail");
+                        output
+                    },
+                ),
+'''
+          if new not in text:
+              if old not in text:
+                  raise SystemExit('key governance hex formatting anchor missing')
+              governance.write_text(text.replace(old, new, 1))
+          PY
           cargo +1.85.0 fmt --all
           cargo +1.85.0 clippy -p ergaxiom-production-execution-runtime --all-targets -- -D warnings
           cargo +1.85.0 clippy -p ergaxiom-production-execution-authority-runtime --all-targets -- -D warnings
@@ -38,5 +73,5 @@ jobs:
           git config user.email tayfuna766@gmail.com
           git add -A
           git diff --cached --check
-          git commit -m 'issue75: fix production verification conversion'
+          git commit -m 'issue75: fix strict production verification gates'
           git push origin HEAD:codex/issue-75
