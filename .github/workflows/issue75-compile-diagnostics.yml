@@ -20,6 +20,13 @@ jobs:
           components: rustfmt, clippy
       - name: Format working copy for compile diagnostics
         run: cargo fmt --all
+      - name: Upload formatted runtime source
+        uses: actions/upload-artifact@v4
+        with:
+          name: issue75-formatted-runtime
+          path: crates/production-execution-runtime/src/lib.rs
+          if-no-files-found: error
+          retention-days: 1
       - name: Quiet runtime check
         shell: bash
         run: |
