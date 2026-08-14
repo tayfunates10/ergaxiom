@@ -3,6 +3,7 @@
 mod commands;
 mod pipeline;
 mod production_execution;
+mod production_pipeline;
 mod production_startup;
 
 #[cfg(windows)]
