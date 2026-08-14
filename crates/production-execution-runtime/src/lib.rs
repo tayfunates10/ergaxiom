@@ -13,8 +13,9 @@ use ergaxiom_capability_runtime::{AuthorizationReceipt, ProductionSignerBoundCap
 use ergaxiom_contract_runtime::CompiledContract;
 use ergaxiom_desktop_shell_runtime::{
     AuthorityStatus, DesktopApprovalRecord, DesktopCommandAction, DesktopCommandReceipt,
-    DesktopControlError, DesktopControlStatus, DesktopShellSnapshot, control_status_from_snapshot,
-    verify_desktop_approval_binding, verify_desktop_command_receipt, verify_desktop_shell_snapshot,
+    DesktopControlError, DesktopControlStatus, DesktopShellError, DesktopShellSnapshot,
+    control_status_from_snapshot, verify_desktop_approval_binding, verify_desktop_command_receipt,
+    verify_desktop_shell_snapshot,
 };
 use ergaxiom_evidence_runtime::{EvidenceBundleError, assess_bundle};
 use ergaxiom_operator_plan_runtime::CompiledPlan;
@@ -177,8 +178,7 @@ impl ProductionExecutionChainState {
             || !verify_desktop_command_receipt(receipt)?
             || receipt.action != DesktopCommandAction::Approve
             || receipt.post_snapshot_digest != snapshot.snapshot_digest
-            || receipt.approval_digest.as_deref()
-                != Some(approval.approval_digest.as_str())
+            || receipt.approval_digest.as_deref() != Some(approval.approval_digest.as_str())
         {
             return Err(ProductionExecutionStoreError::ApprovalMaterialMismatch);
         }
@@ -213,16 +213,12 @@ impl ProductionExecutionChainState {
                         || receipt.use_number == 0
                         || receipt.use_number > receipt.max_uses
                     {
-                        return Err(
-                            ProductionExecutionStoreError::CapabilityConsumptionMismatch,
-                        );
+                        return Err(ProductionExecutionStoreError::CapabilityConsumptionMismatch);
                     }
                     validate_sha256(digest)?;
                 }
                 _ => {
-                    return Err(
-                        ProductionExecutionStoreError::CapabilityConsumptionMismatch,
-                    );
+                    return Err(ProductionExecutionStoreError::CapabilityConsumptionMismatch);
                 }
             }
         }
@@ -272,7 +268,8 @@ impl ProductionExecutionChainState {
             self.evidence_bundle_digest.as_ref(),
             self.replay_manifest.as_ref(),
             self.replay_manifest_digest.as_ref(),
-        ) else {
+        )
+        else {
             return Ok(());
         };
         if !verify_desktop_shell_snapshot(snapshot)?
@@ -640,12 +637,13 @@ pub fn verify_recovered_certified_chain(
     if state.stage != ProductionExecutionStage::Certified {
         return Err(ProductionExecutionVerifyError::NotCertified);
     }
-    let bundle = state
-        .evidence_bundle
-        .as_ref()
-        .ok_or(ProductionExecutionVerifyError::MissingMaterial(
-            "evidence_bundle",
-        ))?;
+    let bundle =
+        state
+            .evidence_bundle
+            .as_ref()
+            .ok_or(ProductionExecutionVerifyError::MissingMaterial(
+                "evidence_bundle",
+            ))?;
     let assessment = assess_bundle(
         compiled_contract.clone(),
         compiled_plan,
@@ -658,12 +656,9 @@ pub fn verify_recovered_certified_chain(
     {
         return Err(ProductionExecutionVerifyError::EvidenceNotAccepted);
     }
-    let package = state
-        .acceptance_package
-        .as_ref()
-        .ok_or(ProductionExecutionVerifyError::MissingMaterial(
-            "acceptance_package",
-        ))?;
+    let package = state.acceptance_package.as_ref().ok_or(
+        ProductionExecutionVerifyError::MissingMaterial("acceptance_package"),
+    )?;
     let verified = verify_governed_production_attestation_against_bundle(
         package,
         lease.attestation_trust(),
@@ -689,18 +684,20 @@ fn verify_final_snapshot(
     state: &ProductionExecutionChainState,
     verified: &VerifiedAttestation,
 ) -> Result<(), ProductionExecutionVerifyError> {
-    let snapshot = state
-        .final_snapshot
-        .as_ref()
-        .ok_or(ProductionExecutionVerifyError::MissingMaterial(
-            "final_snapshot",
-        ))?;
-    let certificate = snapshot
-        .certificate
-        .as_ref()
-        .ok_or(ProductionExecutionVerifyError::MissingMaterial(
-            "certificate_verification",
-        ))?;
+    let snapshot =
+        state
+            .final_snapshot
+            .as_ref()
+            .ok_or(ProductionExecutionVerifyError::MissingMaterial(
+                "final_snapshot",
+            ))?;
+    let certificate =
+        snapshot
+            .certificate
+            .as_ref()
+            .ok_or(ProductionExecutionVerifyError::MissingMaterial(
+                "certificate_verification",
+            ))?;
     if snapshot.authority_status != AuthorityStatus::VerifiedAccepted
         || !verify_desktop_shell_snapshot(snapshot)?
         || certificate.certificate_id != verified.certificate_id
@@ -726,12 +723,9 @@ fn verify_capability_receipts(
     expected_device_id: Option<&str>,
 ) -> Result<(), ProductionExecutionVerifyError> {
     for capability in &state.capabilities {
-        let persisted_receipt = capability
-            .consumption_receipt
-            .as_ref()
-            .ok_or(ProductionExecutionVerifyError::MissingMaterial(
-                "capability_consumption",
-            ))?;
+        let persisted_receipt = capability.consumption_receipt.as_ref().ok_or(
+            ProductionExecutionVerifyError::MissingMaterial("capability_consumption"),
+        )?;
         let mut authorizer = GovernedCapabilityAuthorizer::new(
             lease.capability_trust().clone(),
             lease.registry().clone(),
@@ -776,8 +770,7 @@ fn prepare_root(root: &Path) -> Result<(), ProductionExecutionStoreError> {
             ));
         }
     } else {
-        fs::create_dir_all(root)
-            .map_err(|source| io_error("create store root", root, source))?;
+        fs::create_dir_all(root).map_err(|source| io_error("create store root", root, source))?;
     }
     Ok(())
 }
@@ -850,9 +843,7 @@ fn scan_chain(
     Ok(Some(current))
 }
 
-fn read_state(
-    path: &Path,
-) -> Result<ProductionExecutionChainState, ProductionExecutionStoreError> {
+fn read_state(path: &Path) -> Result<ProductionExecutionChainState, ProductionExecutionStoreError> {
     let before =
         fs::symlink_metadata(path).map_err(|source| io_error("inspect state", path, source))?;
     if before.file_type().is_symlink() || !before.is_file() {
@@ -1079,6 +1070,8 @@ pub enum ProductionExecutionStoreError {
     RollbackMaterialMismatch,
     #[error(transparent)]
     Desktop(#[from] DesktopControlError),
+    #[error(transparent)]
+    Shell(#[from] DesktopShellError),
     #[error("failed to decode production execution state: {0}")]
     Json(#[from] serde_json::Error),
     #[error(transparent)]
@@ -1109,8 +1102,8 @@ mod tests {
     }
 
     #[test]
-    fn initial_chain_is_digest_addressed_and_restart_stable(
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    fn initial_chain_is_digest_addressed_and_restart_stable()
+    -> Result<(), Box<dyn std::error::Error>> {
         let root = test_root("restart");
         let first = ProductionExecutionChainStore::load_or_create(&root, "job.test.0001")?;
         assert_eq!(first.current().revision, 0);
@@ -1125,8 +1118,7 @@ mod tests {
     }
 
     #[test]
-    fn unexpected_or_corrupt_history_fails_closed(
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    fn unexpected_or_corrupt_history_fails_closed() -> Result<(), Box<dyn std::error::Error>> {
         let root = test_root("corrupt");
         let store = ProductionExecutionChainStore::load_or_create(&root, "job.test.0002")?;
         let state_path = root.join(state_filename(store.current()));
@@ -1138,8 +1130,8 @@ mod tests {
     }
 
     #[test]
-    fn pending_temp_is_ignored_but_unexpected_file_is_rejected(
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    fn pending_temp_is_ignored_but_unexpected_file_is_rejected()
+    -> Result<(), Box<dyn std::error::Error>> {
         let root = test_root("entries");
         let _ = ProductionExecutionChainStore::load_or_create(&root, "job.test.0003")?;
         fs::write(
