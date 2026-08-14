@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import importlib.util
 import json
 import re
 import sys
@@ -75,8 +76,7 @@ def policy_ok(policy: dict) -> None:
         raise ReleaseError("chain policy")
     pe = {
         (item.get("artifact_id"), item.get("name"), item.get("build_input"), item.get("disposition"))
-        for item in inventory.get("signed_pe_artifacts", [])
-        if isinstance(item, dict)
+        for item in inventory.get("signed_pe_artifacts", []) if isinstance(item, dict)
     }
     if pe != {
         ("desktop", "ergaxiom-desktop.exe", "apps/desktop/src-tauri", "SHIPPED_EXECUTABLE"),
@@ -85,8 +85,7 @@ def policy_ok(policy: dict) -> None:
         raise ReleaseError("PE inventory")
     linked = {
         (item.get("artifact_id"), item.get("build_input"), item.get("disposition"))
-        for item in inventory.get("linked_runtime_inputs", [])
-        if isinstance(item, dict)
+        for item in inventory.get("linked_runtime_inputs", []) if isinstance(item, dict)
     }
     if linked != {
         ("windows_uia_client", "crates/windows-uia-client-runtime", "LINKED_INTO_DESKTOP"),
@@ -95,10 +94,7 @@ def policy_ok(policy: dict) -> None:
     }:
         raise ReleaseError("linked inventory")
     if inventory.get("installer") != {
-        "artifact_id": "windows_installer",
-        "format": "NSIS",
-        "filename_glob": "*-setup.exe",
-        "disposition": "SHIPPED_INSTALLER",
+        "artifact_id": "windows_installer", "format": "NSIS", "filename_glob": "*-setup.exe", "disposition": "SHIPPED_INSTALLER"
     }:
         raise ReleaseError("installer inventory")
 
@@ -127,193 +123,193 @@ def signing(evidence: dict | None, policy: dict, artifact_digests: dict[str, str
     if evidence.get("schema_version") != "0.1.0" or evidence.get("policy_sha256") != sha(policy):
         raise ReleaseError("signature evidence binding")
     records = evidence.get("artifacts", [])
-    mapping = {record.get("name"): record for record in records if isinstance(record, dict) and isinstance(record.get("name"), str)}
+    mapping = {r.get("name"): r for r in records if isinstance(r, dict) and isinstance(r.get("name"), str)}
     if len(mapping) != len(records) or set(mapping) != set(artifact_digests):
         raise ReleaseError("signature inventory")
     for name, digest in artifact_digests.items():
         if h64(mapping[name].get("sha256"), name) != digest:
             raise ReleaseError(f"post-sign mutation: {name}")
-    signing_policy = policy["signing"]
+    p = policy["signing"]
     resolved = (
-        signing_policy.get("identity_status") == "OWNER_APPROVED_PINNED"
-        and isinstance(signing_policy.get("expected_subject"), str)
-        and bool(signing_policy.get("expected_subject"))
-        and H64.fullmatch(str(signing_policy.get("expected_certificate_sha256", ""))) is not None
+        p.get("identity_status") == "OWNER_APPROVED_PINNED"
+        and isinstance(p.get("expected_subject"), str) and bool(p.get("expected_subject"))
+        and H64.fullmatch(str(p.get("expected_certificate_sha256", ""))) is not None
     )
-    ok = bool(
-        resolved
-        and evidence.get("mode") == "production"
-        and evidence.get("test_identity") is False
-        and evidence.get("signtool_available") is True
-    )
-    for record in mapping.values():
-        ok &= all(
-            [
-                record.get("authenticode_valid") is True,
-                record.get("signtool_verify_ok") is True,
-                record.get("code_signing_eku_present") is True,
-                record.get("certificate_chain_valid") is True,
-                record.get("revocation_checked_online") is True,
-                record.get("timestamp_present") is True,
-                record.get("timestamp_chain_valid") is True,
-                record.get("self_signed") is False,
-                record.get("signer_subject") == signing_policy.get("expected_subject"),
-                record.get("signer_certificate_sha256") == signing_policy.get("expected_certificate_sha256"),
-                record.get("timestamp_url") == signing_policy.get("timestamp_url"),
-            ]
-        )
-    return bool(ok), {
-        "verified": bool(ok),
-        "test_identity": evidence.get("test_identity"),
-        "signtool_available": evidence.get("signtool_available"),
-        "evidence_sha256": sha(evidence),
-    }
+    ok = bool(resolved and evidence.get("mode") == "production" and evidence.get("test_identity") is False and evidence.get("signtool_available") is True)
+    for r in mapping.values():
+        ok &= all([
+            r.get("authenticode_valid") is True, r.get("signtool_verify_ok") is True,
+            r.get("code_signing_eku_present") is True, r.get("certificate_chain_valid") is True,
+            r.get("revocation_checked_online") is True, r.get("timestamp_present") is True,
+            r.get("timestamp_chain_valid") is True, r.get("self_signed") is False,
+            r.get("signer_subject") == p.get("expected_subject"),
+            r.get("signer_certificate_sha256") == p.get("expected_certificate_sha256"),
+            r.get("timestamp_url") == p.get("timestamp_url"),
+        ])
+    return bool(ok), {"verified": bool(ok), "test_identity": evidence.get("test_identity"), "signtool_available": evidence.get("signtool_available"), "evidence_sha256": sha(evidence)}
 
 
 def lifecycle(evidence: dict | None, commit: str, installer_name: str, installer_digest: str) -> tuple[bool, dict | None]:
     if evidence is None:
         return False, None
     if (
-        evidence.get("schema_version") != "0.1.0"
-        or evidence.get("source_commit") != commit
-        or evidence.get("installer_name") != installer_name
-        or evidence.get("installer_sha256") != installer_digest
+        evidence.get("schema_version") != "0.1.0" or evidence.get("source_commit") != commit
+        or evidence.get("installer_name") != installer_name or evidence.get("installer_sha256") != installer_digest
     ):
         raise ReleaseError("lifecycle binding")
     required = [
-        "clean_install",
-        "upgrade",
-        "downgrade_rejected",
-        "interrupted_upgrade_preserved_state",
-        "recovery_install",
-        "uninstall",
-        "production_state_preserved",
+        "clean_install", "service_installed_local_system", "service_validated_running", "protected_state_acl_verified",
+        "upgrade", "downgrade_rejected", "interrupted_upgrade_preserved_state", "rollback_recovery",
+        "recovery_install", "uninstall", "production_state_preserved",
     ]
     ok = evidence.get("test_mode") is False and all(evidence.get("phases", {}).get(name) is True for name in required)
-    return ok, {"verified": bool(ok), "test_mode": evidence.get("test_mode"), "evidence_sha256": sha(evidence)}
+    return bool(ok), {"verified": bool(ok), "test_mode": evidence.get("test_mode"), "required_phases": required, "evidence_sha256": sha(evidence)}
 
 
-def external(evidence: dict | None, gate: str, commit: str) -> tuple[bool, dict | None]:
+def production_chain(evidence: dict | None, commit: str) -> tuple[bool, dict | None]:
+    """Issue #75 currently exposes no canonical standalone verifier.
+
+    A caller-supplied JSON summary must never promote a production release. The gate
+    remains closed until the exact #75 certified-chain verifier is integrated here.
+    """
     if evidence is None:
         return False, None
-    ok = (
-        evidence.get("schema_version") == "0.1.0"
-        and evidence.get("gate") == gate
-        and evidence.get("source_commit") == commit
-        and evidence.get("verified") is True
-        and bool(evidence.get("evidence_artifacts"))
-    )
-    if ok:
-        for artifact in evidence["evidence_artifacts"]:
-            h64(artifact.get("sha256"), gate)
-    return bool(ok), {"verified": bool(ok), "evidence_sha256": sha(evidence)}
-
-
-def license_gate(evidence: dict | None, policy: dict, commit: str) -> tuple[bool, dict | None]:
-    license_policy = policy.get("license", {})
-    resolved = license_policy.get("owner_decision_status") == "APPROVED" and bool(license_policy.get("spdx_expression"))
-    ok = bool(
-        resolved
-        and evidence
-        and evidence.get("schema_version") == "0.1.0"
-        and evidence.get("source_commit") == commit
-        and evidence.get("owner_approved") is True
-        and evidence.get("spdx_expression") == license_policy.get("spdx_expression")
-    )
-    return ok, None if evidence is None else {
-        "verified": bool(ok),
-        "spdx_expression": evidence.get("spdx_expression"),
+    # Parse/basic bind only for diagnostics; these fields are explicitly insufficient.
+    source_bound = evidence.get("source_commit") == commit
+    return False, {
+        "verified": False,
+        "source_bound": bool(source_bound),
+        "canonical_verifier_available": False,
+        "rejected_summary_only_evidence": True,
         "evidence_sha256": sha(evidence),
     }
 
 
-def build(base, policy, sig=None, life=None, prod=None, hw=None, lic=None):
+def _controlled_trust_module():
+    path = Path(__file__).resolve().parents[1] / "windows" / "controlled_trust_gate.py"
+    if not path.is_file():
+        raise ReleaseError("canonical controlled trust verifier missing")
+    spec = importlib.util.spec_from_file_location("ergaxiom_controlled_trust_gate", path)
+    if spec is None or spec.loader is None:
+        raise ReleaseError("canonical controlled trust verifier load failed")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+def hardware(
+    paths: dict[str, Path | None] | None,
+    service_digest: str,
+    legacy_summary: dict | None = None,
+) -> tuple[bool, dict | None]:
+    if legacy_summary is not None:
+        # A pre-computed `verified:true` JSON is not authority. Raw ceremony evidence
+        # must be re-verified by the canonical #77 verifier below.
+        return False, {
+            "verified": False,
+            "rejected_summary_only_evidence": True,
+            "evidence_sha256": sha(legacy_summary),
+        }
+    if not paths or any(path is None for path in paths.values()):
+        return False, None
+    concrete = {name: path for name, path in paths.items() if path is not None}
+    gate = _controlled_trust_module()
+    try:
+        summary, code = gate.make_gate_summary(
+            concrete["physical"], concrete["governance"], concrete["installation"], concrete["recovery"],
+            concrete["capability"], concrete["attestation"],
+        )
+    except Exception as exc:
+        expected = getattr(gate, "EvidenceError", Exception)
+        if isinstance(exc, expected):
+            raise ReleaseError(f"hardware operational evidence rejected: {exc}") from exc
+        raise
+    if code != 0 or summary.get("hardware_operational_eligible") is not True or summary.get("hardware_operational_gate") != getattr(gate, "PROVEN", "PROVEN_HARDWARE_BACKED"):
+        return False, {"verified": False, "canonical_verifier": "tools/windows/controlled_trust_gate.py", "verifier_result": summary}
+    installation = load(concrete["installation"])
+    recovery = load(concrete["recovery"])
+    observed = installation.get("service_snapshot", {}).get("process_executable_sha256")
+    if observed != service_digest:
+        raise ReleaseError("hardware installation signer-service digest does not match signed release artifact")
+    for side in ("before", "after"):
+        digest = recovery.get(side, {}).get("service_snapshot", {}).get("process_executable_sha256")
+        if digest != service_digest:
+            raise ReleaseError(f"hardware recovery {side} signer-service digest does not match signed release artifact")
+    return True, {
+        "verified": True,
+        "canonical_verifier": "tools/windows/controlled_trust_gate.py",
+        "ceremony_id": summary.get("ceremony_id"),
+        "machine_identity_digest": summary.get("machine_identity_digest"),
+        "signer_service_sha256": service_digest,
+        "evidence_digests": summary.get("evidence_digests", {}),
+    }
+
+
+def license_gate(evidence: dict | None, policy: dict, commit: str) -> tuple[bool, dict | None]:
+    p = policy.get("license", {})
+    resolved = p.get("owner_decision_status") == "APPROVED" and bool(p.get("spdx_expression"))
+    ok = bool(resolved and evidence and evidence.get("schema_version") == "0.1.0" and evidence.get("source_commit") == commit and evidence.get("owner_approved") is True and evidence.get("spdx_expression") == p.get("spdx_expression"))
+    return ok, None if evidence is None else {"verified": bool(ok), "spdx_expression": evidence.get("spdx_expression"), "evidence_sha256": sha(evidence)}
+
+
+def build(base, policy, sig=None, life=None, prod=None, hw=None, lic=None, hw_paths=None):
     policy_ok(policy)
     artifact_digests, installer_name = artifacts(base, policy)
     commit = base["source"]["commit"]
     signing_ok, signing_summary = signing(sig, policy, artifact_digests)
     lifecycle_ok, lifecycle_summary = lifecycle(life, commit, installer_name, artifact_digests[installer_name])
-    production_ok, production_summary = external(prod, "production_chain", commit)
-    hardware_ok, hardware_summary = external(hw, "hardware_operational", commit)
+    production_ok, production_summary = production_chain(prod, commit)
+    hardware_ok, hardware_summary = hardware(hw_paths, artifact_digests["ergaxiom-windows-production-signer-service.exe"], hw)
     license_ok, license_summary = license_gate(lic, policy, commit)
     blockers: list[str] = []
-    if policy["signing"].get("identity_status") != "OWNER_APPROVED_PINNED":
-        blockers.append("SIGNING_IDENTITY_POLICY_UNRESOLVED")
+    if policy["signing"].get("identity_status") != "OWNER_APPROVED_PINNED": blockers.append("SIGNING_IDENTITY_POLICY_UNRESOLVED")
     if not signing_ok:
-        blockers += [
-            "AUTHENTICODE_NOT_VERIFIED",
-            "TRUSTED_TIMESTAMP_NOT_VERIFIED",
-            "CERTIFICATE_CHAIN_NOT_VERIFIED",
-            "SIGNING_IDENTITY_NOT_VERIFIED",
-        ]
-    if not lifecycle_ok:
-        blockers.append("INSTALLER_LIFECYCLE_NOT_VERIFIED")
+        blockers += ["AUTHENTICODE_NOT_VERIFIED", "TRUSTED_TIMESTAMP_NOT_VERIFIED", "CERTIFICATE_CHAIN_NOT_VERIFIED", "SIGNING_IDENTITY_NOT_VERIFIED"]
+    if not lifecycle_ok: blockers.append("INSTALLER_LIFECYCLE_NOT_VERIFIED")
     if not production_ok:
-        blockers.append("PRODUCTION_CHAIN_EVIDENCE_NOT_VERIFIED")
-    if not hardware_ok:
-        blockers.append("HARDWARE_OPERATIONAL_EVIDENCE_NOT_VERIFIED")
-    if not license_ok:
-        blockers.append("DISTRIBUTION_LICENSE_NOT_APPROVED")
+        blockers += ["PRODUCTION_CHAIN_EVIDENCE_NOT_VERIFIED", "PRODUCTION_CHAIN_CANONICAL_VERIFIER_NOT_INTEGRATED"]
+    if not hardware_ok: blockers.append("HARDWARE_OPERATIONAL_EVIDENCE_NOT_VERIFIED")
+    if not license_ok: blockers.append("DISTRIBUTION_LICENSE_NOT_APPROVED")
     blockers = sorted(set(blockers))
     final_artifacts = []
     for artifact in base["artifacts"]:
-        item = dict(artifact)
-        item["authenticode_status"] = "VERIFIED" if signing_ok else "NOT_VERIFIED"
-        final_artifacts.append(item)
+        item = dict(artifact); item["authenticode_status"] = "VERIFIED" if signing_ok else "NOT_VERIFIED"; final_artifacts.append(item)
     return {
-        "schema_version": "0.1.0",
-        "product": base.get("product"),
-        "source": base["source"],
-        "toolchain": base.get("toolchain"),
-        "artifacts": final_artifacts,
-        "sbom": base.get("sbom"),
-        "windows_release_policy": {
-            "policy_id": policy["policy_id"],
-            "sha256": sha(policy),
-            "canonical_installer": "nsis",
-        },
+        "schema_version": "0.2.0", "product": base.get("product"), "source": base["source"], "toolchain": base.get("toolchain"),
+        "artifacts": final_artifacts, "sbom": base.get("sbom"),
+        "windows_release_policy": {"policy_id": policy["policy_id"], "sha256": sha(policy), "canonical_installer": "nsis"},
         "signing": signing_summary,
-        "installer_provenance": {
-            "installer_name": installer_name,
-            "installer_sha256": artifact_digests[installer_name],
-            "verified": bool(signing_ok and lifecycle_ok),
-        },
-        "installer_lifecycle": lifecycle_summary,
-        "production_chain": production_summary,
-        "hardware_operational": hardware_summary,
-        "distribution_license": license_summary,
-        "release_eligible": not blockers,
-        "blocking_reasons": blockers,
+        "installer_provenance": {"installer_name": installer_name, "installer_sha256": artifact_digests[installer_name], "verified": bool(signing_ok and lifecycle_ok)},
+        "installer_lifecycle": lifecycle_summary, "production_chain": production_summary, "hardware_operational": hardware_summary,
+        "distribution_license": license_summary, "release_eligible": not blockers, "blocking_reasons": blockers,
     }
 
 
 def main(argv=None):
     parser = argparse.ArgumentParser()
-    parser.add_argument("--base-manifest", type=Path, required=True)
-    parser.add_argument("--policy", type=Path, required=True)
-    parser.add_argument("--signature-evidence", type=Path)
-    parser.add_argument("--lifecycle-evidence", type=Path)
+    parser.add_argument("--base-manifest", type=Path, required=True); parser.add_argument("--policy", type=Path, required=True)
+    parser.add_argument("--signature-evidence", type=Path); parser.add_argument("--lifecycle-evidence", type=Path)
     parser.add_argument("--production-chain-evidence", type=Path)
-    parser.add_argument("--hardware-operational-evidence", type=Path)
-    parser.add_argument("--license-decision", type=Path)
-    parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--hardware-operational-evidence", type=Path, help="legacy summary; deliberately cannot satisfy the gate")
+    parser.add_argument("--capability-provisioning-evidence", type=Path); parser.add_argument("--attestation-provisioning-evidence", type=Path)
+    parser.add_argument("--physical-tpm-promotion-evidence", type=Path); parser.add_argument("--governance-recovery-receipt", type=Path)
+    parser.add_argument("--signer-installation-receipt", type=Path); parser.add_argument("--signer-restart-recovery-receipt", type=Path)
+    parser.add_argument("--license-decision", type=Path); parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args(argv)
     try:
-        output = build(
-            load(args.base_manifest),
-            load(args.policy),
-            load(args.signature_evidence),
-            load(args.lifecycle_evidence),
-            load(args.production_chain_evidence),
-            load(args.hardware_operational_evidence),
-            load(args.license_decision),
-        )
+        hw_paths = {
+            "capability": args.capability_provisioning_evidence, "attestation": args.attestation_provisioning_evidence,
+            "physical": args.physical_tpm_promotion_evidence, "governance": args.governance_recovery_receipt,
+            "installation": args.signer_installation_receipt, "recovery": args.signer_restart_recovery_receipt,
+        }
+        output = build(load(args.base_manifest), load(args.policy), load(args.signature_evidence), load(args.lifecycle_evidence),
+                       load(args.production_chain_evidence), load(args.hardware_operational_evidence), load(args.license_decision), hw_paths)
         args.output.parent.mkdir(parents=True, exist_ok=True)
         args.output.write_text(json.dumps(output, sort_keys=True, indent=2) + "\n", encoding="utf-8")
         return 0
     except (OSError, json.JSONDecodeError, ReleaseError) as error:
-        print(f"final Windows release evidence failed: {error}", file=sys.stderr)
-        return 1
+        print(f"final Windows release evidence failed: {error}", file=sys.stderr); return 1
 
 
 if __name__ == "__main__":

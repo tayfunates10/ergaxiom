@@ -2,7 +2,12 @@
 param(
   [Parameter(Mandatory)][string]$LifecycleEvidence,
   [Parameter(Mandatory)][string]$ProductionChainEvidence,
-  [Parameter(Mandatory)][string]$HardwareOperationalEvidence,
+  [Parameter(Mandatory)][string]$CapabilityProvisioningEvidence,
+  [Parameter(Mandatory)][string]$AttestationProvisioningEvidence,
+  [Parameter(Mandatory)][string]$PhysicalTpmPromotionEvidence,
+  [Parameter(Mandatory)][string]$GovernanceRecoveryReceipt,
+  [Parameter(Mandatory)][string]$SignerInstallationReceipt,
+  [Parameter(Mandatory)][string]$SignerRestartRecoveryReceipt,
   [Parameter(Mandatory)][string]$LicenseDecision,
   [Parameter(Mandatory)][string]$OutputDirectory
 )
@@ -22,9 +27,30 @@ try {
   if ($policy.signing.identity_status -ne 'OWNER_APPROVED_PINNED') { throw 'SIGNING_IDENTITY_POLICY_UNRESOLVED' }
   if ($policy.license.owner_decision_status -ne 'APPROVED') { throw 'DISTRIBUTION_LICENSE_NOT_APPROVED' }
 
-  foreach ($path in @($LifecycleEvidence, $ProductionChainEvidence, $HardwareOperationalEvidence, $LicenseDecision)) {
-    if (-not (Test-Path (Resolve-Path $path).Path -PathType Leaf)) { throw "MANDATORY_EVIDENCE_MISSING: $path" }
+  $mandatoryEvidence = @(
+    $LifecycleEvidence, $ProductionChainEvidence, $CapabilityProvisioningEvidence,
+    $AttestationProvisioningEvidence, $PhysicalTpmPromotionEvidence, $GovernanceRecoveryReceipt,
+    $SignerInstallationReceipt, $SignerRestartRecoveryReceipt, $LicenseDecision
+  )
+  foreach ($path in $mandatoryEvidence) {
+    if (-not (Test-Path $path -PathType Leaf)) { throw "MANDATORY_EVIDENCE_MISSING: $path" }
   }
+
+  # Re-run the canonical #77 verifier before any expensive release build. A summary
+  # file supplied by a caller is never accepted as hardware authority.
+  $hardwareSummary = Join-Path ([IO.Path]::GetFullPath($OutputDirectory)) 'controlled-trust-gate.json'
+  New-Item -ItemType Directory -Force ([IO.Path]::GetDirectoryName($hardwareSummary)) | Out-Null
+  & python tools/windows/controlled_trust_gate.py verify `
+    --physical (Resolve-Path $PhysicalTpmPromotionEvidence).Path `
+    --governance (Resolve-Path $GovernanceRecoveryReceipt).Path `
+    --installation (Resolve-Path $SignerInstallationReceipt).Path `
+    --recovery (Resolve-Path $SignerRestartRecoveryReceipt).Path `
+    --capability-provisioning (Resolve-Path $CapabilityProvisioningEvidence).Path `
+    --attestation-provisioning (Resolve-Path $AttestationProvisioningEvidence).Path `
+    --output $hardwareSummary
+  if ($LASTEXITCODE -ne 0) { throw 'CONTROLLED_TRUST_GATE_REJECTED' }
+  $hardwareDecision = Get-Content $hardwareSummary -Raw | ConvertFrom-Json -Depth 32
+  if ($hardwareDecision.hardware_operational_eligible -ne $true) { throw 'HARDWARE_OPERATIONAL_NOT_PROVEN' }
 
   & cargo metadata --locked --no-deps --format-version 1 *> $null
   if ($LASTEXITCODE -ne 0) { throw 'CARGO_LOCK_REJECTED' }
@@ -62,9 +88,7 @@ try {
   & (Join-Path $PSScriptRoot 'verify_windows_signatures.ps1') -Mode production -PolicyPath $policyPath -Artifact @($desktop, $resourceService, $installer) -EvidenceOut $signatureEvidence
   if ($LASTEXITCODE -ne 0) { throw 'SIGNATURE_EVIDENCE_FAILED' }
 
-  $rustc = (& rustc --version).Trim()
-  $node = (& node --version).Trim()
-  $npm = (& npm --version).Trim()
+  $rustc = (& rustc --version).Trim(); $node = (& node --version).Trim(); $npm = (& npm --version).Trim()
   $baseDir = Join-Path $out 'base'
   & python tools/release/generate_release_evidence.py --repo-root . --artifact $desktop --artifact $resourceService --artifact $installer --source-commit $sourceCommit --rustc-version $rustc --node-version $node --npm-version $npm --output-dir $baseDir
   if ($LASTEXITCODE -ne 0) { throw 'BASE_RELEASE_EVIDENCE_FAILED' }
@@ -76,7 +100,12 @@ try {
     --signature-evidence $signatureEvidence `
     --lifecycle-evidence (Resolve-Path $LifecycleEvidence).Path `
     --production-chain-evidence (Resolve-Path $ProductionChainEvidence).Path `
-    --hardware-operational-evidence (Resolve-Path $HardwareOperationalEvidence).Path `
+    --capability-provisioning-evidence (Resolve-Path $CapabilityProvisioningEvidence).Path `
+    --attestation-provisioning-evidence (Resolve-Path $AttestationProvisioningEvidence).Path `
+    --physical-tpm-promotion-evidence (Resolve-Path $PhysicalTpmPromotionEvidence).Path `
+    --governance-recovery-receipt (Resolve-Path $GovernanceRecoveryReceipt).Path `
+    --signer-installation-receipt (Resolve-Path $SignerInstallationReceipt).Path `
+    --signer-restart-recovery-receipt (Resolve-Path $SignerRestartRecoveryReceipt).Path `
     --license-decision (Resolve-Path $LicenseDecision).Path `
     --output $final
   if ($LASTEXITCODE -ne 0) { throw 'FINAL_RELEASE_EVIDENCE_FAILED' }
@@ -88,6 +117,4 @@ try {
   }
   Write-Host "Production release evidence accepted for commit $sourceCommit and installer $([IO.Path]::GetFileName($installer))."
 }
-finally {
-  Pop-Location
-}
+finally { Pop-Location }
