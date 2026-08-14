@@ -65,12 +65,8 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     deployment.validate_seal()?;
     let challenge: ProductionSignerIdentityChallenge = read_json_arg(&args, "identity-challenge")?;
     let proof: DeployedProductionSignerIdentityProof = read_json_arg(&args, "identity-proof")?;
-    let lease = proof.verify_trust_lease(
-        &challenge,
-        &accepted,
-        &deployment,
-        trusted_now_epoch_s,
-    )?;
+    let lease =
+        proof.verify_trust_lease(&challenge, &accepted, &deployment, trusted_now_epoch_s)?;
     if lease.service_identity().executable_sha256 != service_sha256 {
         return Err("live signer identity digest does not match signed release artifact".into());
     }
@@ -274,10 +270,7 @@ fn read_json_value_arg(
     read_bounded_json_file(&path, name)
 }
 
-fn read_bounded_json_file(
-    path: &Path,
-    label: &str,
-) -> Result<Value, Box<dyn std::error::Error>> {
+fn read_bounded_json_file(path: &Path, label: &str) -> Result<Value, Box<dyn std::error::Error>> {
     let metadata = fs::symlink_metadata(path)?;
     if metadata.file_type().is_symlink()
         || !metadata.is_file()
@@ -352,7 +345,9 @@ fn verify_checkout(repo_root: &Path, expected: &str) -> Result<(), Box<dyn std::
     }
     let actual = String::from_utf8(output.stdout)?.trim().to_owned();
     if actual != expected {
-        return Err(format!("source checkout mismatch: expected={expected} actual={actual}").into());
+        return Err(
+            format!("source checkout mismatch: expected={expected} actual={actual}").into(),
+        );
     }
     Ok(())
 }

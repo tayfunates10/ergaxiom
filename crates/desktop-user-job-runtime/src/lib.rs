@@ -48,22 +48,18 @@ impl GraphicDesignerJobKind {
                 "brand_profile",
                 "approved_copy",
             ],
-            Self::ImageBackgroundCleanup => &[
-                "intent_manifest",
-                "source_raster",
-                "approved_cleanup_mask",
-            ],
+            Self::ImageBackgroundCleanup => {
+                &["intent_manifest", "source_raster", "approved_cleanup_mask"]
+            }
             Self::BrandCompliantImageExport => &[
                 "intent_manifest",
                 "source_svg",
                 "brand_manifest",
                 "approved_logo",
             ],
-            Self::PrintReadyPosterPreflight => &[
-                "intent_manifest",
-                "source_svg",
-                "print_specification",
-            ],
+            Self::PrintReadyPosterPreflight => {
+                &["intent_manifest", "source_svg", "print_specification"]
+            }
         }
     }
 }
@@ -258,7 +254,12 @@ impl UserJobRecord {
     fn validate_inputs(&self) -> Result<(), UserJobError> {
         for (role, input) in &self.inputs {
             validate_role(role)?;
-            if role != &input.role || !self.job_kind.required_input_roles().contains(&role.as_str()) {
+            if role != &input.role
+                || !self
+                    .job_kind
+                    .required_input_roles()
+                    .contains(&role.as_str())
+            {
                 return Err(UserJobError::InputRoleMismatch(role.clone()));
             }
             validate_file_name(&input.file_name)?;
@@ -409,7 +410,9 @@ impl UserJobRecord {
         let Some(evidence) = &self.evidence else {
             if matches!(
                 self.phase,
-                UserJobPhase::EvidenceRejected | UserJobPhase::RecoveryRequired | UserJobPhase::Accepted
+                UserJobPhase::EvidenceRejected
+                    | UserJobPhase::RecoveryRequired
+                    | UserJobPhase::Accepted
             ) {
                 return Err(UserJobError::MissingEvidence);
             }
@@ -430,7 +433,10 @@ impl UserJobRecord {
 
     fn validate_certificate(&self) -> Result<(), UserJobError> {
         let Some(certificate) = &self.certificate else {
-            if matches!(self.phase, UserJobPhase::RecoveryRequired | UserJobPhase::Accepted) {
+            if matches!(
+                self.phase,
+                UserJobPhase::RecoveryRequired | UserJobPhase::Accepted
+            ) {
                 return Err(UserJobError::MissingCertificate);
             }
             return Ok(());
@@ -439,12 +445,21 @@ impl UserJobRecord {
         validate_sha256(&certificate.certificate_digest)?;
         validate_sha256(&certificate.production_state_digest)?;
         if Some(certificate.production_state_digest.as_str())
-            != self.production.as_ref().map(|value| value.chain_state_digest.as_str())
+            != self
+                .production
+                .as_ref()
+                .map(|value| value.chain_state_digest.as_str())
         {
             return Err(UserJobError::CertificateProductionBindingMismatch);
         }
-        if matches!(self.phase, UserJobPhase::Accepted | UserJobPhase::RecoveryRequired) {
-            let evidence = self.evidence.as_ref().ok_or(UserJobError::MissingEvidence)?;
+        if matches!(
+            self.phase,
+            UserJobPhase::Accepted | UserJobPhase::RecoveryRequired
+        ) {
+            let evidence = self
+                .evidence
+                .as_ref()
+                .ok_or(UserJobError::MissingEvidence)?;
             if !evidence.accepted
                 || !certificate.signature_verified
                 || !certificate.bundle_verified
@@ -490,9 +505,11 @@ impl UserJobStore {
         if job_root.exists() {
             return Err(UserJobError::JobAlreadyExists);
         }
-        fs::create_dir(&job_root).map_err(|source| io_error("create job root", &job_root, source))?;
+        fs::create_dir(&job_root)
+            .map_err(|source| io_error("create job root", &job_root, source))?;
         reject_symlink(&job_root)?;
-        let current = UserJobRecord::initial(job_id, job_kind, created_at.into(), original_text.into())?;
+        let current =
+            UserJobRecord::initial(job_id, job_kind, created_at.into(), original_text.into())?;
         write_state(&job_root, &current)?;
         Ok(Self {
             product_root,
@@ -552,7 +569,10 @@ impl UserJobStore {
         bytes: &[u8],
     ) -> Result<(), UserJobError> {
         self.verify_expected_state(expected_state_digest)?;
-        if !matches!(self.current.phase, UserJobPhase::Draft | UserJobPhase::UnresolvedIntent) {
+        if !matches!(
+            self.current.phase,
+            UserJobPhase::Draft | UserJobPhase::UnresolvedIntent
+        ) {
             return Err(UserJobError::InvalidTransition);
         }
         validate_role(role)?;
@@ -600,7 +620,10 @@ impl UserJobStore {
         detail: impl Into<String>,
     ) -> Result<(), UserJobError> {
         self.verify_expected_state(expected_state_digest)?;
-        if !matches!(self.current.phase, UserJobPhase::Draft | UserJobPhase::UnresolvedIntent) {
+        if !matches!(
+            self.current.phase,
+            UserJobPhase::Draft | UserJobPhase::UnresolvedIntent
+        ) {
             return Err(UserJobError::InvalidTransition);
         }
         let mut next = self.current.clone();
@@ -618,7 +641,10 @@ impl UserJobStore {
         material: CompiledJobMaterial,
     ) -> Result<(), UserJobError> {
         self.verify_expected_state(expected_state_digest)?;
-        if !matches!(self.current.phase, UserJobPhase::Draft | UserJobPhase::UnresolvedIntent) {
+        if !matches!(
+            self.current.phase,
+            UserJobPhase::Draft | UserJobPhase::UnresolvedIntent
+        ) {
             return Err(UserJobError::InvalidTransition);
         }
         for role in self.current.job_kind.required_input_roles() {
@@ -660,7 +686,9 @@ impl UserJobStore {
         self.verify_expected_state(expected_state_digest)?;
         if !matches!(
             self.current.phase,
-            UserJobPhase::PermissionRequired | UserJobPhase::ReadyForApproval | UserJobPhase::ApprovalExpired
+            UserJobPhase::PermissionRequired
+                | UserJobPhase::ReadyForApproval
+                | UserJobPhase::ApprovalExpired
         ) {
             return Err(UserJobError::InvalidTransition);
         }
@@ -672,7 +700,10 @@ impl UserJobStore {
         self.commit(next)
     }
 
-    pub fn record_approval_expired(&mut self, expected_state_digest: &str) -> Result<(), UserJobError> {
+    pub fn record_approval_expired(
+        &mut self,
+        expected_state_digest: &str,
+    ) -> Result<(), UserJobError> {
         self.verify_expected_state(expected_state_digest)?;
         if self.current.phase != UserJobPhase::Approved {
             return Err(UserJobError::InvalidTransition);
@@ -738,7 +769,10 @@ impl UserJobStore {
     ) -> Result<(), UserJobError> {
         self.verify_expected_state(expected_state_digest)?;
         if self.current.production.is_none()
-            || !matches!(self.current.phase, UserJobPhase::Executing | UserJobPhase::ExecutionFailed)
+            || !matches!(
+                self.current.phase,
+                UserJobPhase::Executing | UserJobPhase::ExecutionFailed
+            )
         {
             return Err(UserJobError::InvalidTransition);
         }
@@ -757,7 +791,9 @@ impl UserJobStore {
         if self.current.production.is_none()
             || !matches!(
                 self.current.phase,
-                UserJobPhase::Executing | UserJobPhase::ExecutionFailed | UserJobPhase::RecoveryRequired
+                UserJobPhase::Executing
+                    | UserJobPhase::ExecutionFailed
+                    | UserJobPhase::RecoveryRequired
             )
         {
             return Err(UserJobError::InvalidTransition);
@@ -787,7 +823,11 @@ impl UserJobStore {
         if self.current.phase != UserJobPhase::Executing {
             return Err(UserJobError::InvalidTransition);
         }
-        let evidence = self.current.evidence.as_ref().ok_or(UserJobError::MissingEvidence)?;
+        let evidence = self
+            .current
+            .evidence
+            .as_ref()
+            .ok_or(UserJobError::MissingEvidence)?;
         if !evidence.accepted
             || !certificate.signature_verified
             || !certificate.bundle_verified
@@ -797,7 +837,11 @@ impl UserJobStore {
         {
             return Err(UserJobError::AcceptanceInvariantFailed);
         }
-        let production = self.current.production.as_ref().ok_or(UserJobError::MissingProductionBinding)?;
+        let production = self
+            .current
+            .production
+            .as_ref()
+            .ok_or(UserJobError::MissingProductionBinding)?;
         if certificate.production_state_digest != production.chain_state_digest {
             return Err(UserJobError::CertificateProductionBindingMismatch);
         }
@@ -821,8 +865,16 @@ impl UserJobStore {
         if self.current.phase != UserJobPhase::RecoveryRequired {
             return Err(UserJobError::InvalidTransition);
         }
-        let production = self.current.production.as_ref().ok_or(UserJobError::MissingProductionBinding)?;
-        let certificate = self.current.certificate.as_ref().ok_or(UserJobError::MissingCertificate)?;
+        let production = self
+            .current
+            .production
+            .as_ref()
+            .ok_or(UserJobError::MissingProductionBinding)?;
+        let certificate = self
+            .current
+            .certificate
+            .as_ref()
+            .ok_or(UserJobError::MissingCertificate)?;
         if production.chain_state_digest != production_state_digest
             || certificate.production_state_digest != production_state_digest
             || certificate.certificate_digest != certificate_digest
@@ -835,7 +887,10 @@ impl UserJobStore {
         self.commit(next)
     }
 
-    pub fn cancel_before_execution(&mut self, expected_state_digest: &str) -> Result<(), UserJobError> {
+    pub fn cancel_before_execution(
+        &mut self,
+        expected_state_digest: &str,
+    ) -> Result<(), UserJobError> {
         self.verify_expected_state(expected_state_digest)?;
         if self.current.production.is_some()
             || matches!(
@@ -862,7 +917,11 @@ impl UserJobStore {
         production_state_digest: &str,
     ) -> Result<(), UserJobError> {
         self.verify_expected_state(expected_state_digest)?;
-        let production = self.current.production.as_ref().ok_or(UserJobError::MissingProductionBinding)?;
+        let production = self
+            .current
+            .production
+            .as_ref()
+            .ok_or(UserJobError::MissingProductionBinding)?;
         if production.chain_state_digest != production_state_digest {
             return Err(UserJobError::RecoveryBindingMismatch);
         }
@@ -882,10 +941,16 @@ impl UserJobStore {
 
     fn commit(&mut self, mut next: UserJobRecord) -> Result<(), UserJobError> {
         let (_, observed) = load_history(&self.job_root)?;
-        if observed.revision != self.current.revision || observed.state_digest != self.current.state_digest {
+        if observed.revision != self.current.revision
+            || observed.state_digest != self.current.state_digest
+        {
             return Err(UserJobError::ConcurrentMutation);
         }
-        next.revision = self.current.revision.checked_add(1).ok_or(UserJobError::RevisionOverflow)?;
+        next.revision = self
+            .current
+            .revision
+            .checked_add(1)
+            .ok_or(UserJobError::RevisionOverflow)?;
         next.previous_state_digest = Some(self.current.state_digest.clone());
         next.state_digest.clear();
         next.state_digest = next.expected_digest()?;
@@ -903,11 +968,16 @@ pub fn list_job_ids(product_root: impl AsRef<Path>) -> Result<Vec<String>, UserJ
     let mut ids = Vec::new();
     for entry in fs::read_dir(&jobs).map_err(|source| io_error("read jobs root", &jobs, source))? {
         let entry = entry.map_err(|source| io_error("read job entry", &jobs, source))?;
-        let file_type = entry.file_type().map_err(|source| io_error("inspect job entry", &entry.path(), source))?;
+        let file_type = entry
+            .file_type()
+            .map_err(|source| io_error("inspect job entry", &entry.path(), source))?;
         if file_type.is_symlink() || !file_type.is_dir() {
             return Err(UserJobError::UnexpectedJobEntry);
         }
-        let id = entry.file_name().into_string().map_err(|_| UserJobError::NonUtf8Entry)?;
+        let id = entry
+            .file_name()
+            .into_string()
+            .map_err(|_| UserJobError::NonUtf8Entry)?;
         validate_identifier(&id)?;
         ids.push(id);
     }
@@ -969,7 +1039,8 @@ fn ensure_directory(path: &Path) -> Result<(), UserJobError> {
 }
 
 fn reject_existing_directory(path: &Path) -> Result<(), UserJobError> {
-    let metadata = fs::symlink_metadata(path).map_err(|source| io_error("inspect directory", path, source))?;
+    let metadata =
+        fs::symlink_metadata(path).map_err(|source| io_error("inspect directory", path, source))?;
     if metadata.file_type().is_symlink() {
         return Err(UserJobError::SymbolicLinkRejected(path.to_path_buf()));
     }
@@ -980,7 +1051,8 @@ fn reject_existing_directory(path: &Path) -> Result<(), UserJobError> {
 }
 
 fn reject_symlink(path: &Path) -> Result<(), UserJobError> {
-    let metadata = fs::symlink_metadata(path).map_err(|source| io_error("inspect path", path, source))?;
+    let metadata =
+        fs::symlink_metadata(path).map_err(|source| io_error("inspect path", path, source))?;
     if metadata.file_type().is_symlink() {
         return Err(UserJobError::SymbolicLinkRejected(path.to_path_buf()));
     }
@@ -1011,10 +1083,13 @@ fn persist_blob(root: &Path, digest: &str, bytes: &[u8]) -> Result<(), UserJobEr
         .create_new(true)
         .open(&pending)
         .map_err(|source| io_error("create pending blob", &pending, source))?;
-    file.write_all(bytes).map_err(|source| io_error("write pending blob", &pending, source))?;
-    file.sync_all().map_err(|source| io_error("sync pending blob", &pending, source))?;
+    file.write_all(bytes)
+        .map_err(|source| io_error("write pending blob", &pending, source))?;
+    file.sync_all()
+        .map_err(|source| io_error("sync pending blob", &pending, source))?;
     drop(file);
-    fs::rename(&pending, &blob_path).map_err(|source| io_error("commit immutable blob", &blob_path, source))?;
+    fs::rename(&pending, &blob_path)
+        .map_err(|source| io_error("commit immutable blob", &blob_path, source))?;
     let persisted = read_stable_file(&blob_path, MAX_INPUT_BYTES)?;
     if sha256_hex(&persisted) != digest || persisted != bytes {
         return Err(UserJobError::ExistingBlobMismatch);
@@ -1036,9 +1111,14 @@ fn read_blob(root: &Path, input: &ImmutableInput) -> Result<Vec<u8>, UserJobErro
 fn load_history(job_root: &Path) -> Result<(Vec<UserJobRecord>, UserJobRecord), UserJobError> {
     reject_existing_directory(job_root)?;
     let mut by_digest = BTreeMap::<String, UserJobRecord>::new();
-    for entry in fs::read_dir(job_root).map_err(|source| io_error("read job history", job_root, source))? {
+    for entry in
+        fs::read_dir(job_root).map_err(|source| io_error("read job history", job_root, source))?
+    {
         let entry = entry.map_err(|source| io_error("read history entry", job_root, source))?;
-        let name = entry.file_name().into_string().map_err(|_| UserJobError::NonUtf8Entry)?;
+        let name = entry
+            .file_name()
+            .into_string()
+            .map_err(|_| UserJobError::NonUtf8Entry)?;
         if name.starts_with(PENDING_PREFIX) && name.ends_with(PENDING_SUFFIX) {
             continue;
         }
@@ -1052,7 +1132,10 @@ fn load_history(job_root: &Path) -> Result<(Vec<UserJobRecord>, UserJobRecord), 
         if state_filename(&state) != name {
             return Err(UserJobError::FilenameBindingMismatch);
         }
-        if by_digest.insert(state.state_digest.clone(), state).is_some() {
+        if by_digest
+            .insert(state.state_digest.clone(), state)
+            .is_some()
+        {
             return Err(UserJobError::DuplicateStateDigest);
         }
     }
@@ -1073,13 +1156,20 @@ fn load_history(job_root: &Path) -> Result<(Vec<UserJobRecord>, UserJobRecord), 
     loop {
         let children = by_digest
             .values()
-            .filter(|state| state.previous_state_digest.as_deref() == Some(current.state_digest.as_str()))
+            .filter(|state| {
+                state.previous_state_digest.as_deref() == Some(current.state_digest.as_str())
+            })
             .cloned()
             .collect::<Vec<_>>();
         match children.as_slice() {
             [] => break,
             [child] => {
-                if child.revision != current.revision.checked_add(1).ok_or(UserJobError::RevisionOverflow)? {
+                if child.revision
+                    != current
+                        .revision
+                        .checked_add(1)
+                        .ok_or(UserJobError::RevisionOverflow)?
+                {
                     return Err(UserJobError::InvalidRevisionChain);
                 }
                 if !visited.insert(child.state_digest.clone()) {
@@ -1124,15 +1214,19 @@ fn write_state(job_root: &Path, state: &UserJobRecord) -> Result<(), UserJobErro
         .create_new(true)
         .open(&pending)
         .map_err(|source| io_error("create pending state", &pending, source))?;
-    file.write_all(&bytes).map_err(|source| io_error("write pending state", &pending, source))?;
-    file.sync_all().map_err(|source| io_error("sync pending state", &pending, source))?;
+    file.write_all(&bytes)
+        .map_err(|source| io_error("write pending state", &pending, source))?;
+    file.sync_all()
+        .map_err(|source| io_error("sync pending state", &pending, source))?;
     drop(file);
-    fs::rename(&pending, &final_path).map_err(|source| io_error("commit state", &final_path, source))?;
+    fs::rename(&pending, &final_path)
+        .map_err(|source| io_error("commit state", &final_path, source))?;
     Ok(())
 }
 
 fn read_stable_file(path: &Path, max_bytes: u64) -> Result<Vec<u8>, UserJobError> {
-    let before = fs::symlink_metadata(path).map_err(|source| io_error("inspect file", path, source))?;
+    let before =
+        fs::symlink_metadata(path).map_err(|source| io_error("inspect file", path, source))?;
     if before.file_type().is_symlink() || !before.is_file() {
         return Err(UserJobError::InvalidFileType(path.to_path_buf()));
     }
@@ -1140,18 +1234,21 @@ fn read_stable_file(path: &Path, max_bytes: u64) -> Result<Vec<u8>, UserJobError
         return Err(UserJobError::FileSizeRejected(before.len()));
     }
     let before_modified = before.modified().ok();
-    let capacity = usize::try_from(before.len()).map_err(|_| UserJobError::FileSizeRejected(before.len()))?;
+    let capacity =
+        usize::try_from(before.len()).map_err(|_| UserJobError::FileSizeRejected(before.len()))?;
     let mut bytes = Vec::with_capacity(capacity);
     File::open(path)
         .map_err(|source| io_error("open file", path, source))?
         .take(max_bytes + 1)
         .read_to_end(&mut bytes)
         .map_err(|source| io_error("read file", path, source))?;
-    let length = u64::try_from(bytes.len()).map_err(|_| UserJobError::FileSizeRejected(u64::MAX))?;
+    let length =
+        u64::try_from(bytes.len()).map_err(|_| UserJobError::FileSizeRejected(u64::MAX))?;
     if length > max_bytes {
         return Err(UserJobError::FileSizeRejected(length));
     }
-    let after = fs::symlink_metadata(path).map_err(|source| io_error("reinspect file", path, source))?;
+    let after =
+        fs::symlink_metadata(path).map_err(|source| io_error("reinspect file", path, source))?;
     if before.len() != after.len()
         || before_modified != after.modified().ok()
         || before.file_type() != after.file_type()
@@ -1162,7 +1259,10 @@ fn read_stable_file(path: &Path, max_bytes: u64) -> Result<Vec<u8>, UserJobError
 }
 
 fn state_filename(state: &UserJobRecord) -> String {
-    format!("{STATE_PREFIX}{:020}-{}{STATE_SUFFIX}", state.revision, state.state_digest)
+    format!(
+        "{STATE_PREFIX}{:020}-{}{STATE_SUFFIX}",
+        state.revision, state.state_digest
+    )
 }
 
 fn validate_identifier(value: &str) -> Result<(), UserJobError> {
@@ -1180,9 +1280,9 @@ fn validate_identifier(value: &str) -> Result<(), UserJobError> {
 fn validate_role(value: &str) -> Result<(), UserJobError> {
     if value.is_empty()
         || value.len() > 80
-        || !value
-            .bytes()
-            .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || matches!(byte, b'_' | b'-'))
+        || !value.bytes().all(|byte| {
+            byte.is_ascii_lowercase() || byte.is_ascii_digit() || matches!(byte, b'_' | b'-')
+        })
     {
         return Err(UserJobError::InvalidRole(value.to_owned()));
     }
@@ -1420,9 +1520,24 @@ mod tests {
             "Remove the approved background using the supplied mask.",
         )?;
         for (role, name, media, bytes) in [
-            ("intent_manifest", "intent.json", "application/json", b"{}".as_slice()),
-            ("source_raster", "source.png", "image/png", b"source".as_slice()),
-            ("approved_cleanup_mask", "mask.png", "image/png", b"mask".as_slice()),
+            (
+                "intent_manifest",
+                "intent.json",
+                "application/json",
+                b"{}".as_slice(),
+            ),
+            (
+                "source_raster",
+                "source.png",
+                "image/png",
+                b"source".as_slice(),
+            ),
+            (
+                "approved_cleanup_mask",
+                "mask.png",
+                "image/png",
+                b"mask".as_slice(),
+            ),
         ] {
             let expected = store.current().state_digest.clone();
             store.import_input(&expected, role, name, media, bytes)?;
@@ -1455,7 +1570,11 @@ mod tests {
     ) -> Result<DesktopShellSnapshot, Box<dyn std::error::Error>> {
         let contract_digest = store.current().contract_digest.clone().ok_or("contract")?;
         let plan_digest = store.current().plan_digest.clone().ok_or("plan")?;
-        let permission_digest = store.current().permission_digest.clone().ok_or("permission")?;
+        let permission_digest = store
+            .current()
+            .permission_digest
+            .clone()
+            .ok_or("permission")?;
         let (approval_id, expires_at_epoch_s, approval_status, approval_digest) = match approval {
             Some(record) => (
                 record.approval_id.clone(),
@@ -1463,12 +1582,7 @@ mod tests {
                 StageStatus::Passed,
                 Some(record.approval_digest.clone()),
             ),
-            None => (
-                "approval.pending".to_owned(),
-                0,
-                StageStatus::Pending,
-                None,
-            ),
+            None => ("approval.pending".to_owned(), 0, StageStatus::Pending, None),
         };
         build_desktop_shell_snapshot(DesktopShellMaterial {
             generated_at: "2026-08-14T07:00:00Z".to_owned(),
@@ -1527,7 +1641,9 @@ mod tests {
         .map_err(Into::into)
     }
 
-    fn install_canonical_approval(store: &mut UserJobStore) -> Result<(), Box<dyn std::error::Error>> {
+    fn install_canonical_approval(
+        store: &mut UserJobStore,
+    ) -> Result<(), Box<dyn std::error::Error>> {
         let awaiting = approval_snapshot(store, DesktopControlStatus::AwaitingApproval, None)?;
         let record = issue_desktop_approval(
             &awaiting,
@@ -1535,7 +1651,11 @@ mod tests {
                 expected_snapshot_digest: awaiting.snapshot_digest.clone(),
                 contract_digest: store.current().contract_digest.clone().ok_or("contract")?,
                 plan_digest: store.current().plan_digest.clone().ok_or("plan")?,
-                permission_digest: store.current().permission_digest.clone().ok_or("permission")?,
+                permission_digest: store
+                    .current()
+                    .permission_digest
+                    .clone()
+                    .ok_or("permission")?,
             },
             "ergaxiom.local.operator",
             100,
@@ -1576,7 +1696,8 @@ mod tests {
     }
 
     #[test]
-    fn imported_bytes_are_digest_addressed_without_trusted_paths() -> Result<(), Box<dyn std::error::Error>> {
+    fn imported_bytes_are_digest_addressed_without_trusted_paths()
+    -> Result<(), Box<dyn std::error::Error>> {
         let root = test_root("immutable")?;
         let mut store = UserJobStore::create(
             &root,
@@ -1586,8 +1707,18 @@ mod tests {
             "Prepare this poster for print.",
         )?;
         let expected = store.current().state_digest.clone();
-        store.import_input(&expected, "intent_manifest", "intent.json", "application/json", b"manifest")?;
-        let input = store.current().inputs.get("intent_manifest").ok_or("missing input")?;
+        store.import_input(
+            &expected,
+            "intent_manifest",
+            "intent.json",
+            "application/json",
+            b"manifest",
+        )?;
+        let input = store
+            .current()
+            .inputs
+            .get("intent_manifest")
+            .ok_or("missing input")?;
         assert_eq!(input.sha256, sha256_hex(b"manifest"));
         assert!(!input.file_name.contains('/'));
         assert!(!input.file_name.contains('\\'));
@@ -1614,21 +1745,30 @@ mod tests {
     }
 
     #[test]
-    fn stale_renderer_digest_and_history_corruption_fail_closed() -> Result<(), Box<dyn std::error::Error>> {
+    fn stale_renderer_digest_and_history_corruption_fail_closed()
+    -> Result<(), Box<dyn std::error::Error>> {
         let root = test_root("stale")?;
         let mut store = create_filled_store(&root)?;
-        let stale = store.current().previous_state_digest.clone().ok_or("missing previous digest")?;
+        let stale = store
+            .current()
+            .previous_state_digest
+            .clone()
+            .ok_or("missing previous digest")?;
         let error = store.record_unresolved(&stale, json!({"intent": "x"}), "missing field");
         assert!(matches!(error, Err(UserJobError::StaleState)));
         fs::write(store.job_root.join("forged.json"), b"{}")?;
         let reopened = UserJobStore::open(&root, "job.test.0001");
-        assert!(matches!(reopened, Err(UserJobError::UnexpectedHistoryEntry(_))));
+        assert!(matches!(
+            reopened,
+            Err(UserJobError::UnexpectedHistoryEntry(_))
+        ));
         fs::remove_dir_all(root)?;
         Ok(())
     }
 
     #[test]
-    fn canonical_desktop_approval_is_required_and_persisted() -> Result<(), Box<dyn std::error::Error>> {
+    fn canonical_desktop_approval_is_required_and_persisted()
+    -> Result<(), Box<dyn std::error::Error>> {
         let root = test_root("approval")?;
         let mut store = create_filled_store(&root)?;
         compile_test_material(&mut store)?;
@@ -1690,7 +1830,10 @@ mod tests {
         drop(store);
         let reopened = UserJobStore::open(&root, "job.test.0001")?;
         assert_eq!(reopened.current().phase, UserJobPhase::RecoveryRequired);
-        assert_eq!(reopened.current().status_detail.as_deref(), Some("restart_reverification_required"));
+        assert_eq!(
+            reopened.current().status_detail.as_deref(),
+            Some("restart_reverification_required")
+        );
         fs::remove_dir_all(root)?;
         Ok(())
     }
