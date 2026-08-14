@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   repair:
-    if: ${{ github.event.head_commit.message == 'issue75-run-source-repair-v3' }}
+    if: github.event.head_commit.message == 'issue75-run-source-repair-v4'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -21,53 +21,27 @@ jobs:
         with:
           toolchain: "1.85.0"
           components: rustfmt, clippy
-      - name: Repair Issue 75 source and strict clippy blocker
+      - name: Apply deterministic source repairs
+        run: python .github/scripts/issue75_source_repair.py
+      - name: Format
+        run: cargo +1.85.0 fmt --all
+      - name: Clippy production execution store
+        run: cargo +1.85.0 clippy -p ergaxiom-production-execution-runtime --all-targets -- -D warnings
+      - name: Clippy persistent production authority
+        run: cargo +1.85.0 clippy -p ergaxiom-production-execution-authority-runtime --all-targets -- -D warnings
+      - name: Clippy production evidence
+        run: cargo +1.85.0 clippy -p ergaxiom-graphic-production-evidence-runtime --all-targets -- -D warnings
+      - name: Runtime tests
+        run: cargo +1.85.0 test -p ergaxiom-production-execution-runtime
+      - name: Authority tests
+        run: cargo +1.85.0 test -p ergaxiom-production-execution-authority-runtime
+      - name: Production evidence tests
+        run: cargo +1.85.0 test -p ergaxiom-graphic-production-evidence-runtime
+      - name: Commit repaired source
         shell: bash
         run: |
           set -euo pipefail
-          python - <<'PY'
-          from pathlib import Path
-
-          runtime = Path('crates/production-execution-runtime/src/lib.rs')
-          text = runtime.read_text()
-          old = "    #[error(transparent)]\n    Lease(#[from] ProductionSignerIdentityProofError),\n"
-          new = old + "    #[error(transparent)]\n    DesktopShell(#[from] DesktopShellError),\n"
-          if new not in text:
-              if old not in text:
-                  raise SystemExit('production verification error anchor missing')
-              runtime.write_text(text.replace(old, new, 1))
-
-          governance = Path('crates/key-governance-runtime/src/lib.rs')
-          text = governance.read_text()
-          old = '''                public_key_hex: record
-                    .verifying_key
-                    .to_bytes()
-                    .iter()
-                    .map(|byte| format!("{byte:02x}"))
-                    .collect(),
-'''
-          new = '''                public_key_hex: record.verifying_key.to_bytes().iter().fold(
-                    String::with_capacity(64),
-                    |mut output, byte| {
-                        use std::fmt::Write as _;
-                        write!(&mut output, "{byte:02x}")
-                            .expect("writing hexadecimal bytes to String cannot fail");
-                        output
-                    },
-                ),
-'''
-          if new not in text:
-              if old not in text:
-                  raise SystemExit('key governance hex formatting anchor missing')
-              governance.write_text(text.replace(old, new, 1))
-          PY
-          cargo +1.85.0 fmt --all
-          cargo +1.85.0 clippy -p ergaxiom-production-execution-runtime --all-targets -- -D warnings
-          cargo +1.85.0 clippy -p ergaxiom-production-execution-authority-runtime --all-targets -- -D warnings
-          cargo +1.85.0 clippy -p ergaxiom-graphic-production-evidence-runtime --all-targets -- -D warnings
-          cargo +1.85.0 test -p ergaxiom-production-execution-runtime
-          cargo +1.85.0 test -p ergaxiom-production-execution-authority-runtime
-          cargo +1.85.0 test -p ergaxiom-graphic-production-evidence-runtime
+          rm .github/scripts/issue75_source_repair.py
           rm .github/workflows/issue75-final-source-repair.yml
           git config user.name Tayfun
           git config user.email tayfuna766@gmail.com
