@@ -27,7 +27,9 @@ pub(crate) const JOB_ID: &str = "job.desktop-shell.0001";
 pub enum PipelineSnapshotMode<'a> {
     AwaitingApproval,
     Approved(&'a DesktopApprovalRecord),
+    Executed(&'a DesktopApprovalRecord),
     Cancelled(Option<&'a DesktopApprovalRecord>),
+    RolledBack(&'a DesktopApprovalRecord),
 }
 
 impl<'a> PipelineSnapshotMode<'a> {
@@ -35,14 +37,18 @@ impl<'a> PipelineSnapshotMode<'a> {
         match self {
             Self::AwaitingApproval => DesktopControlStatus::AwaitingApproval,
             Self::Approved(_) => DesktopControlStatus::Approved,
+            Self::Executed(_) => DesktopControlStatus::Executed,
             Self::Cancelled(_) => DesktopControlStatus::Cancelled,
+            Self::RolledBack(_) => DesktopControlStatus::RolledBack,
         }
     }
 
     fn approval(self) -> Option<&'a DesktopApprovalRecord> {
         match self {
             Self::AwaitingApproval => None,
-            Self::Approved(record) => Some(record),
+            Self::Approved(record) | Self::Executed(record) | Self::RolledBack(record) => {
+                Some(record)
+            }
             Self::Cancelled(record) => record,
         }
     }
@@ -50,14 +56,14 @@ impl<'a> PipelineSnapshotMode<'a> {
     fn approval_status(self) -> StageStatus {
         match self {
             Self::AwaitingApproval => StageStatus::Pending,
-            Self::Approved(_) => StageStatus::Passed,
+            Self::Approved(_) | Self::Executed(_) | Self::RolledBack(_) => StageStatus::Passed,
             Self::Cancelled(_) => StageStatus::Blocked,
         }
     }
 
     fn step_status(self) -> StageStatus {
         match self {
-            Self::Cancelled(_) => StageStatus::Blocked,
+            Self::Cancelled(_) | Self::RolledBack(_) => StageStatus::Blocked,
             _ => StageStatus::Pending,
         }
     }
@@ -192,6 +198,12 @@ pub(crate) fn prepare_desktop_job() -> Result<PreparedDesktopJob, String> {
 pub fn build_pipeline_snapshot(
     mode: PipelineSnapshotMode<'_>,
 ) -> Result<DesktopShellSnapshot, String> {
+    if matches!(mode, PipelineSnapshotMode::Executed(_)) {
+        return Err(
+            "production execution cannot be synthesized by the prepare-only desktop pipeline"
+                .to_owned(),
+        );
+    }
     let prepared = prepare_desktop_job()?;
     let steps = prepared
         .compiled_plan
@@ -374,7 +386,6 @@ mod tests {
         AuthorityStatus, DesktopApprovalRequest, StageStatus, issue_desktop_approval,
         verify_desktop_shell_snapshot,
     };
-    use serde_json::Value;
 
     use super::{PipelineSnapshotMode, build_pipeline_snapshot};
 
@@ -389,10 +400,7 @@ mod tests {
         assert!(awaiting.evidence_bundle.is_none());
         assert!(awaiting.certificate.is_none());
         assert_eq!(
-            awaiting
-                .metadata
-                .get("twin_executed")
-                .and_then(Value::as_bool),
+            awaiting.metadata.get("twin_executed").and_then(Value::as_bool),
             Some(false)
         );
         assert!(
@@ -419,11 +427,9 @@ mod tests {
         let approved = build_pipeline_snapshot(PipelineSnapshotMode::Approved(&approval))
             .expect("approved snapshot must build without Twin execution");
         assert_eq!(
-            approved
-                .metadata
-                .get("twin_executed")
-                .and_then(Value::as_bool),
+            approved.metadata.get("twin_executed").and_then(Value::as_bool),
             Some(false)
         );
+        assert!(build_pipeline_snapshot(PipelineSnapshotMode::Executed(&approval)).is_err());
     }
 }
