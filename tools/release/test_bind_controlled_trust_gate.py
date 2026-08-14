@@ -50,8 +50,14 @@ class ControlledTrustReleaseBindingTests(unittest.TestCase):
                 "governance_recovery_receipt": digest,
                 "installation_receipt": digest,
                 "recovery_receipt": digest,
+                "capability_provisioning_evidence": digest,
+                "attestation_provisioning_evidence": digest,
             },
         }
+        self.assertEqual(
+            MODULE.EXPECTED_EVIDENCE_DIGEST_KEYS,
+            set(proven["evidence_digests"]),
+        )
         bound = MODULE.bind_manifest(self.base_manifest(), proven)
         self.assertIs(bound["release_eligible"], False)
         self.assertNotIn(MODULE.HARDWARE_BLOCKER, bound["blocking_reasons"])
@@ -67,8 +73,14 @@ class ControlledTrustReleaseBindingTests(unittest.TestCase):
             second = root / "second.json"
             checksum_a = root / "SHA256SUMS-a"
             checksum_b = root / "SHA256SUMS-b"
-            checksum_a.write_text(f"{'0' * 64}  first.json\n{'1' * 64}  artifact.exe\n", encoding="utf-8")
-            checksum_b.write_text(f"{'0' * 64}  second.json\n{'1' * 64}  artifact.exe\n", encoding="utf-8")
+            checksum_a.write_text(
+                f"{'0' * 64}  first.json\n{'1' * 64}  artifact.exe\n",
+                encoding="utf-8",
+            )
+            checksum_b.write_text(
+                f"{'0' * 64}  second.json\n{'1' * 64}  artifact.exe\n",
+                encoding="utf-8",
+            )
             self.assertEqual(
                 0,
                 MODULE.main(
@@ -98,9 +110,18 @@ class ControlledTrustReleaseBindingTests(unittest.TestCase):
             self.assertEqual(first.read_bytes(), second.read_bytes())
             expected_first = hashlib.sha256(first.read_bytes()).hexdigest()
             expected_second = hashlib.sha256(second.read_bytes()).hexdigest()
-            self.assertIn(f"{expected_first}  first.json", checksum_a.read_text(encoding="utf-8"))
-            self.assertIn(f"{expected_second}  second.json", checksum_b.read_text(encoding="utf-8"))
-            self.assertIn(f"{'1' * 64}  artifact.exe", checksum_a.read_text(encoding="utf-8"))
+            self.assertIn(
+                f"{expected_first}  first.json",
+                checksum_a.read_text(encoding="utf-8"),
+            )
+            self.assertIn(
+                f"{expected_second}  second.json",
+                checksum_b.read_text(encoding="utf-8"),
+            )
+            self.assertIn(
+                f"{'1' * 64}  artifact.exe",
+                checksum_a.read_text(encoding="utf-8"),
+            )
 
     def test_partial_controlled_evidence_is_rejected(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
