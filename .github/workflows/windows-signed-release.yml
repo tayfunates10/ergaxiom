@@ -81,20 +81,35 @@ jobs:
         shell: pwsh
         run: |
           npm --prefix apps/desktop ci
+          if($LASTEXITCODE-ne0){throw 'NPM_CI_FAILED'}
           npm --prefix apps/desktop run tauri -- build --no-bundle
+          if($LASTEXITCODE-ne0){throw 'DESKTOP_BUILD_FAILED'}
           cargo build --release --locked -p ergaxiom-windows-production-signer-service
+          if($LASTEXITCODE-ne0){throw 'SIGNER_SERVICE_BUILD_FAILED'}
           New-Item -ItemType Directory -Force apps/desktop/src-tauri/release-resources | Out-Null
           Copy-Item target/release/ergaxiom-windows-production-signer-service.exe apps/desktop/src-tauri/release-resources/ergaxiom-windows-production-signer-service.exe
           npm --prefix apps/desktop run tauri -- bundle --config src-tauri/tauri.ci-installer.conf.json
+          if($LASTEXITCODE-ne0){throw 'NSIS_BUNDLE_FAILED'}
       - name: Produce unsigned Authenticode evidence and final fail-closed decision
         shell: pwsh
         run: |
           $installer=@(Get-ChildItem apps/desktop/src-tauri/target/release/bundle/nsis -Filter '*-setup.exe')
           if($installer.Count-ne1){throw 'Expected exactly one NSIS installer'}
+          $candidate=Join-Path $env:RUNNER_TEMP 'unsigned-candidate'
+          New-Item -ItemType Directory -Force $candidate | Out-Null
+          $desktopCopy=Join-Path $candidate 'ergaxiom-desktop.exe'
+          $serviceCopy=Join-Path $candidate 'ergaxiom-windows-production-signer-service.exe'
+          $installerCopy=Join-Path $candidate $installer[0].Name
+          [IO.File]::Copy((Resolve-Path 'apps/desktop/src-tauri/target/release/ergaxiom-desktop.exe').Path,$desktopCopy,$false)
+          [IO.File]::Copy((Resolve-Path 'apps/desktop/src-tauri/release-resources/ergaxiom-windows-production-signer-service.exe').Path,$serviceCopy,$false)
+          [IO.File]::Copy($installer[0].FullName,$installerCopy,$false)
           $rustc=(rustc --version).Trim();$node=(node --version).Trim();$npm=(npm --version).Trim()
-          python tools/release/generate_release_evidence.py --repo-root . --artifact apps/desktop/src-tauri/target/release/ergaxiom-desktop.exe --artifact apps/desktop/src-tauri/release-resources/ergaxiom-windows-production-signer-service.exe --artifact $installer[0].FullName --source-commit $env:SOURCE_COMMIT --rustc-version $rustc --node-version $node --npm-version $npm --output-dir $env:RUNNER_TEMP/base
-          ./tools/release/verify_windows_signatures.ps1 -Mode test -PolicyPath tools/release/windows_release_policy.json -Artifact @('apps/desktop/src-tauri/target/release/ergaxiom-desktop.exe','apps/desktop/src-tauri/release-resources/ergaxiom-windows-production-signer-service.exe',$installer[0].FullName) -EvidenceOut $env:RUNNER_TEMP/signatures.json
+          python tools/release/generate_release_evidence.py --repo-root . --artifact $desktopCopy --artifact $serviceCopy --artifact $installerCopy --source-commit $env:SOURCE_COMMIT --rustc-version $rustc --node-version $node --npm-version $npm --output-dir $env:RUNNER_TEMP/base
+          if($LASTEXITCODE-ne0){throw 'UNSIGNED_BASE_EVIDENCE_FAILED'}
+          ./tools/release/verify_windows_signatures.ps1 -Mode test -PolicyPath tools/release/windows_release_policy.json -Artifact @($desktopCopy,$serviceCopy,$installerCopy) -EvidenceOut $env:RUNNER_TEMP/signatures.json
+          if($LASTEXITCODE-ne0){throw 'UNSIGNED_SIGNATURE_EVIDENCE_FAILED'}
           python tools/release/finalize_windows_release_evidence.py --base-manifest $env:RUNNER_TEMP/base/ergaxiom-release-manifest.json --policy tools/release/windows_release_policy.json --signature-evidence $env:RUNNER_TEMP/signatures.json --output $env:RUNNER_TEMP/final.json
+          if($LASTEXITCODE-ne0){throw 'UNSIGNED_FINALIZER_FAILED'}
           $f=Get-Content $env:RUNNER_TEMP/final.json -Raw|ConvertFrom-Json
           if($f.release_eligible-ne$false){throw 'Unsigned/test candidate became production eligible'}
           foreach($b in @('SIGNING_IDENTITY_POLICY_UNRESOLVED','AUTHENTICODE_NOT_VERIFIED','INSTALLER_LIFECYCLE_NOT_VERIFIED','PRODUCTION_CHAIN_EVIDENCE_NOT_VERIFIED','PRODUCTION_CHAIN_CANONICAL_VERIFIER_NOT_INTEGRATED','HARDWARE_OPERATIONAL_EVIDENCE_NOT_VERIFIED','DISTRIBUTION_LICENSE_NOT_APPROVED')){if($b-notin$f.blocking_reasons){throw "Missing blocker $b"}}
@@ -130,18 +145,23 @@ jobs:
         shell: pwsh
         run: |
           npm --prefix apps/desktop ci
+          if($LASTEXITCODE-ne0){throw 'NPM_CI_FAILED'}
           npm --prefix apps/desktop run tauri -- build --no-bundle
+          if($LASTEXITCODE-ne0){throw 'DESKTOP_BUILD_FAILED'}
           cargo build --release --locked -p ergaxiom-windows-production-signer-service
+          if($LASTEXITCODE-ne0){throw 'SIGNER_SERVICE_BUILD_FAILED'}
           New-Item -ItemType Directory -Force apps/desktop/src-tauri/release-resources | Out-Null
           Copy-Item target/release/ergaxiom-windows-production-signer-service.exe apps/desktop/src-tauri/release-resources/ergaxiom-windows-production-signer-service.exe
       - name: Bundle previous and current test-only NSIS installers
         shell: pwsh
         run: |
           npm --prefix apps/desktop run tauri -- bundle --config src-tauri/tauri.ci-previous-installer.conf.json
+          if($LASTEXITCODE-ne0){throw 'PREVIOUS_NSIS_BUNDLE_FAILED'}
           $previous=@(Get-ChildItem apps/desktop/src-tauri/target/release/bundle/nsis -Filter '*0.0.9*-setup.exe')
           if($previous.Count-ne1){throw "Expected exactly one 0.0.9 installer, got $($previous.Count)"}
           Copy-Item $previous[0].FullName "$env:RUNNER_TEMP\previous-setup.exe"
           npm --prefix apps/desktop run tauri -- bundle --config src-tauri/tauri.ci-installer.conf.json
+          if($LASTEXITCODE-ne0){throw 'CURRENT_NSIS_BUNDLE_FAILED'}
           $current=@(Get-ChildItem apps/desktop/src-tauri/target/release/bundle/nsis -Filter '*0.1.0*-setup.exe')
           if($current.Count-ne1){throw "Expected exactly one 0.1.0 installer, got $($current.Count)"}
           Copy-Item $current[0].FullName "$env:RUNNER_TEMP\current-setup.exe"

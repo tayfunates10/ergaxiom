@@ -47,14 +47,22 @@ function RunInstaller([string]$path, [bool]$expectSuccess) {
 function Entries {
   $result = @()
   foreach ($root in @('HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*', 'HKLM:\Software\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*')) {
-    $result += @(Get-ItemProperty $root -ErrorAction SilentlyContinue | Where-Object { $_.DisplayName -eq 'Ergaxiom' })
+    $items = @(Get-ItemProperty $root -ErrorAction SilentlyContinue)
+    foreach ($item in $items) {
+      $displayNameProperty = $item.PSObject.Properties['DisplayName']
+      if ($null -ne $displayNameProperty -and [string]$displayNameProperty.Value -eq 'Ergaxiom') {
+        $result += $item
+      }
+    }
   }
   return @($result)
 }
 function OneEntry([string]$version) {
   $entries = @(Entries)
   if ($entries.Count -ne 1) { throw "UNINSTALL_REGISTRY_CARDINALITY: $($entries.Count)" }
-  if ([string]$entries[0].DisplayVersion -ne $version) { throw "VERSION_MISMATCH: expected=$version actual=$($entries[0].DisplayVersion)" }
+  $displayVersionProperty = $entries[0].PSObject.Properties['DisplayVersion']
+  if ($null -eq $displayVersionProperty) { throw 'DISPLAY_VERSION_MISSING' }
+  if ([string]$displayVersionProperty.Value -ne $version) { throw "VERSION_MISMATCH: expected=$version actual=$($displayVersionProperty.Value)" }
   return $entries[0]
 }
 function AssertInstalled([string]$version) {
@@ -67,7 +75,9 @@ function AssertInstalled([string]$version) {
 }
 function UninstallCurrent {
   $entry = OneEntry '0.1.0'
-  $text = [string]$entry.UninstallString
+  $uninstallProperty = $entry.PSObject.Properties['UninstallString']
+  if ($null -eq $uninstallProperty) { throw 'UNINSTALL_STRING_MISSING' }
+  $text = [string]$uninstallProperty.Value
   if ([string]::IsNullOrWhiteSpace($text)) { throw 'UNINSTALL_STRING_MISSING' }
   $exe = $text.Trim().Trim('"')
   if ($exe.Contains('"') -or $exe.Contains(' /') -or $exe.Contains(' -')) { throw 'UNINSTALL_COMMAND_REJECTED' }
