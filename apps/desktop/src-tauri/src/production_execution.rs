@@ -20,8 +20,7 @@ use thiserror::Error;
 const MANIFEST_PATH: Option<&str> = option_env!("ERGAXIOM_BACKEND_PRODUCTION_MANIFEST_PATH");
 const MANIFEST_PIN_PATH: Option<&str> =
     option_env!("ERGAXIOM_BACKEND_PRODUCTION_MANIFEST_PIN_PATH");
-const POLICY_STORE_ROOT: Option<&str> =
-    option_env!("ERGAXIOM_BACKEND_ISSUANCE_POLICY_STORE_ROOT");
+const POLICY_STORE_ROOT: Option<&str> = option_env!("ERGAXIOM_BACKEND_ISSUANCE_POLICY_STORE_ROOT");
 const EXECUTION_STORE_ROOT: Option<&str> =
     option_env!("ERGAXIOM_PRODUCTION_EXECUTION_CHAIN_STORE_ROOT");
 const DESKTOP_JOB_ID: &str = "job.desktop-shell.0001";
@@ -71,7 +70,9 @@ impl ProductionExecutionState {
             .map_err(|_| ProductionExecutionBoundaryError::StatePoisoned)?;
         let runtime = guard
             .as_mut()
-            .ok_or(ProductionExecutionBoundaryError::Unavailable(self.startup_code))?;
+            .ok_or(ProductionExecutionBoundaryError::Unavailable(
+                self.startup_code,
+            ))?;
         let trusted_now_epoch_s = current_epoch_s()?;
         let lease = runtime.fresh_lease(trusted_now_epoch_s)?;
         let client = runtime.signer_client;
@@ -95,9 +96,9 @@ impl ProductionExecutionRuntime {
         if !cfg!(windows) {
             return Err(ProductionExecutionBoundaryError::UnsupportedPlatform);
         }
-        let manifest_path = fixed_absolute_path(MANIFEST_PATH.ok_or(
-            ProductionExecutionBoundaryError::ConfigurationMissing,
-        )?)?;
+        let manifest_path = fixed_absolute_path(
+            MANIFEST_PATH.ok_or(ProductionExecutionBoundaryError::ConfigurationMissing)?,
+        )?;
         let pin_path = fixed_absolute_path(
             MANIFEST_PIN_PATH.ok_or(ProductionExecutionBoundaryError::ConfigurationMissing)?,
         )?;
@@ -243,8 +244,8 @@ fn read_stable_manifest_pin(path: &Path) -> Result<String, ProductionExecutionBo
         return Err(ProductionExecutionBoundaryError::ConfigurationPinRejected);
     }
     let before_modified = before.modified().ok();
-    let bytes = fs::read(path)
-        .map_err(|_| ProductionExecutionBoundaryError::ConfigurationPinRejected)?;
+    let bytes =
+        fs::read(path).map_err(|_| ProductionExecutionBoundaryError::ConfigurationPinRejected)?;
     let after = fs::symlink_metadata(path)
         .map_err(|_| ProductionExecutionBoundaryError::ConfigurationPinRejected)?;
     if after.file_type().is_symlink()

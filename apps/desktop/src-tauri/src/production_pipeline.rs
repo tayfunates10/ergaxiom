@@ -188,9 +188,7 @@ fn ensure_capabilities(
                     .chain_state()
                     .capabilities
                     .iter()
-                    .find(|capability| {
-                        capability.token.payload.bindings.step_id == step.step_id
-                    })
+                    .find(|capability| capability.token.payload.bindings.step_id == step.step_id)
                     .cloned();
                 if let Some(existing) = existing {
                     verify_persisted_token(
@@ -249,9 +247,7 @@ fn collect_authorization_receipts(
                     .chain_state()
                     .capabilities
                     .iter()
-                    .find(|capability| {
-                        capability.token.payload.bindings.step_id == step.step_id
-                    })
+                    .find(|capability| capability.token.payload.bindings.step_id == step.step_id)
                     .cloned()
                     .ok_or(ProductionExecutionBoundaryError::TrustLeaseRejected)?;
                 if let Some(receipt) = persisted.consumption_receipt.clone() {
@@ -446,10 +442,7 @@ fn validate_approved_bindings(
     approve_receipt: &DesktopCommandReceipt,
 ) -> Result<(), String> {
     if snapshot.job_id.as_deref() != Some(prepared.job.job_id.as_str())
-        || snapshot
-            .contract
-            .as_ref()
-            .map(|item| item.digest.as_str())
+        || snapshot.contract.as_ref().map(|item| item.digest.as_str())
             != Some(prepared.compiled_contract.seal.contract_digest.as_str())
         || snapshot.plan.as_ref().map(|item| item.digest.as_str())
             != Some(prepared.compiled_plan.plan_digest.as_str())
@@ -457,7 +450,9 @@ fn validate_approved_bindings(
         || approve_receipt.post_snapshot_digest != snapshot.snapshot_digest
         || approve_receipt.approval_digest.as_deref() != Some(approval.approval_digest.as_str())
     {
-        return Err("approved desktop snapshot does not bind the canonical production job".to_owned());
+        return Err(
+            "approved desktop snapshot does not bind the canonical production job".to_owned(),
+        );
     }
     Ok(())
 }
@@ -585,11 +580,7 @@ fn expected_permission(
             "isolated-workspace",
             PermissionAccess::Control,
         )),
-        "step.logo" => Ok((
-            "filesystem",
-            "contract://inputs/*",
-            PermissionAccess::Read,
-        )),
+        "step.logo" => Ok(("filesystem", "contract://inputs/*", PermissionAccess::Read)),
         "step.export" => Ok((
             "filesystem",
             "contract://outputs/*",
@@ -615,7 +606,9 @@ fn bundle_with_operation_receipts(
         if artifacts.iter().any(|artifact| {
             artifact.get("artifact_id").and_then(Value::as_str) == Some(artifact_id.as_str())
         }) {
-            return Err(format!("duplicate operation receipt artifact {artifact_id}"));
+            return Err(format!(
+                "duplicate operation receipt artifact {artifact_id}"
+            ));
         }
         artifacts.push(json!({
             "artifact_id": artifact_id,

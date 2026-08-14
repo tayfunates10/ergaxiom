@@ -401,7 +401,10 @@ mod tests {
         assert!(awaiting.evidence_bundle.is_none());
         assert!(awaiting.certificate.is_none());
         assert_eq!(
-            awaiting.metadata.get("twin_executed").and_then(Value::as_bool),
+            awaiting
+                .metadata
+                .get("twin_executed")
+                .and_then(Value::as_bool),
             Some(false)
         );
         assert!(
@@ -428,7 +431,10 @@ mod tests {
         let approved = build_pipeline_snapshot(PipelineSnapshotMode::Approved(&approval))
             .expect("approved snapshot must build without Twin execution");
         assert_eq!(
-            approved.metadata.get("twin_executed").and_then(Value::as_bool),
+            approved
+                .metadata
+                .get("twin_executed")
+                .and_then(Value::as_bool),
             Some(false)
         );
         assert!(build_pipeline_snapshot(PipelineSnapshotMode::Executed(&approval)).is_err());

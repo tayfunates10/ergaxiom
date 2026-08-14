@@ -73,39 +73,40 @@ impl DesktopControlState {
 
     pub fn recover_or_new(production: &ProductionExecutionState) -> Result<Self, String> {
         let prepared = prepare_desktop_job()?;
-        let recovered = production.with_fresh_lease(|authority, lease, deployment, _client, now| {
-            let state = authority.chain_state().clone();
-            if matches!(
-                state.stage,
-                ProductionExecutionStage::Certified | ProductionExecutionStage::RolledBack
-            ) {
-                let bundle = state
-                    .evidence_bundle
-                    .as_ref()
-                    .ok_or(ProductionExecutionBoundaryError::TrustLeaseRejected)?;
-                let executed_snapshot = state
-                    .executed_snapshot
-                    .as_ref()
-                    .ok_or(ProductionExecutionBoundaryError::TrustLeaseRejected)?;
-                authority
-                    .verify_execution_evidence_binding(bundle, executed_snapshot)
-                    .map_err(ProductionExecutionBoundaryError::from)?;
-                verify_recovered_certified_chain(
-                    &state,
-                    lease,
-                    &deployment.signer.accepted,
-                    &deployment.signer.deployment_policy,
-                    now,
-                    prepared.compiled_contract.clone(),
-                    &prepared.compiled_plan,
-                    AssuranceLevel::E3,
-                    authority.executor_id(),
-                    authority.device_id(),
-                )
-                .map_err(|_| ProductionExecutionBoundaryError::TrustLeaseRejected)?;
-            }
-            Ok(state)
-        });
+        let recovered =
+            production.with_fresh_lease(|authority, lease, deployment, _client, now| {
+                let state = authority.chain_state().clone();
+                if matches!(
+                    state.stage,
+                    ProductionExecutionStage::Certified | ProductionExecutionStage::RolledBack
+                ) {
+                    let bundle = state
+                        .evidence_bundle
+                        .as_ref()
+                        .ok_or(ProductionExecutionBoundaryError::TrustLeaseRejected)?;
+                    let executed_snapshot = state
+                        .executed_snapshot
+                        .as_ref()
+                        .ok_or(ProductionExecutionBoundaryError::TrustLeaseRejected)?;
+                    authority
+                        .verify_execution_evidence_binding(bundle, executed_snapshot)
+                        .map_err(ProductionExecutionBoundaryError::from)?;
+                    verify_recovered_certified_chain(
+                        &state,
+                        lease,
+                        &deployment.signer.accepted,
+                        &deployment.signer.deployment_policy,
+                        now,
+                        prepared.compiled_contract.clone(),
+                        &prepared.compiled_plan,
+                        AssuranceLevel::E3,
+                        authority.executor_id(),
+                        authority.device_id(),
+                    )
+                    .map_err(|_| ProductionExecutionBoundaryError::TrustLeaseRejected)?;
+                }
+                Ok(state)
+            });
         match recovered {
             Ok(state) => Self::from_chain_state(state),
             Err(_error)
@@ -250,7 +251,10 @@ impl DesktopControlState {
         response_from_session(&session)
     }
 
-    pub fn approve(&self, request: DesktopApprovalRequest) -> Result<DesktopSnapshotResponse, String> {
+    pub fn approve(
+        &self,
+        request: DesktopApprovalRequest,
+    ) -> Result<DesktopSnapshotResponse, String> {
         self.approve_transaction(request, |_, _, _| Ok(()))
     }
 
@@ -370,13 +374,11 @@ impl DesktopControlState {
             .rev()
             .find(|receipt| receipt.action == DesktopCommandAction::Approve)
             .cloned()
-            .ok_or_else(|| "desktop execution has no durable approval command receipt".to_owned())?;
-        let result = execute_approved_job(
-            production,
-            &session.snapshot,
-            &approval,
-            &approve_receipt,
-        )?;
+            .ok_or_else(|| {
+                "desktop execution has no durable approval command receipt".to_owned()
+            })?;
+        let result =
+            execute_approved_job(production, &session.snapshot, &approval, &approve_receipt)?;
         session.snapshot = result.final_snapshot;
         if !session
             .receipts
@@ -631,7 +633,11 @@ mod tests {
     fn local_control_can_prepare_approval_without_synthesizing_execution() {
         let authority = DesktopControlState::new().expect("control authority must initialize");
         let initial = authority.snapshot().expect("initial snapshot must verify");
-        let pending = initial.snapshot.approval.as_ref().expect("pending approval");
+        let pending = initial
+            .snapshot
+            .approval
+            .as_ref()
+            .expect("pending approval");
         let approved = authority
             .approve(DesktopApprovalRequest {
                 expected_snapshot_digest: initial.snapshot.snapshot_digest.clone(),
