@@ -68,13 +68,19 @@ The canonical extension demonstration lives in `examples/profession-learning/` a
 - job status `planned`
 - `production_enabled: false`
 
-`tools/scaffold_profession.py` now gives every newly scaffolded profession the laboratory certification suite, a 100% minimum pass rate and required zero-failure regression, property/fuzz, adversarial, isolation and rollback tests. It still creates only draft/planned/production-disabled catalog state.
+`tools/scaffold_profession.py` gives every newly scaffolded profession the laboratory certification suite, a 100% minimum pass rate and required zero-failure regression, property/fuzz, adversarial, isolation and rollback tests. It still creates only draft/planned/production-disabled catalog state.
 
 ## Revocation and rollback
 
 `revoke_version` is a pure lifecycle operation. Revoking the active canary forces rollback to the pre-declared safe target. If that rollback target is already revoked or missing, the operation fails closed rather than selecting another version heuristically.
 
 A revoked target cannot pass certification for installation. New versions require a new candidate digest and a new certification record.
+
+## Canonical-baseline validation boundary
+
+The laboratory branch is finalized only after the release/profession foundation is merged into the canonical `main` baseline. Final validation must run after that rebase and must include the laboratory schema/catalog/attack suite, deterministic replay, property/fuzz, isolation and lifecycle checks, relevant Rust and release-security gates, all four existing Graphic Designer certified-path regressions, and real Inkscape regression evidence.
+
+The post-rebase PR must remain production-disabled and unmerged under the Issue #79 delivery contract. A green laboratory result is evidence for source completeness, not authority to promote or sign a production capsule.
 
 ## Validation
 
