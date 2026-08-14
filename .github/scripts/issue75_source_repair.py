@@ -33,14 +33,19 @@ if new not in text:
         raise SystemExit("key governance hex formatting anchor missing")
     governance.write_text(text.replace(old, new, 1))
 
-protocol = Path("crates/windows-signer-protocol-runtime/src/lib.rs")
-text = protocol.read_text()
-old = "        output[index] = decode_nibble(chunk[0])? << 4 | decode_nibble(chunk[1])?;\n"
-new = "        output[index] = (decode_nibble(chunk[0])? << 4) | decode_nibble(chunk[1])?;\n"
-if new not in text:
-    if old not in text:
-        raise SystemExit("signer protocol precedence anchor missing")
-    protocol.write_text(text.replace(old, new, 1))
+for path, lhs in [
+    ("crates/windows-signer-protocol-runtime/src/lib.rs", "output[index]"),
+    ("crates/windows-production-signer-protocol-runtime/src/lib.rs", "output[index]"),
+    ("crates/windows-cng-key-provider-runtime/src/lib.rs", "bytes[index]"),
+]:
+    target = Path(path)
+    text = target.read_text()
+    old = f"        {lhs} = decode_nibble(chunk[0])? << 4 | decode_nibble(chunk[1])?;\n"
+    new = f"        {lhs} = (decode_nibble(chunk[0])? << 4) | decode_nibble(chunk[1])?;\n"
+    if new not in text:
+        if old not in text:
+            raise SystemExit(f"precedence anchor missing in {path}")
+        target.write_text(text.replace(old, new, 1))
 
 acceptance = Path("crates/production-execution-authority-runtime/tests/persistent_chain.rs")
 text = acceptance.read_text()
@@ -56,3 +61,23 @@ if imports not in text:
     if anchor not in text:
         raise SystemExit("production acceptance import anchor missing")
     acceptance.write_text(text.replace(anchor, anchor + imports, 1))
+
+startup = Path("apps/desktop/src-tauri/src/production_startup.rs")
+text = startup.read_text()
+old = '''    status.recovery_required = recovery_required;
+    status.last_identity_proof_epoch_s = last_identity_proof_epoch_s;
+    status
+}
+'''
+new = '''    status.recovery_required = recovery_required;
+    status.last_identity_proof_epoch_s = last_identity_proof_epoch_s;
+    status.production_issuance_enabled = phase == ProductionSignerStartupPhase::LiveVerified
+        && live_service_identity_verified
+        && !recovery_required;
+    status
+}
+'''
+if new not in text:
+    if old not in text:
+        raise SystemExit("production startup status anchor missing")
+    startup.write_text(text.replace(old, new, 1))
