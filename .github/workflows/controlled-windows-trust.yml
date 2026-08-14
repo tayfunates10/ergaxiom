@@ -4,6 +4,7 @@ on:
   pull_request:
     paths:
       - "tools/windows/controlled_trust_gate.py"
+      - "tools/windows/test_controlled_trust_gate.py"
       - "tools/release/bind_controlled_trust_gate.py"
       - "tools/release/test_bind_controlled_trust_gate.py"
       - "schemas/windows-physical-tpm-promotion-evidence.schema.json"
@@ -21,6 +22,7 @@ on:
     branches: [main]
     paths:
       - "tools/windows/controlled_trust_gate.py"
+      - "tools/windows/test_controlled_trust_gate.py"
       - "tools/release/bind_controlled_trust_gate.py"
       - "tools/release/test_bind_controlled_trust_gate.py"
       - "schemas/windows-physical-tpm-promotion-evidence.schema.json"
@@ -51,10 +53,14 @@ jobs:
         run: >-
           python -m py_compile
           tools/windows/controlled_trust_gate.py
+          tools/windows/test_controlled_trust_gate.py
           tools/release/bind_controlled_trust_gate.py
           tools/release/test_bind_controlled_trust_gate.py
-      - name: Test release hardware-operational binding
-        run: python -m unittest tools.release.test_bind_controlled_trust_gate
+      - name: Run platform-neutral trust attacks
+        run: >-
+          python -m unittest
+          tools.windows.test_controlled_trust_gate
+          tools.release.test_bind_controlled_trust_gate
       - name: Prove missing evidence stays UNKNOWN
         shell: bash
         run: |
@@ -64,6 +70,8 @@ jobs:
             --governance "$RUNNER_TEMP/missing-governance.json" \
             --installation "$RUNNER_TEMP/missing-installation.json" \
             --recovery "$RUNNER_TEMP/missing-recovery.json" \
+            --capability-provisioning "$RUNNER_TEMP/missing-capability-provisioning.json" \
+            --attestation-provisioning "$RUNNER_TEMP/missing-attestation-provisioning.json" \
             --output "$RUNNER_TEMP/gate.json"
           code=$?
           set -e
@@ -145,6 +153,8 @@ jobs:
             "--governance", (Join-Path $env:RUNNER_TEMP "absent-governance.json"),
             "--installation", (Join-Path $env:RUNNER_TEMP "absent-installation.json"),
             "--recovery", (Join-Path $env:RUNNER_TEMP "absent-recovery.json"),
+            "--capability-provisioning", (Join-Path $env:RUNNER_TEMP "absent-capability-provisioning.json"),
+            "--attestation-provisioning", (Join-Path $env:RUNNER_TEMP "absent-attestation-provisioning.json"),
             "--output", $gatePath
           )
           $process = Start-Process -FilePath "python" -ArgumentList $arguments -NoNewWindow -Wait -PassThru
@@ -239,7 +249,14 @@ jobs:
           $doc|ConvertTo-Json -Depth 8|Set-Content -Encoding utf8NoBOM $physicalDraft
           python tools/windows/controlled_trust_gate.py seal-physical --input $physicalDraft --output $physical
           if ($LASTEXITCODE) { throw "PHYSICAL_EVIDENCE_REJECTED" }
-          python tools/windows/controlled_trust_gate.py verify --physical $physical --governance $gov --installation $install --recovery $recovery --output (Join-Path $root "controlled-trust-gate.json")
+          python tools/windows/controlled_trust_gate.py verify `
+            --physical $physical `
+            --governance $gov `
+            --installation $install `
+            --recovery $recovery `
+            --capability-provisioning $cap `
+            --attestation-provisioning $att `
+            --output (Join-Path $root "controlled-trust-gate.json")
           if ($LASTEXITCODE) { throw "CONTROLLED_TRUST_GATE_REJECTED" }
           Remove-Item $physicalDraft -Force
       - name: Upload public controlled-hardware evidence
