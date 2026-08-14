@@ -386,6 +386,7 @@ mod tests {
         AuthorityStatus, DesktopApprovalRequest, StageStatus, issue_desktop_approval,
         verify_desktop_shell_snapshot,
     };
+    use serde_json::Value;
 
     use super::{PipelineSnapshotMode, build_pipeline_snapshot};
 

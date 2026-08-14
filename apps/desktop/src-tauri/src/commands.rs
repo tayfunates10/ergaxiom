@@ -108,7 +108,7 @@ impl DesktopControlState {
         });
         match recovered {
             Ok(state) => Self::from_chain_state(state),
-            Err(error)
+            Err(_error)
                 if matches!(
                     production.startup_code(),
                     "production_execution_configuration_missing"

@@ -133,7 +133,8 @@ pub(crate) fn execute_approved_job(
         &production_evidence,
         &assessment.bundle_digest,
         &replay_manifest,
-    )?;
+    )
+    .map_err(boundary_error)?;
     let execute_at = trusted_epoch_s()?;
     let execute_receipt = issue_desktop_command_receipt(
         DesktopCommandAction::Execute,
