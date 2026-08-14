@@ -20,8 +20,8 @@ ergaxiom-execution-runtime = { path = "../execution-runtime" }
 ergaxiom-inkscape-adapter-runtime = { path = "../inkscape-adapter-runtime" }
 ergaxiom-operator-plan-runtime = { path = "../operator-plan-runtime" }
 ergaxiom-proof-kernel = { path = "../proof-kernel" }
-lopdf = "0.36.0"
-quick-xml = "=0.40.1"
+lopdf = "=0.42.0"
+quick-xml = "=0.41.0"
 serde.workspace = true
 serde_json.workspace = true
 sha2.workspace = true

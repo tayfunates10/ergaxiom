@@ -11,11 +11,11 @@ For the exact implemented claim boundary, see [Current capability status](status
 | Phase 0 — Verifiable foundation | Satisfied for v1 |
 | Phase 1 — Proof kernel | Satisfied for v1 |
 | Phase 2 — Occupational digital twin | Satisfied for v1 |
-| Phase 3 — Windows execution bridge | Demonstrated; production gate open |
+| Phase 3 — Windows execution bridge | Demonstrated; controlled-hardware production gate open |
 | Phase 4 — Graphic Designer Alpha | Satisfied for v1; four certified job paths |
-| Windows Product Alpha | Digest-bound control implemented for one bounded fixture; release and multi-job gates open |
+| Windows Product Alpha | Control, governed trust and unsigned release-evidence foundations implemented; deployment/release and multi-job gates open |
 | Phase 5 — Profession learning laboratory | Not started |
-| Phase 6 — Cross-platform and additional professions | Not started |
+| Phase 6 — Cross-platform and additional professions | Extension catalog/scaffold foundation implemented; additional capsules not started |
 
 A satisfied v1 gate means the listed invariants are implemented and exercised by automated tests. It does not mean interfaces are stable or the product is ready for unrestricted use.
 
@@ -23,15 +23,16 @@ A satisfied v1 gate means the listed invariants are implemented and exercised by
 
 **Goal:** define the contracts that prevent the system from treating model confidence as truth.
 
-Deliverables:
+Implemented v1 foundation:
 
 - Work Contract schema
 - Profession Capsule schema
 - Evidence Bundle schema
 - Trust and verification model
 - Cross-document foundation validator
-- Graphic Designer draft capsule
-- One complete example contract
+- Graphic Designer capsule
+- Complete example contracts for the four certified Graphic Designer jobs
+- Explicit profession catalog with canonical capsule digests and lifecycle state
 
 Exit criteria:
 
@@ -45,7 +46,7 @@ Exit criteria:
 
 **Goal:** implement the authoritative acceptance engine without desktop control.
 
-Planned components:
+Implemented v1 components:
 
 - Canonical serialization and content hashing
 - Contract compiler intermediate representation
@@ -53,7 +54,7 @@ Planned components:
 - Capability and permission tokens bound to contract hashes
 - Proof-obligation state machine
 - Validator registry
-- Evidence sealing and signature interface
+- Evidence sealing and signature interfaces
 - Deterministic replay manifest
 
 Exit criteria:
@@ -67,7 +68,7 @@ Exit criteria:
 
 **Goal:** execute typed plans against isolated state before touching a user's real workspace.
 
-Planned components:
+Implemented v1 components:
 
 - Workspace snapshot and immutable input staging
 - Typed operator plan graph
@@ -98,26 +99,22 @@ Priority order:
 7. Visually confirmed interaction
 8. Constrained coordinate fallback
 
-Exit criteria:
+Implemented foundation includes signed state-bound bridge protocol, a controlled WPF UI Automation path, DPAPI development signing, CNG/P-256 production-signer foundations, role-separated key governance, authenticated local signer-service policy and persistent signed trust state.
 
-- Every operation reports observed pre-state and post-state.
-- The bridge refuses actions outside its capability token.
-- A click or keystroke is never treated as proof of success.
-- Time-of-check/time-of-use changes are detected at critical boundaries.
-- Production application identity, recovery, selector and code-signing policies are exercised outside a controlled test target.
+Remaining exit criteria are operational rather than missing source modules: controlled physical-TPM assurance, elevated installation/recovery evidence on controlled hardware, operational governance-key custody/distribution, production code signing and broader real-user deployment hardening.
 
 ## Phase 4 — Graphic Designer Alpha
 
 **Goal:** deliver the first narrow profession that can execute and verify real work.
 
-Initial certified job types:
+Certified job types:
 
 - Static social-media post
 - Image background cleanup
 - Brand-compliant image export
 - Print-ready poster preflight
 
-Initial application strategy:
+Application strategy:
 
 - Start with an Ergaxiom-owned deterministic document model.
 - Add one application bridge at a time.
@@ -142,7 +139,7 @@ Current bounded achievement:
 
 **Goal:** let a user safely review, authorize, execute and inspect certified profession work without moving authority into the renderer.
 
-Completed control gate:
+Implemented control and trust foundation:
 
 - Tauri and React inspection shell with backend-verified snapshots;
 - exact snapshot, Work Contract, Operator Plan and permission digest review;
@@ -151,19 +148,22 @@ Completed control gate:
 - backend-owned execution, cancellation and rollback lifecycle;
 - canonical command receipts binding pre-state and post-state snapshots;
 - validator and replay evidence hidden until authorized execution;
-- renderer remains without filesystem, shell, unrestricted network, arbitrary process or signing-key access.
+- renderer remains without filesystem, shell, unrestricted network, arbitrary process or signing-key access;
+- DPAPI development signer plus CNG/P-256 production-signer, provisioning and governed key-generation foundations;
+- issuer-role separation, rotation, revocation and persistent signed trust-state foundations; and
+- deterministic SPDX 2.3 SBOM, exact-source release manifest, validated profession/foundation inventory and sorted checksums for unsigned candidates.
 
-Remaining product gates:
+Remaining product/release gates:
 
-- DPAPI, TPM-backed or equivalent local private-key protection;
-- issuer-role separation, key rotation and revocation;
-- signed desktop, bridge, adapter and installer releases;
-- SBOM, dependency provenance, reproducible release manifests and checksums;
-- user-selected immutable inputs instead of the bounded fixture;
-- all four certified Graphic Designer jobs routed through the same user-driven desktop lifecycle;
-- persistent job and receipt storage with upgrade and rollback attack tests.
+- controlled physical-TPM provisioning and retained assurance evidence;
+- elevated installation, restart, recovery and policy-store ceremony for the fixed LocalSystem signer service on controlled hardware;
+- operational governance-key custody, backup, distribution and recovery procedures;
+- persistent desktop/backend routing through the installed signer and the complete Capability → execution receipts → Evidence Bundle → Replay Manifest → Acceptance Certificate recovery chain;
+- immutable user-selected inputs and all four certified Graphic Designer jobs through the same user-driven desktop lifecycle;
+- persistent job/receipt storage with upgrade and rollback attack tests; and
+- Authenticode, trusted timestamps, certificate-chain verification and signed installer install/upgrade/downgrade/rollback/uninstall provenance.
 
-The current approval and command receipts are canonical hashes owned by the Rust process, not production digital signatures. A completed desktop execution still cannot display certified acceptance without a separately verified Evidence Bundle and Acceptance Certificate.
+The current desktop approval and command receipts are canonical hashes owned by the Rust process, not production release signatures. A completed desktop execution still cannot display certified acceptance without a separately verified Evidence Bundle and Acceptance Certificate.
 
 ## Phase 5 — Profession learning laboratory
 
@@ -188,6 +188,18 @@ Exit criteria:
 
 **Goal:** preserve the proof kernel while replacing platform bridges and adding profession capsules.
 
+Implemented extension foundation:
+
+- explicit allowlisted profession catalog with canonical capsule digests;
+- exact capsule/job inventory and lifecycle binding;
+- automatic discovery and validation of every installed capsule and example Work Contract;
+- certified-job example-contract coverage gate;
+- path traversal, substitution, downgrade and duplicate-identity/path rejection;
+- a hardened scaffold that validates existing catalog/capsule integrity before mutation and creates only draft, planned, production-disabled E0 professions with network and live learning denied; and
+- deterministic release evidence that binds the catalog plus every registered capsule, example Work Contract and foundation schema.
+
+This foundation does not count as a second profession or a dynamic plugin runtime. Each new profession must still implement and certify its own typed compiler, planner, operators, independent validators, evidence path and application boundary.
+
 Candidate capsules:
 
 - Video Editor
@@ -205,4 +217,4 @@ Exit criteria:
 
 ## Non-negotiable release rule
 
-A capability may be demonstrated experimentally before it is certified, but the product must label it as experimental and must not issue a verified-work certificate for unsupported claims.
+A capability may be demonstrated experimentally before it is certified, but the product must label it as experimental and must not issue a verified-work certificate for unsupported claims. Release/security CI must fail closed on stale lockfiles, vulnerable dependencies, source-identity mismatches, invalid foundation inventory or missing mandatory signing/provenance evidence; those gates are not relaxed to make a candidate pass.

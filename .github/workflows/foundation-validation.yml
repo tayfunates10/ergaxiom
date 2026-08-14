@@ -11,6 +11,9 @@ on:
       - "examples/work-contracts/**"
       - "tools/validate_foundation.py"
       - "tools/validate_schema_catalog.py"
+      - "tools/scaffold_profession.py"
+      - "tools/test_validate_foundation.py"
+      - "tools/test_scaffold_profession.py"
       - "requirements-dev.txt"
       - ".github/workflows/foundation-validation.yml"
   pull_request:
@@ -20,6 +23,9 @@ on:
       - "examples/work-contracts/**"
       - "tools/validate_foundation.py"
       - "tools/validate_schema_catalog.py"
+      - "tools/scaffold_profession.py"
+      - "tools/test_validate_foundation.py"
+      - "tools/test_scaffold_profession.py"
       - "requirements-dev.txt"
       - ".github/workflows/foundation-validation.yml"
 
@@ -48,6 +54,9 @@ jobs:
 
       - name: Validate schema catalog
         run: python tools/validate_schema_catalog.py
+
+      - name: Run profession catalog and scaffold attack tests
+        run: python -m unittest tools.test_validate_foundation tools.test_scaffold_profession
 
       - name: Validate Phase 0 foundation
         shell: bash
