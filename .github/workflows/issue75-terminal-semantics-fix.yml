@@ -1,0 +1,43 @@
+name: Issue 75 Terminal Semantics Fix
+
+on:
+  push:
+    branches:
+      - codex/issue-75
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    if: github.event.head_commit.message == 'issue75-run-terminal-semantics-fix'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: codex/issue-75
+          fetch-depth: 0
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.85.0"
+          components: rustfmt, clippy
+      - name: Apply terminal fail-closed source and tests
+        run: python .github/scripts/issue75_terminal_semantics_fix.py
+      - name: Format
+        run: cargo +1.85.0 fmt --all -- --check
+      - name: Strict authority clippy
+        run: cargo +1.85.0 clippy --locked -p ergaxiom-production-execution-authority-runtime --all-targets --keep-going -- -D warnings
+      - name: Runtime tests
+        run: cargo +1.85.0 test --locked -p ergaxiom-production-execution-runtime
+      - name: Terminal authority tests
+        run: cargo +1.85.0 test --locked -p ergaxiom-production-execution-authority-runtime --test persistent_chain
+      - name: Commit verified terminal semantics
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name Tayfun
+          git config user.email tayfuna766@gmail.com
+          git add crates/production-execution-runtime/src/lib.rs crates/production-execution-authority-runtime/src/lib.rs crates/production-execution-authority-runtime/tests/persistent_chain.rs
+          git diff --cached --check
+          git commit -m 'issue75: enforce restart-safe terminal semantics'
+          git push origin HEAD:codex/issue-75
