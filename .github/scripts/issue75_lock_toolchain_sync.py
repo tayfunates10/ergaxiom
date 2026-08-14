@@ -36,16 +36,3 @@ if helper not in text:
         raise SystemExit("key-governance helper anchor missing")
     text = text.replace(helper_anchor, helper + helper_anchor, 1)
 key_file.write_text(text)
-
-workflow = Path(".github/workflows/production-execution-chain.yml")
-text = workflow.read_text()
-replacements = {
-    "cargo fmt --all -- --check": "cargo +1.85.0 fmt --all -- --check",
-    "cargo fmt --all": "cargo +1.85.0 fmt --all",
-    "cargo clippy --locked": "cargo +1.85.0 clippy --locked",
-    "cargo test --locked": "cargo +1.85.0 test --locked",
-    "cargo check --locked": "cargo +1.85.0 check --locked",
-}
-for old, new in replacements.items():
-    text = text.replace(old, new)
-workflow.write_text(text)
