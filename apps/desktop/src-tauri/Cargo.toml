@@ -32,6 +32,7 @@ ergaxiom-desktop-user-job-runtime = { path = "../../../crates/desktop-user-job-r
 ergaxiom-evidence-runtime = { path = "../../../crates/evidence-runtime" }
 ergaxiom-execution-runtime = { path = "../../../crates/execution-runtime" }
 ergaxiom-graphic-designer-twin-runtime = { path = "../../../crates/graphic-designer-twin-runtime" }
+ergaxiom-graphic-production-evidence-runtime = { path = "../../../crates/graphic-production-evidence-runtime" }
 ergaxiom-intent-contract-compiler-runtime = { path = "../../../crates/intent-contract-compiler-runtime" }
 ergaxiom-occupational-twin-runtime = { path = "../../../crates/occupational-twin-runtime" }
 ergaxiom-operator-plan-runtime = { path = "../../../crates/operator-plan-runtime" }
@@ -51,6 +52,7 @@ serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 sha2 = "0.10"
 tauri = { version = "=2.11.1", features = [] }
+thiserror = "2.0"
 
 [workspace]
 

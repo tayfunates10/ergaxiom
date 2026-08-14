@@ -3,6 +3,8 @@
 mod commands;
 mod pipeline;
 mod product_jobs;
+mod production_execution;
+mod production_pipeline;
 mod production_startup;
 
 #[cfg(windows)]
@@ -16,10 +18,12 @@ pub fn run() {
         }
     };
     let production_state = production_startup::ProductionStartupState::initialize();
+    let production_execution_state = production_execution::ProductionExecutionState::initialize();
     let product_job_state = product_jobs::ProductJobState::initialize();
     let result = tauri::Builder::default()
         .manage(control_state)
         .manage(production_state)
+        .manage(production_execution_state)
         .manage(product_job_state)
         .invoke_handler(tauri::generate_handler![
             commands::get_desktop_shell_snapshot,
@@ -58,6 +62,7 @@ pub fn run() {
         }
     };
     let production_state = production_startup::ProductionStartupState::initialize();
+    let production_execution_state = production_execution::ProductionExecutionState::initialize();
     let product_job_state = product_jobs::ProductJobState::initialize();
 
     // Ergaxiom Product Alpha is Windows-first. Constructing the complete command boundary keeps
@@ -66,6 +71,7 @@ pub fn run() {
     let _builder = tauri::Builder::default()
         .manage(control_state)
         .manage(production_state)
+        .manage(production_execution_state)
         .manage(product_job_state)
         .invoke_handler(tauri::generate_handler![
             commands::get_desktop_shell_snapshot,
