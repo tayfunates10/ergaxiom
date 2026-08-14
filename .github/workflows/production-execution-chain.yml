@@ -33,27 +33,27 @@ jobs:
         shell: bash
         run: |
           set +e
-          cargo fmt --all -- --check > "$RUNNER_TEMP/issue75-rustfmt.txt" 2>&1
+          cargo +1.85.0 fmt --all -- --check > "$RUNNER_TEMP/issue75-rustfmt.txt" 2>&1
           status=$?
           echo "$status" > "$RUNNER_TEMP/issue75-rustfmt-status"
-          cargo fmt --all
+          cargo +1.85.0 fmt --all
           exit 0
       - name: Clippy production execution store
-        run: cargo clippy --locked -p ergaxiom-production-execution-runtime --all-targets --keep-going -- -D warnings
+        run: cargo +1.85.0 clippy --locked -p ergaxiom-production-execution-runtime --all-targets --keep-going -- -D warnings
       - name: Clippy persistent production authority
-        run: cargo clippy --locked -p ergaxiom-production-execution-authority-runtime --all-targets --keep-going -- -D warnings
+        run: cargo +1.85.0 clippy --locked -p ergaxiom-production-execution-authority-runtime --all-targets --keep-going -- -D warnings
       - name: Clippy production evidence
-        run: cargo clippy --locked -p ergaxiom-graphic-production-evidence-runtime --all-targets --keep-going -- -D warnings
+        run: cargo +1.85.0 clippy --locked -p ergaxiom-graphic-production-evidence-runtime --all-targets --keep-going -- -D warnings
       - name: Runtime tests
-        run: cargo test --locked -p ergaxiom-production-execution-runtime
+        run: cargo +1.85.0 test --locked -p ergaxiom-production-execution-runtime
       - name: Authority tests
-        run: cargo test --locked -p ergaxiom-production-execution-authority-runtime
+        run: cargo +1.85.0 test --locked -p ergaxiom-production-execution-authority-runtime
       - name: Production evidence tests
-        run: cargo test --locked -p ergaxiom-graphic-production-evidence-runtime
+        run: cargo +1.85.0 test --locked -p ergaxiom-graphic-production-evidence-runtime
       - name: Backend persistent issuance regression
-        run: cargo test --locked -p ergaxiom-backend-issuance-runtime --test persistent_production_capability
+        run: cargo +1.85.0 test --locked -p ergaxiom-backend-issuance-runtime --test persistent_production_capability
       - name: Backend production issuance regression
-        run: cargo test --locked -p ergaxiom-backend-issuance-runtime --test production_authorization
+        run: cargo +1.85.0 test --locked -p ergaxiom-backend-issuance-runtime --test production_authorization
       - name: Enforce formatting gate
         if: always()
         shell: bash
@@ -80,7 +80,7 @@ jobs:
       - name: Desktop production boundary compile
         shell: pwsh
         run: |
-          cargo check --locked --manifest-path apps/desktop/src-tauri/Cargo.toml --all-targets 2>&1 | Tee-Object -FilePath "$env:RUNNER_TEMP\issue75-desktop-cargo-check.txt"
+          cargo +1.85.0 check --locked --manifest-path apps/desktop/src-tauri/Cargo.toml --all-targets 2>&1 | Tee-Object -FilePath "$env:RUNNER_TEMP\issue75-desktop-cargo-check.txt"
           $status = $LASTEXITCODE
           if ($status -ne 0) {
             $tail = (Get-Content "$env:RUNNER_TEMP\issue75-desktop-cargo-check.txt" -Tail 120) -join "`n"
