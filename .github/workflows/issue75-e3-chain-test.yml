@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   prove:
-    if: github.event.head_commit.message == 'issue75-run-e3-production-chain'
+    if: github.event.head_commit.message == 'issue75-run-e3-production-chain-v2'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -22,9 +22,11 @@ jobs:
           toolchain: "1.85.0"
           components: rustfmt, clippy
       - name: Apply E3 production-chain integration test
-        run: python .github/scripts/issue75_e3_chain_test.py
-      - name: Synchronize workspace lockfile
-        run: cargo +1.85.0 generate-lockfile
+        run: |
+          python .github/scripts/issue75_e3_chain_test.py
+          python .github/scripts/issue75_e3_order_fix.py
+      - name: Synchronize local test dependency metadata
+        run: cargo +1.85.0 check -p ergaxiom-production-execution-authority-runtime --tests
       - name: Format
         run: cargo +1.85.0 fmt --all
       - name: Verify formatting
