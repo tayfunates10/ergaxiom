@@ -1,0 +1,51 @@
+name: Issue 75 Deterministic Repair
+
+on:
+  push:
+    branches:
+      - codex/issue-75
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    if: github.event.head_commit.message == 'issue75: run deterministic repair'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: codex/issue-75
+          fetch-depth: 0
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.85.0"
+          components: rustfmt
+      - name: Apply exact runtime repair
+        shell: python
+        run: |
+          from pathlib import Path
+          path = Path('crates/production-execution-runtime/src/lib.rs')
+          text = path.read_text()
+          old = '    DesktopControlError, DesktopControlStatus, DesktopShellSnapshot, control_status_from_snapshot,\n'
+          new = '    DesktopControlError, DesktopControlStatus, DesktopShellError, DesktopShellSnapshot,\n    control_status_from_snapshot,\n'
+          if old not in text:
+              raise SystemExit('desktop-shell import anchor not found')
+          text = text.replace(old, new, 1)
+          old = '    #[error(transparent)]\n    Desktop(#[from] DesktopControlError),\n'
+          new = '    #[error(transparent)]\n    Desktop(#[from] DesktopControlError),\n    #[error(transparent)]\n    Shell(#[from] DesktopShellError),\n'
+          if old not in text:
+              raise SystemExit('store-error anchor not found')
+          text = text.replace(old, new, 1)
+          path.write_text(text)
+      - name: Format with pinned toolchain
+        run: cargo +1.85.0 fmt --all
+      - name: Commit repaired source
+        shell: bash
+        run: |
+          git config user.name "Tayfun"
+          git config user.email "tayfuna766@gmail.com"
+          git add crates/production-execution-runtime/src/lib.rs
+          git diff --cached --check
+          git commit -m "issue75: fix runtime error conversion and formatting"
+          git push origin HEAD:codex/issue-75
