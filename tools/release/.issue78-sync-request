@@ -1,0 +1,2 @@
+Target feature branch: codex/issue-78-signed-windows-release
+Purpose: synchronize current PR #73 baseline into Issue #78 only; do not merge to main.
