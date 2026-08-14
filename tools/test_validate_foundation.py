@@ -12,18 +12,36 @@ class FoundationCatalogTests(unittest.TestCase):
         self.profession = foundation.load_json(
             foundation.PROFESSIONS_DIRECTORY / "graphic-designer" / "profession.json"
         )
-        self.capsules = {"graphic-designer/profession.json": self.profession}
+        self.capsules = {
+            entry["capsule_path"]: foundation.load_json(
+                foundation.PROFESSIONS_DIRECTORY / entry["capsule_path"]
+            )
+            for entry in self.catalog["entries"]
+        }
+
+    def catalog_entry(self, capsule_id: str) -> dict:
+        return next(
+            entry
+            for entry in self.catalog["entries"]
+            if entry["capsule_id"] == capsule_id
+        )
 
     def test_repository_validates_every_registered_contract(self) -> None:
         result = foundation.validate_repository()
-        self.assertEqual(len(result["professions"]), 1)
+        self.assertEqual(len(result["professions"]), len(self.catalog["entries"]))
+        self.assertEqual(len(result["professions"]), 2)
         self.assertEqual(len(result["contracts"]), 4)
         self.assertEqual(result["hard_constraint_count"], 51)
         self.assertEqual(result["proof_obligation_count"], 51)
 
     def test_catalog_digest_substitution_fails_closed(self) -> None:
         catalog = copy.deepcopy(self.catalog)
-        catalog["entries"][0]["capsule_digest"] = "0" * 64
+        entry = next(
+            item
+            for item in catalog["entries"]
+            if item["capsule_id"] == "ergaxiom.profession.graphic-designer"
+        )
+        entry["capsule_digest"] = "0" * 64
         with self.assertRaisesRegex(
             foundation.FoundationValidationError, "capsule digest does not match"
         ):
@@ -39,7 +57,12 @@ class FoundationCatalogTests(unittest.TestCase):
 
     def test_catalog_job_inventory_must_match_capsule(self) -> None:
         catalog = copy.deepcopy(self.catalog)
-        catalog["entries"][0]["job_types"].pop()
+        entry = next(
+            item
+            for item in catalog["entries"]
+            if item["capsule_id"] == "ergaxiom.profession.graphic-designer"
+        )
+        entry["job_types"].pop()
         with self.assertRaisesRegex(
             foundation.FoundationValidationError, "job inventory does not match"
         ):
@@ -47,7 +70,12 @@ class FoundationCatalogTests(unittest.TestCase):
 
     def test_profession_alpha_cannot_downgrade_a_job(self) -> None:
         catalog = copy.deepcopy(self.catalog)
-        catalog["entries"][0]["job_types"][0]["status"] = "experimental"
+        entry = next(
+            item
+            for item in catalog["entries"]
+            if item["capsule_id"] == "ergaxiom.profession.graphic-designer"
+        )
+        entry["job_types"][0]["status"] = "experimental"
         with self.assertRaisesRegex(
             foundation.FoundationValidationError, "contains a non-certified job"
         ):
@@ -55,11 +83,12 @@ class FoundationCatalogTests(unittest.TestCase):
 
     def test_draft_capsule_cannot_enable_production(self) -> None:
         catalog = copy.deepcopy(self.catalog)
-        entry = catalog["entries"][0]
-        entry["certification_level"] = "draft"
+        entry = next(
+            item
+            for item in catalog["entries"]
+            if item["capsule_id"] == "ergaxiom.profession.technical-writer"
+        )
         entry["production_enabled"] = True
-        for job in entry["job_types"]:
-            job["status"] = "planned"
         with self.assertRaisesRegex(
             foundation.FoundationValidationError, "is not profession_alpha"
         ):

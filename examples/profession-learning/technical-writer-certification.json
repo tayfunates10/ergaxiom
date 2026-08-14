@@ -1,0 +1,53 @@
+{
+  "schema_version": "0.1.0",
+  "candidate_digest": "5ed01635e975ac06d158af5384d5be20b67b6a7c5ba47f63b5237af86a852d41",
+  "isolation": {
+    "executed_environments": [
+      "isolated_test",
+      "occupational_twin"
+    ],
+    "live_user_work_used": false
+  },
+  "suites": [
+    {
+      "kind": "regression",
+      "run_id": "local-regression-canonical",
+      "total": 8,
+      "failures": 0,
+      "unknowns": 0
+    },
+    {
+      "kind": "property_fuzz",
+      "run_id": "local-property-fuzz-canonical",
+      "total": 512,
+      "failures": 0,
+      "unknowns": 0
+    },
+    {
+      "kind": "adversarial",
+      "run_id": "local-adversarial-canonical",
+      "total": 12,
+      "failures": 0,
+      "unknowns": 0
+    }
+  ],
+  "human_review": {
+    "reviewer": "human-reviewer-fixture",
+    "decision": "approve",
+    "independent_from_candidate_signer": true
+  },
+  "lifecycle": {
+    "from_version": "0.1.0",
+    "to_version": "0.2.0-canary.1",
+    "canary_required": true,
+    "rollback_supported": true,
+    "rollback_target": "0.1.0",
+    "revoked_versions": []
+  },
+  "training_provenance": [
+    {
+      "source_id": "ergaxiom.synthetic.expert-demo.001",
+      "license": "CC0-1.0"
+    }
+  ]
+}
