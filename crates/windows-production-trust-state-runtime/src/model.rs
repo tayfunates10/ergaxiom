@@ -1128,7 +1128,7 @@ fn decode_sha256(value: &str) -> Result<[u8; 32], ProductionTrustStateError> {
     validate_sha256(value)?;
     let mut output = [0_u8; 32];
     for (index, chunk) in value.as_bytes().chunks_exact(2).enumerate() {
-        output[index] = decode_nibble(chunk[0])? << 4 | decode_nibble(chunk[1])?;
+        output[index] = (decode_nibble(chunk[0])? << 4) | decode_nibble(chunk[1])?;
     }
     Ok(output)
 }

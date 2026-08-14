@@ -293,7 +293,7 @@ fn decode_sha256(value: &str) -> Result<[u8; 32], Box<dyn std::error::Error>> {
     }
     let mut output = [0_u8; 32];
     for (index, chunk) in value.as_bytes().chunks_exact(2).enumerate() {
-        output[index] = nibble(chunk[0])? << 4 | nibble(chunk[1])?;
+        output[index] = (nibble(chunk[0])? << 4) | nibble(chunk[1])?;
     }
     Ok(output)
 }
