@@ -1,0 +1,57 @@
+name: Issue 78 final exact-source harness
+
+on:
+  pull_request:
+    paths:
+      - "issue78-final-harness-trigger.txt"
+
+permissions:
+  contents: read
+
+env:
+  FINAL_SOURCE_COMMIT: 1a0d2ebad689ef24efc37238d58ebf8980ef3c75
+
+jobs:
+  release-policy:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.FINAL_SOURCE_COMMIT }}
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.85.0"
+      - name: Exact source identity
+        run: test "$(git rev-parse HEAD)" = "$FINAL_SOURCE_COMMIT"
+      - name: Release and controlled-trust attack suites
+        run: python -m unittest tools.release.test_generate_release_evidence tools.release.test_finalize_windows_release_evidence tools.release.test_windows_release_attack_matrix tools.windows.test_controlled_trust_gate tools.release.test_bind_controlled_trust_gate
+      - name: Canonical production-chain verifier compiles locked
+        run: cargo check --locked -p ergaxiom-production-execution-runtime --bin verify_production_release_chain
+      - name: Locked dependency graphs
+        run: |
+          cargo metadata --locked --format-version 1 >/dev/null
+          cargo metadata --locked --manifest-path apps/desktop/src-tauri/Cargo.toml --format-version 1 >/dev/null
+
+  product-alpha:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.FINAL_SOURCE_COMMIT }}
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: apps/desktop/package-lock.json
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.85.0"
+      - name: Exact source identity
+        run: test "$(git rev-parse HEAD)" = "$FINAL_SOURCE_COMMIT"
+      - name: Product UI trust boundary
+        working-directory: apps/desktop
+        run: npm ci && npm run check && npm test && npm run build
+      - name: Persistent user-job authority
+        run: cargo test --locked -p ergaxiom-desktop-user-job-runtime
