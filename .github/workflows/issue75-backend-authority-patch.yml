@@ -1,0 +1,82 @@
+name: Issue 75 Backend Authority Patch
+
+on:
+  push:
+    branches:
+      - codex/issue-75
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: codex/issue-75
+          fetch-depth: 0
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.85.0"
+          components: rustfmt
+      - name: Apply persistent authority patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "$(git log -1 --pretty=%s)" != "issue75: stage persistent production authority patch" ]; then
+            echo "No patch requested for this commit."
+            exit 0
+          fi
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('crates/backend-issuance-runtime/src/persistent.rs')
+          text = path.read_text()
+
+          text = text.replace(
+              'use ergaxiom_capability_issuance_runtime::{\n',
+              'use ergaxiom_attestation_issuance_runtime::{\n    AttestationCertificateDraft, ProductionAttestationSignerTransport,\n};\nuse ergaxiom_capability_issuance_runtime::{\n',
+              1,
+          )
+          text = text.replace(
+              'use ergaxiom_proof_kernel::{HashingError, canonical_json_bytes, canonical_json_sha256};',
+              'use ergaxiom_proof_kernel::{\n    AssuranceLevel, HashingError, canonical_json_bytes, canonical_json_sha256,\n};',
+              1,
+          )
+          text = text.replace(
+              '    GovernedProductionCapabilityIssuanceAuthority, GovernedProductionIssuanceError,\n',
+              '    GovernedProductionAttestationIssuanceAuthority,\n    GovernedProductionCapabilityIssuanceAuthority, GovernedProductionIssuanceError,\n',
+              1,
+          )
+          text = text.replace(
+              '    AuthorizedProductionCapabilityIssuance, BackendIssuanceError, BackendIssuanceKind,\n',
+              '    AuthorizedProductionAttestationIssuance, AuthorizedProductionCapabilityIssuance,\n    BackendIssuanceError, BackendIssuanceKind,\n',
+              1,
+          )
+          text = text.replace(
+              'pub struct PersistentBackendProductionCapabilityAuthority {',
+              'pub struct PersistentBackendProductionIssuanceAuthority {',
+              1,
+          )
+          text = text.replace(
+              'impl PersistentBackendProductionCapabilityAuthority {',
+              'pub type PersistentBackendProductionCapabilityAuthority =\n    PersistentBackendProductionIssuanceAuthority;\n\nimpl PersistentBackendProductionIssuanceAuthority {',
+              1,
+          )
+
+          anchor = '''    #[must_use]\n    pub const fn policy_state(&self) -> &BackendIssuancePolicyState {\n'''
+          method = '''    #[allow(clippy::too_many_arguments)]\n    pub fn issue_attestation<A>(\n        &mut self,\n        transport: A,\n        lease: &VerifiedProductionSignerTrustLease,\n        accepted: &VerifiedProductionTrustState,\n        deployment_policy: &ProductionSignerDeploymentPolicy,\n        snapshot: &DesktopShellSnapshot,\n        approval: &DesktopApprovalRecord,\n        execute_receipt: &DesktopCommandReceipt,\n        compiled_contract: CompiledContract,\n        compiled_plan: &CompiledPlan,\n        bundle_value: &Value,\n        verified_assurance_level: AssuranceLevel,\n        draft: AttestationCertificateDraft,\n        trusted_now_epoch_s: u64,\n        authorization_ttl_s: u64,\n    ) -> Result<AuthorizedProductionAttestationIssuance, PersistentBackendProductionIssuanceError>\n    where\n        A: ProductionAttestationSignerTransport,\n    {\n        lease.validate_at(accepted, deployment_policy, trusted_now_epoch_s)?;\n        let attestation_authority = GovernedProductionAttestationIssuanceAuthority::new(\n            transport,\n            lease.attestation_trust().clone(),\n            lease.registry().clone(),\n        )?;\n        let authorization = self.policy.authorize_attestation(\n            snapshot,\n            approval,\n            execute_receipt,\n            compiled_contract.clone(),\n            compiled_plan,\n            bundle_value,\n            verified_assurance_level,\n            &draft,\n            trusted_now_epoch_s,\n            authorization_ttl_s,\n        )?;\n        self.policy.consume_authorization(\n            &authorization,\n            BackendIssuanceKind::Attestation,\n            trusted_now_epoch_s,\n        )?;\n\n        // Persist the consumed authorization before the production signer side effect so a\n        // rejected or interrupted attestation request cannot be replayed after restart.\n        self.store.commit(&self.policy)?;\n        let package = attestation_authority.issue(\n            compiled_contract,\n            compiled_plan,\n            bundle_value,\n            verified_assurance_level,\n            draft,\n        )?;\n        Ok(AuthorizedProductionAttestationIssuance {\n            authorization,\n            package,\n        })\n    }\n\n'''
+          if anchor not in text:
+              raise SystemExit('policy_state anchor not found')
+          text = text.replace(anchor, method + anchor, 1)
+          path.write_text(text)
+          PY
+          cargo +1.85.0 fmt --all
+          cargo +1.85.0 check -p ergaxiom-backend-issuance-runtime --all-targets
+          cargo +1.85.0 test -p ergaxiom-backend-issuance-runtime --test persistent_production_capability
+          git config user.name "Tayfun"
+          git config user.email "tayfuna766@gmail.com"
+          git add crates/backend-issuance-runtime/src/persistent.rs
+          git diff --cached --check
+          git commit -m "issue75: persist production attestation authorization"
+          git push origin HEAD:codex/issue-75
