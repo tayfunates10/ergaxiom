@@ -960,6 +960,8 @@ pub enum ProductionExecutionVerifyError {
     Governed(#[from] GovernedProductionIssuanceError),
     #[error(transparent)]
     Lease(#[from] ProductionSignerIdentityProofError),
+    #[error(transparent)]
+    DesktopShell(#[from] DesktopShellError),
     #[error("production execution chain is not certified")]
     NotCertified,
     #[error("production execution chain is missing {0}")]

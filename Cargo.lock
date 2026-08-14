@@ -790,6 +790,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "ergaxiom-graphic-production-evidence-runtime"
+version = "0.1.0"
+dependencies = [
+ "base64",
+ "ed25519-dalek",
+ "ergaxiom-capability-runtime",
+ "ergaxiom-contract-runtime",
+ "ergaxiom-evidence-runtime",
+ "ergaxiom-execution-runtime",
+ "ergaxiom-graphic-designer-twin-runtime",
+ "ergaxiom-occupational-twin-runtime",
+ "ergaxiom-operator-plan-runtime",
+ "ergaxiom-operator-simulation-runtime",
+ "ergaxiom-proof-kernel",
+ "serde_json",
+ "sha2",
+ "thiserror",
+]
+
+[[package]]
 name = "ergaxiom-inkscape-adapter-runtime"
 version = "0.1.0"
 dependencies = [
@@ -976,6 +996,58 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2",
+ "thiserror",
+]
+
+[[package]]
+name = "ergaxiom-production-execution-authority-runtime"
+version = "0.1.0"
+dependencies = [
+ "base64",
+ "ed25519-dalek",
+ "ergaxiom-attestation-issuance-runtime",
+ "ergaxiom-attestation-runtime",
+ "ergaxiom-backend-issuance-runtime",
+ "ergaxiom-capability-issuance-runtime",
+ "ergaxiom-capability-runtime",
+ "ergaxiom-contract-runtime",
+ "ergaxiom-desktop-shell-runtime",
+ "ergaxiom-evidence-runtime",
+ "ergaxiom-key-governance-runtime",
+ "ergaxiom-occupational-twin-runtime",
+ "ergaxiom-operator-plan-runtime",
+ "ergaxiom-production-execution-runtime",
+ "ergaxiom-proof-kernel",
+ "ergaxiom-windows-production-governed-issuance-runtime",
+ "ergaxiom-windows-production-key-governance-runtime",
+ "ergaxiom-windows-production-signer-protocol-runtime",
+ "ergaxiom-windows-production-signer-runtime",
+ "ergaxiom-windows-production-signer-service-runtime",
+ "ergaxiom-windows-production-trust-state-runtime",
+ "ergaxiom-windows-signer-protocol-runtime",
+ "ergaxiom-windows-signer-service-identity-runtime",
+ "p256",
+ "serde_json",
+ "sha2",
+ "thiserror",
+]
+
+[[package]]
+name = "ergaxiom-production-execution-runtime"
+version = "0.1.0"
+dependencies = [
+ "ergaxiom-attestation-runtime",
+ "ergaxiom-backend-issuance-runtime",
+ "ergaxiom-capability-runtime",
+ "ergaxiom-contract-runtime",
+ "ergaxiom-desktop-shell-runtime",
+ "ergaxiom-evidence-runtime",
+ "ergaxiom-operator-plan-runtime",
+ "ergaxiom-proof-kernel",
+ "ergaxiom-windows-production-governed-issuance-runtime",
+ "ergaxiom-windows-production-trust-state-runtime",
+ "serde",
+ "serde_json",
  "thiserror",
 ]
 

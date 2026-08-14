@@ -3,7 +3,6 @@ use ergaxiom_attestation_runtime::{ReplayManifest, VerifiedAttestation, build_re
 use ergaxiom_capability_issuance_runtime::CapabilityTokenDraft;
 use ergaxiom_capability_runtime::{
     AuthorizationReceipt, CapabilityBindings, CapabilityGrant, CapabilitySubject,
-    ProductionSignerBoundCapabilityToken,
 };
 use ergaxiom_contract_runtime::{CompiledContract, PermissionAccess};
 use ergaxiom_desktop_shell_runtime::{
@@ -16,7 +15,6 @@ use ergaxiom_evidence_runtime::{EvidenceBundle, assess_bundle};
 use ergaxiom_graphic_production_evidence_runtime::{
     ProductionGraphicEvidence, ProductionGraphicEvidenceRequest, build_production_graphic_evidence,
 };
-use ergaxiom_occupational_twin_runtime::OperationReceipt;
 use ergaxiom_operator_plan_runtime::{CompiledPlan, PlanStep};
 use ergaxiom_production_execution_runtime::{
     PersistedProductionCapability, ProductionExecutionStage,
@@ -52,8 +50,6 @@ pub(crate) fn execute_approved_job(
     approve_receipt: &DesktopCommandReceipt,
 ) -> Result<ProductionExecutionResult, String> {
     let prepared = prepare_desktop_job()?;
-    validate_approved_bindings(&prepared, approved_snapshot, approval, approve_receipt)?;
-
     let stage = production
         .with_fresh_lease(|authority, _lease, _deployment, _client, _now| {
             Ok(authority.chain_state().stage)
@@ -62,6 +58,7 @@ pub(crate) fn execute_approved_job(
     if stage == ProductionExecutionStage::Executed {
         return resume_attestation(production, &prepared, approval);
     }
+    validate_approved_bindings(&prepared, approved_snapshot, approval, approve_receipt)?;
     if !matches!(
         stage,
         ProductionExecutionStage::Approved
@@ -80,7 +77,7 @@ pub(crate) fn execute_approved_job(
         approval,
         approve_receipt,
     )?;
-    let authorization_receipts = collect_authorization_receipts(production, &prepared)?;
+    let authorization_receipts = collect_authorization_receipts(production, &prepared, approval)?;
 
     // The Occupational Twin is invoked only after every max_uses=1 production Capability has a
     // durable AuthorizationReceipt. A restart from CapabilitiesConsumed re-verifies and reuses the
@@ -204,6 +201,7 @@ fn ensure_capabilities(
                         &prepared.compiled_contract,
                         &prepared.compiled_plan,
                         step,
+                        now,
                     )?;
                     return Ok(());
                 }
@@ -240,6 +238,7 @@ fn ensure_capabilities(
 fn collect_authorization_receipts(
     production: &ProductionExecutionState,
     prepared: &PreparedDesktopJob,
+    approval: &DesktopApprovalRecord,
 ) -> Result<Vec<AuthorizationReceipt>, String> {
     let mut receipts = Vec::with_capacity(prepared.compiled_plan.steps.len());
     for step in &prepared.compiled_plan.steps {
@@ -284,6 +283,17 @@ fn collect_authorization_receipts(
                     if verified != receipt {
                         return Err(ProductionExecutionBoundaryError::TrustLeaseRejected);
                     }
+                    verify_persisted_token(
+                        &persisted,
+                        lease,
+                        authority.executor_id(),
+                        authority.device_id(),
+                        approval,
+                        &prepared.compiled_contract,
+                        &prepared.compiled_plan,
+                        step,
+                        now,
+                    )?;
                     return Ok(receipt);
                 }
                 let token_id = step
@@ -460,6 +470,7 @@ fn verify_persisted_token(
     contract: &CompiledContract,
     plan: &CompiledPlan,
     step: &PlanStep,
+    trusted_now_epoch_s: u64,
 ) -> Result<(), ProductionExecutionBoundaryError> {
     let token = &persisted.token;
     token
@@ -488,6 +499,10 @@ fn verify_persisted_token(
         || token.payload.subject.executor_id != executor_id
         || token.payload.subject.device_id.as_deref() != device_id
         || token.payload.max_uses != 1
+        || token.payload.issued_at_epoch_s > trusted_now_epoch_s
+        || trusted_now_epoch_s < token.payload.not_before_epoch_s
+        || trusted_now_epoch_s >= token.payload.expires_at_epoch_s
+        || trusted_now_epoch_s >= approval.expires_at_epoch_s
         || token.payload.expires_at_epoch_s != approval.expires_at_epoch_s
         || token.payload.bindings.contract_digest != contract.seal.contract_digest
         || token.payload.bindings.capsule_digest != contract.seal.capsule_digest
@@ -604,7 +619,7 @@ fn bundle_with_operation_receipts(
         artifacts.push(json!({
             "artifact_id": artifact_id,
             "role": "evidence",
-            "uri": format!("bundle://artifacts/execution_receipt.{}", receipt.operation_id),
+            "uri": format!("ergaxiom-inline-hex:{}", hex_encode(&bytes)),
             "media_type": "application/json",
             "algorithm": "sha256",
             "digest": sha256_hex(&bytes),
@@ -789,6 +804,16 @@ fn build_final_snapshot(
         }),
     })
     .map_err(|_| ProductionExecutionBoundaryError::TrustLeaseRejected)
+}
+
+fn hex_encode(bytes: &[u8]) -> String {
+    const HEX: &[u8; 16] = b"0123456789abcdef";
+    let mut output = String::with_capacity(bytes.len() * 2);
+    for byte in bytes {
+        output.push(char::from(HEX[usize::from(byte >> 4)]));
+        output.push(char::from(HEX[usize::from(byte & 0x0f)]));
+    }
+    output
 }
 
 fn random_nonce() -> Result<String, ProductionExecutionBoundaryError> {

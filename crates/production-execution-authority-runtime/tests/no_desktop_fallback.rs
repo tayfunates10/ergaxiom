@@ -7,9 +7,7 @@ const PRODUCTION_RECOVERY: &str =
 
 #[test]
 fn desktop_production_boundary_contains_no_development_signer_fallback() {
-    let source = format!(
-        "{PRODUCTION_EXECUTION}\n{PRODUCTION_PIPELINE}\n{PRODUCTION_RECOVERY}"
-    );
+    let source = format!("{PRODUCTION_EXECUTION}\n{PRODUCTION_PIPELINE}\n{PRODUCTION_RECOVERY}");
     let lowercase = source.to_ascii_lowercase();
 
     for forbidden in [

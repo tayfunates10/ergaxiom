@@ -1,5 +1,11 @@
 include!("../../backend-issuance-runtime/tests/persistent_production_capability.rs");
 
+use ergaxiom_capability_runtime::AuthorizationReceipt;
+use ergaxiom_desktop_shell_runtime::CertificateVerification;
+use ergaxiom_proof_kernel::DecisionStatus;
+use ergaxiom_windows_production_governed_issuance_runtime::verify_governed_production_attestation_against_bundle;
+use sha2::{Digest as _, Sha256};
+
 use ergaxiom_production_execution_authority_runtime::{
     PersistentProductionExecutionAuthority, PersistentProductionExecutionAuthorityError,
 };
@@ -80,12 +86,8 @@ mod attestation_live {
             deployment_policy.clone(),
         )?;
         let proof = service.handle_identity_challenge(&challenge, &caller, ACTIVATION + 3)?;
-        let lease = proof.verify_trust_lease(
-            &challenge,
-            &accepted,
-            &deployment_policy,
-            LIVE_NOW,
-        )?;
+        let lease =
+            proof.verify_trust_lease(&challenge, &accepted, &deployment_policy, LIVE_NOW)?;
         let calls = Rc::new(Cell::new(0));
         Ok(LiveHarness {
             transport: LiveTransport {
@@ -197,8 +199,8 @@ fn unified_authority_persists_token_consumption_across_restart() -> Result<(), B
 }
 
 #[test]
-fn unified_authority_never_retries_after_production_signer_rejection()
--> Result<(), Box<dyn Error>> {
+fn unified_authority_never_retries_after_production_signer_rejection() -> Result<(), Box<dyn Error>>
+{
     let context = context()?;
     let chain = capability_chain_at(&context, live::LIVE_NOW - 20, 200)?;
     let draft = capability_draft_at(&context, live::LIVE_NOW);
@@ -239,7 +241,10 @@ fn unified_authority_never_retries_after_production_signer_rejection()
         Err(PersistentProductionExecutionAuthorityError::Governed(_))
     ));
     assert_eq!(rejected.calls.get(), 1);
-    assert_eq!(authority.chain_state().stage, ProductionExecutionStage::Approved);
+    assert_eq!(
+        authority.chain_state().stage,
+        ProductionExecutionStage::Approved
+    );
     drop(authority);
 
     let retry = live::harness(false)?;
@@ -381,7 +386,10 @@ fn full_production_chain_certifies_and_recovers_without_fallback() -> Result<(),
         bundle.clone(),
         replay.clone(),
     )?;
-    assert_eq!(authority.chain_state().stage, ProductionExecutionStage::Executed);
+    assert_eq!(
+        authority.chain_state().stage,
+        ProductionExecutionStage::Executed
+    );
 
     let attestation = attestation_live::harness(false)?;
     let issuance = authority.issue_attestation(
@@ -419,7 +427,10 @@ fn full_production_chain_certifies_and_recovers_without_fallback() -> Result<(),
 
     let final_snapshot = certified_snapshot(&executed, &verified)?;
     authority.record_certificate(issuance, final_snapshot)?;
-    assert_eq!(authority.chain_state().stage, ProductionExecutionStage::Certified);
+    assert_eq!(
+        authority.chain_state().stage,
+        ProductionExecutionStage::Certified
+    );
     let certified_digest = authority.chain_state().state_digest.clone();
     drop(authority);
 

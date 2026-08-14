@@ -302,7 +302,7 @@ fn decode_sha256(value: &str) -> Result<[u8; SHA256_DIGEST_BYTES], CngProviderEr
     validate_sha256(value)?;
     let mut bytes = [0_u8; SHA256_DIGEST_BYTES];
     for (index, chunk) in value.as_bytes().chunks_exact(2).enumerate() {
-        bytes[index] = decode_nibble(chunk[0])? << 4 | decode_nibble(chunk[1])?;
+        bytes[index] = (decode_nibble(chunk[0])? << 4) | decode_nibble(chunk[1])?;
     }
     Ok(bytes)
 }

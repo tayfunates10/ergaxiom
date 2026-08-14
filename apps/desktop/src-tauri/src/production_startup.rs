@@ -531,6 +531,9 @@ fn live_status(
     status.service_restart_detected = recovery_required;
     status.recovery_required = recovery_required;
     status.last_identity_proof_epoch_s = last_identity_proof_epoch_s;
+    status.production_issuance_enabled = phase == ProductionSignerStartupPhase::LiveVerified
+        && live_service_identity_verified
+        && !recovery_required;
     status
 }
 

@@ -19,9 +19,7 @@ use ergaxiom_graphic_production_evidence_runtime::{
 };
 use ergaxiom_occupational_twin_runtime::{ApplicationIdentity, EnvironmentIdentity, TwinWorkspace};
 use ergaxiom_operator_plan_runtime::{CompiledPlan, compile_plan};
-use ergaxiom_proof_kernel::{
-    AssuranceLevel, DecisionStatus, canonical_json_bytes,
-};
+use ergaxiom_proof_kernel::{AssuranceLevel, DecisionStatus, canonical_json_bytes};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 
@@ -352,7 +350,10 @@ fn production_receipts_drive_accepted_twin_evidence() -> Result<(), Box<dyn Erro
         evidence.evidence_bundle.claimed_decision.status,
         DecisionStatus::Accepted
     );
-    assert_eq!(evidence.evidence_bundle.trace.authorization_receipts.len(), 4);
+    assert_eq!(
+        evidence.evidence_bundle.trace.authorization_receipts.len(),
+        4
+    );
     assert_eq!(evidence.evidence_bundle.trace.events.len(), 8);
     assert_eq!(evidence.operation_receipts.len(), 4);
     assert!(

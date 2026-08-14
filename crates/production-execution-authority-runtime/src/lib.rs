@@ -310,7 +310,9 @@ impl PersistentProductionExecutionAuthority {
     ) -> Result<(), PersistentProductionExecutionAuthorityError> {
         let capabilities = &self.chain_store.current().capabilities;
         if bundle.trace.authorization_receipts.len() != capabilities.len() {
-            return Err(PersistentProductionExecutionAuthorityError::EvidenceReceiptBindingMismatch);
+            return Err(
+                PersistentProductionExecutionAuthorityError::EvidenceReceiptBindingMismatch,
+            );
         }
         let mut bundle_by_token = BTreeMap::new();
         for record in &bundle.trace.authorization_receipts {
@@ -326,18 +328,12 @@ impl PersistentProductionExecutionAuthority {
             }
         }
         for capability in capabilities {
-            let persisted_receipt = capability
-                .consumption_receipt
-                .as_ref()
-                .ok_or(
-                    PersistentProductionExecutionAuthorityError::EvidenceReceiptBindingMismatch,
-                )?;
-            let persisted_digest = capability
-                .consumption_receipt_digest
-                .as_deref()
-                .ok_or(
-                    PersistentProductionExecutionAuthorityError::EvidenceReceiptBindingMismatch,
-                )?;
+            let persisted_receipt = capability.consumption_receipt.as_ref().ok_or(
+                PersistentProductionExecutionAuthorityError::EvidenceReceiptBindingMismatch,
+            )?;
+            let persisted_digest = capability.consumption_receipt_digest.as_deref().ok_or(
+                PersistentProductionExecutionAuthorityError::EvidenceReceiptBindingMismatch,
+            )?;
             let bundled = bundle_by_token
                 .get(persisted_receipt.token_id.as_str())
                 .ok_or(
@@ -383,7 +379,11 @@ fn verify_operation_receipt_artifacts(
     let artifacts = bundle
         .artifacts
         .iter()
-        .filter(|artifact| artifact.artifact_id.starts_with(OPERATION_RECEIPT_ARTIFACT_PREFIX))
+        .filter(|artifact| {
+            artifact
+                .artifact_id
+                .starts_with(OPERATION_RECEIPT_ARTIFACT_PREFIX)
+        })
         .collect::<Vec<_>>();
     if artifacts.len() != executed_snapshot.steps.len() || artifacts.is_empty() {
         return Err(PersistentProductionExecutionAuthorityError::OperationReceiptBindingMismatch);
@@ -402,9 +402,7 @@ fn verify_operation_receipt_artifacts(
         let encoded = artifact
             .uri
             .strip_prefix(INLINE_OPERATION_RECEIPT_PREFIX)
-            .ok_or(
-                PersistentProductionExecutionAuthorityError::OperationReceiptBindingMismatch,
-            )?;
+            .ok_or(PersistentProductionExecutionAuthorityError::OperationReceiptBindingMismatch)?;
         let bytes = decode_hex(encoded)?;
         if bytes.len() as u64 != artifact.size_bytes || sha256_hex(&bytes) != artifact.digest {
             return Err(
@@ -413,7 +411,10 @@ fn verify_operation_receipt_artifacts(
         }
         let receipt: OperationReceipt = serde_json::from_slice(&bytes)?;
         if artifact.artifact_id
-            != format!("{OPERATION_RECEIPT_ARTIFACT_PREFIX}{}", receipt.operation_id)
+            != format!(
+                "{OPERATION_RECEIPT_ARTIFACT_PREFIX}{}",
+                receipt.operation_id
+            )
             || receipt.outcome != OperationOutcome::Succeeded
             || !receipt.violations.is_empty()
         {
@@ -425,9 +426,7 @@ fn verify_operation_receipt_artifacts(
             .steps
             .iter()
             .find(|step| step.operator_id == receipt.operator_id)
-            .ok_or(
-                PersistentProductionExecutionAuthorityError::OperationReceiptBindingMismatch,
-            )?;
+            .ok_or(PersistentProductionExecutionAuthorityError::OperationReceiptBindingMismatch)?;
         if step.status != StageStatus::Passed
             || step.before_digest.as_deref() != Some(receipt.before_snapshot_digest.as_str())
             || step.after_digest.as_deref() != Some(receipt.after_snapshot_digest.as_str())
@@ -490,7 +489,9 @@ pub enum PersistentProductionExecutionAuthorityError {
     UnknownCapability,
     #[error("production Capability token was already durably consumed")]
     CapabilityAlreadyConsumed,
-    #[error("Evidence Bundle authorization receipts do not exactly match persisted production consumption receipts")]
+    #[error(
+        "Evidence Bundle authorization receipts do not exactly match persisted production consumption receipts"
+    )]
     EvidenceReceiptBindingMismatch,
     #[error("Evidence Bundle operation receipts do not exactly match the executed Twin steps")]
     OperationReceiptBindingMismatch,

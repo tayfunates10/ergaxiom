@@ -349,7 +349,7 @@ pub fn decode_hex_32(value: &str) -> Result<[u8; 32], SignerProtocolError> {
     }
     let mut output = [0_u8; 32];
     for (index, chunk) in value.as_bytes().chunks_exact(2).enumerate() {
-        output[index] = decode_nibble(chunk[0])? << 4 | decode_nibble(chunk[1])?;
+        output[index] = (decode_nibble(chunk[0])? << 4) | decode_nibble(chunk[1])?;
     }
     Ok(output)
 }

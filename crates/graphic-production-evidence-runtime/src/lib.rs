@@ -212,8 +212,8 @@ fn validate_and_index_receipts(
                 step.step_id.clone(),
             ));
         }
-        let value = serde_json::to_value(receipt)
-            .map_err(ProductionGraphicEvidenceError::Serialization)?;
+        let value =
+            serde_json::to_value(receipt).map_err(ProductionGraphicEvidenceError::Serialization)?;
         let record = AuthorizationReceiptRecord {
             receipt_digest: canonical_json_sha256(&value)?,
             receipt: receipt.clone(),
@@ -230,9 +230,9 @@ fn validate_and_index_receipts(
         .steps
         .iter()
         .map(|step| {
-            by_step
-                .remove(&step.step_id)
-                .ok_or_else(|| ProductionGraphicEvidenceError::MissingStepReceipt(step.step_id.clone()))
+            by_step.remove(&step.step_id).ok_or_else(|| {
+                ProductionGraphicEvidenceError::MissingStepReceipt(step.step_id.clone())
+            })
         })
         .collect()
 }
@@ -323,9 +323,9 @@ fn build_authorized_trace(
         .collect();
     let mut events = Vec::with_capacity(compiled_plan.steps.len() * 2);
     for step in &compiled_plan.steps {
-        let receipt = receipt_by_step
-            .get(step.step_id.as_str())
-            .ok_or_else(|| ProductionGraphicEvidenceError::MissingStepReceipt(step.step_id.clone()))?;
+        let receipt = receipt_by_step.get(step.step_id.as_str()).ok_or_else(|| {
+            ProductionGraphicEvidenceError::MissingStepReceipt(step.step_id.clone())
+        })?;
         let report = report_by_step.get(step.step_id.as_str()).ok_or_else(|| {
             ProductionGraphicEvidenceError::TwinStepDidNotSucceed(step.step_id.clone())
         })?;
@@ -475,9 +475,11 @@ fn build_evidence_bundle(
         ));
     }
     if evidence_artifact_ids.len() != proof_results.len() {
-        return Err(ProductionGraphicEvidenceError::MissingValidationObservation(
-            "duplicate evidence artifact identifier".to_owned(),
-        ));
+        return Err(
+            ProductionGraphicEvidenceError::MissingValidationObservation(
+                "duplicate evidence artifact identifier".to_owned(),
+            ),
+        );
     }
 
     let environment = request.workspace.environment();
