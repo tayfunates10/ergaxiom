@@ -634,7 +634,10 @@ pub fn verify_recovered_certified_chain(
 ) -> Result<VerifiedAttestation, ProductionExecutionVerifyError> {
     lease.validate_at(accepted, deployment_policy, trusted_now_epoch_s)?;
     state.validate_seal()?;
-    if state.stage != ProductionExecutionStage::Certified {
+    if !matches!(
+        state.stage,
+        ProductionExecutionStage::Certified | ProductionExecutionStage::RolledBack
+    ) {
         return Err(ProductionExecutionVerifyError::NotCertified);
     }
     let bundle =

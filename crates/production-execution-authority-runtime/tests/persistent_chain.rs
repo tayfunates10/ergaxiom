@@ -10,7 +10,7 @@ use ergaxiom_production_execution_authority_runtime::{
     PersistentProductionExecutionAuthority, PersistentProductionExecutionAuthorityError,
 };
 use ergaxiom_production_execution_runtime::{
-    ProductionExecutionStage, verify_recovered_certified_chain,
+    ProductionExecutionStage, ProductionExecutionStoreError, verify_recovered_certified_chain,
 };
 
 mod attestation_live {
@@ -193,6 +193,96 @@ fn unified_authority_persists_token_consumption_across_restart() -> Result<(), B
         Err(PersistentProductionExecutionAuthorityError::CapabilityAlreadyConsumed)
     ));
     assert_eq!(second.calls.get(), 0);
+
+    fs::remove_dir_all(cleanup_root)?;
+    Ok(())
+}
+
+#[test]
+fn cancellation_survives_restart_and_blocks_capability_signing_before_signer()
+-> Result<(), Box<dyn Error>> {
+    let context = context()?;
+    let chain = capability_chain_at(&context, live::LIVE_NOW - 20, 200)?;
+    let (policy_root, chain_root) = unified_store_roots("cancel-restart");
+    let cleanup_root = policy_root
+        .parent()
+        .ok_or("missing cancellation test parent")?
+        .to_path_buf();
+
+    let mut authority = PersistentProductionExecutionAuthority::load_or_create(
+        &policy_root,
+        &chain_root,
+        JOB_ID,
+        EXECUTOR_ID,
+        Some(DEVICE_ID.to_owned()),
+    )?;
+    authority.record_approval(
+        chain.approved.clone(),
+        chain.approval.clone(),
+        chain.approve_receipt.clone(),
+    )?;
+    let cancelled = snapshot(
+        &context,
+        DesktopControlStatus::Cancelled,
+        Some(&chain.approval),
+        &chain.approval.permission_digest,
+        None,
+        None,
+    )?;
+    let cancel_receipt = issue_desktop_command_receipt(
+        DesktopCommandAction::Cancel,
+        ACTOR_ID,
+        &chain.approved,
+        &cancelled,
+        Some(&chain.approval.approval_digest),
+        live::LIVE_NOW,
+    )?;
+    authority.record_cancellation(cancel_receipt.clone())?;
+    assert_eq!(
+        authority.chain_state().stage,
+        ProductionExecutionStage::Cancelled
+    );
+    let cancelled_digest = authority.chain_state().state_digest.clone();
+
+    let blocked = live::harness(false)?;
+    assert!(matches!(
+        authority.issue_capability(
+            blocked.transport,
+            &blocked.lease,
+            &blocked.accepted,
+            &blocked.deployment_policy,
+            &chain.approved,
+            &chain.approval,
+            &chain.approve_receipt,
+            &context.contract,
+            &context.plan,
+            capability_draft_at(&context, live::LIVE_NOW),
+            live::LIVE_NOW,
+            60,
+        ),
+        Err(PersistentProductionExecutionAuthorityError::ExecutionStore(
+            ProductionExecutionStoreError::InvalidTransition
+        ))
+    ));
+    assert_eq!(blocked.calls.get(), 0);
+    drop(authority);
+
+    let recovered = PersistentProductionExecutionAuthority::load_or_create(
+        &policy_root,
+        &chain_root,
+        JOB_ID,
+        EXECUTOR_ID,
+        Some(DEVICE_ID.to_owned()),
+    )?;
+    assert_eq!(
+        recovered.chain_state().stage,
+        ProductionExecutionStage::Cancelled
+    );
+    assert_eq!(recovered.chain_state().state_digest, cancelled_digest);
+    assert_eq!(
+        recovered.chain_state().cancel_receipt.as_ref(),
+        Some(&cancel_receipt)
+    );
 
     fs::remove_dir_all(cleanup_root)?;
     Ok(())
@@ -435,7 +525,7 @@ fn full_production_chain_certifies_and_recovers_without_fallback() -> Result<(),
     drop(authority);
 
     let recovery = attestation_live::harness(false)?;
-    let recovered = PersistentProductionExecutionAuthority::load_or_create(
+    let mut recovered = PersistentProductionExecutionAuthority::load_or_create(
         &policy_root,
         &chain_root,
         JOB_ID,
@@ -461,7 +551,7 @@ fn full_production_chain_certifies_and_recovers_without_fallback() -> Result<(),
         &recovery.accepted,
         &recovery.deployment_policy,
         attestation_live::LIVE_NOW,
-        context.contract,
+        context.contract.clone(),
         &context.plan,
         AssuranceLevel::E1,
         EXECUTOR_ID,
@@ -470,6 +560,70 @@ fn full_production_chain_certifies_and_recovers_without_fallback() -> Result<(),
     assert_eq!(recovered_verified.decision, DecisionStatus::Accepted);
     assert_eq!(
         recovered_verified.certificate_id,
+        "certificate.production-execution.e2e"
+    );
+
+    let certified = recovered
+        .chain_state()
+        .final_snapshot
+        .as_ref()
+        .ok_or("certified snapshot missing before rollback")?
+        .clone();
+    let rolled_back = rolled_back_snapshot(&certified)?;
+    let rollback_receipt = issue_desktop_command_receipt(
+        DesktopCommandAction::Rollback,
+        ACTOR_ID,
+        &certified,
+        &rolled_back,
+        Some(&chain.approval.approval_digest),
+        attestation_live::LIVE_NOW,
+    )?;
+    recovered.record_rollback(rollback_receipt.clone())?;
+    assert_eq!(
+        recovered.chain_state().stage,
+        ProductionExecutionStage::RolledBack
+    );
+    let rolled_back_digest = recovered.chain_state().state_digest.clone();
+    drop(recovered);
+
+    let rollback_recovery = attestation_live::harness(false)?;
+    let rolled_back_recovered = PersistentProductionExecutionAuthority::load_or_create(
+        &policy_root,
+        &chain_root,
+        JOB_ID,
+        EXECUTOR_ID,
+        Some(DEVICE_ID.to_owned()),
+    )?;
+    assert_eq!(
+        rolled_back_recovered.chain_state().stage,
+        ProductionExecutionStage::RolledBack
+    );
+    assert_eq!(
+        rolled_back_recovered.chain_state().state_digest,
+        rolled_back_digest
+    );
+    assert_eq!(
+        rolled_back_recovered
+            .chain_state()
+            .rollback_receipt
+            .as_ref(),
+        Some(&rollback_receipt)
+    );
+    let rollback_verified = verify_recovered_certified_chain(
+        rolled_back_recovered.chain_state(),
+        &rollback_recovery.lease,
+        &rollback_recovery.accepted,
+        &rollback_recovery.deployment_policy,
+        attestation_live::LIVE_NOW,
+        context.contract.clone(),
+        &context.plan,
+        AssuranceLevel::E1,
+        EXECUTOR_ID,
+        Some(DEVICE_ID),
+    )?;
+    assert_eq!(rollback_verified.decision, DecisionStatus::Accepted);
+    assert_eq!(
+        rollback_verified.certificate_id,
         "certificate.production-execution.e2e"
     );
 
@@ -554,6 +708,38 @@ fn certified_snapshot(
         adapters: executed.adapters.clone(),
         trusted_keys: executed.trusted_keys.clone(),
         metadata: executed.metadata.clone(),
+    })?)
+}
+
+fn rolled_back_snapshot(
+    certified: &DesktopShellSnapshot,
+) -> Result<DesktopShellSnapshot, Box<dyn Error>> {
+    let mut steps = certified.steps.clone();
+    for step in &mut steps {
+        step.status = StageStatus::Blocked;
+    }
+    Ok(build_desktop_shell_snapshot(DesktopShellMaterial {
+        generated_at: certified.generated_at.clone(),
+        job_id: certified.job_id.clone(),
+        unresolved: certified.unresolved.clone(),
+        staged_inputs: certified.staged_inputs.clone(),
+        contract: certified.contract.clone(),
+        approval: certified.approval.clone(),
+        plan: certified.plan.clone(),
+        steps,
+        validators: certified.validators.clone(),
+        evidence_bundle: certified.evidence_bundle.clone(),
+        replay_manifest: certified.replay_manifest.clone(),
+        certificate: certified.certificate.clone(),
+        profession_capsules: certified.profession_capsules.clone(),
+        adapters: certified.adapters.clone(),
+        trusted_keys: certified.trusted_keys.clone(),
+        metadata: json!({
+            "control_status": DesktopControlStatus::RolledBack,
+            "approval_digest": certified.metadata.get("approval_digest").cloned(),
+            "terminal_transition": true,
+            "certified_evidence_preserved": certified.certificate.is_some(),
+        }),
     })?)
 }
 

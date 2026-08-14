@@ -23,7 +23,8 @@ use ergaxiom_evidence_runtime::{ArtifactRole, DigestAlgorithm, EvidenceBundle};
 use ergaxiom_occupational_twin_runtime::{OperationOutcome, OperationReceipt};
 use ergaxiom_operator_plan_runtime::CompiledPlan;
 use ergaxiom_production_execution_runtime::{
-    ProductionExecutionChainState, ProductionExecutionChainStore, ProductionExecutionStoreError,
+    ProductionExecutionChainState, ProductionExecutionChainStore, ProductionExecutionStage,
+    ProductionExecutionStoreError,
 };
 use ergaxiom_proof_kernel::{AssuranceLevel, HashingError, canonical_json_sha256};
 use ergaxiom_windows_production_governed_issuance_runtime::{
@@ -73,6 +74,17 @@ impl PersistentProductionExecutionAuthority {
         })
     }
 
+    fn require_stage(
+        &self,
+        allowed: &[ProductionExecutionStage],
+    ) -> Result<(), PersistentProductionExecutionAuthorityError> {
+        if allowed.contains(&self.chain_store.current().stage) {
+            Ok(())
+        } else {
+            Err(ProductionExecutionStoreError::InvalidTransition.into())
+        }
+    }
+
     pub fn record_approval(
         &mut self,
         approved_snapshot: DesktopShellSnapshot,
@@ -103,6 +115,10 @@ impl PersistentProductionExecutionAuthority {
     where
         C: ProductionCapabilitySignerTransport,
     {
+        self.require_stage(&[
+            ProductionExecutionStage::Approved,
+            ProductionExecutionStage::CapabilitiesIssued,
+        ])?;
         lease.validate_at(accepted, deployment_policy, trusted_now_epoch_s)?;
         let capability_authority = GovernedProductionCapabilityIssuanceAuthority::new(
             transport,
@@ -150,6 +166,10 @@ impl PersistentProductionExecutionAuthority {
         compiled_plan: &CompiledPlan,
         trusted_now_epoch_s: u64,
     ) -> Result<AuthorizationReceipt, PersistentProductionExecutionAuthorityError> {
+        self.require_stage(&[
+            ProductionExecutionStage::CapabilitiesIssued,
+            ProductionExecutionStage::CapabilitiesConsumed,
+        ])?;
         lease.validate_at(accepted, deployment_policy, trusted_now_epoch_s)?;
         let persisted = self
             .chain_store
@@ -221,6 +241,7 @@ impl PersistentProductionExecutionAuthority {
     where
         A: ProductionAttestationSignerTransport,
     {
+        self.require_stage(&[ProductionExecutionStage::Executed])?;
         lease.validate_at(accepted, deployment_policy, trusted_now_epoch_s)?;
         self.verify_execution_evidence_binding(bundle_value, snapshot)?;
         let attestation_authority = GovernedProductionAttestationIssuanceAuthority::new(
