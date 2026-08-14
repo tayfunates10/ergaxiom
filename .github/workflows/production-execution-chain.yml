@@ -1,0 +1,81 @@
+name: Production Execution Chain
+
+on:
+  push:
+    branches:
+      - codex/issue-75
+  pull_request:
+    paths:
+      - "crates/production-execution-authority-runtime/**"
+      - "crates/production-execution-runtime/**"
+      - "crates/backend-issuance-runtime/**"
+      - "apps/desktop/src-tauri/**"
+      - ".github/workflows/production-execution-chain.yml"
+      - "Cargo.toml"
+      - "Cargo.lock"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  production-execution-runtime:
+    name: production-execution-runtime
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.85.0"
+          components: rustfmt, clippy
+      - name: Capture formatting gate state
+        shell: bash
+        run: |
+          set +e
+          cargo fmt --all -- --check > "$RUNNER_TEMP/issue75-rustfmt.txt" 2>&1
+          status=$?
+          echo "$status" > "$RUNNER_TEMP/issue75-rustfmt-status"
+          cargo fmt --all
+          exit 0
+      - name: Clippy production execution store
+        run: cargo clippy -p ergaxiom-production-execution-runtime --all-targets -- -D warnings
+      - name: Clippy persistent production authority
+        run: cargo clippy -p ergaxiom-production-execution-authority-runtime --all-targets -- -D warnings
+      - name: Runtime tests
+        run: cargo test -p ergaxiom-production-execution-runtime
+      - name: Authority tests
+        run: cargo test -p ergaxiom-production-execution-authority-runtime
+      - name: Backend persistent issuance regression
+        run: cargo test -p ergaxiom-backend-issuance-runtime --test persistent_production_capability
+      - name: Enforce formatting gate
+        if: always()
+        shell: bash
+        run: |
+          status="$(cat "$RUNNER_TEMP/issue75-rustfmt-status")"
+          if [ "$status" -ne 0 ]; then
+            output="$(cat "$RUNNER_TEMP/issue75-rustfmt.txt")"
+            escaped="${output//'%'/'%25'}"
+            escaped="${escaped//$'\r'/'%0D'}"
+            escaped="${escaped//$'\n'/'%0A'}"
+            echo "::error title=rustfmt check failed::$escaped"
+            exit 1
+          fi
+
+  desktop-boundary:
+    name: desktop-boundary
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.85.0"
+          components: clippy
+      - name: Desktop production boundary compile
+        shell: pwsh
+        run: |
+          $output = cargo check --manifest-path apps/desktop/src-tauri/Cargo.toml --all-targets 2>&1 | Out-String
+          if ($LASTEXITCODE -ne 0) {
+            $escaped = $output.Replace('%', '%25').Replace("`r", '%0D').Replace("`n", '%0A')
+            Write-Output "::error title=desktop cargo check failed::$escaped"
+            exit $LASTEXITCODE
+          }

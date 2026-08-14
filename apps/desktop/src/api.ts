@@ -1,112 +1,53 @@
 import { invoke } from '@tauri-apps/api/core';
 
-import { unavailableResponse } from './fixtures';
 import type {
-  DesktopApprovedActionRequest,
-  DesktopApprovalRequest,
-  DesktopSnapshotRequest,
-  DesktopSnapshotResponse,
-  ProductionSignerStatus,
-} from './types';
+  CreateProductJobRequest,
+  ExpectedProductJobRequest,
+  ImportProductJobInputRequest,
+  ProductJobView,
+} from './product-jobs';
 
-async function invokeVerified(
-  command: string,
-  request?: DesktopApprovalRequest | DesktopApprovedActionRequest | DesktopSnapshotRequest,
-): Promise<DesktopSnapshotResponse> {
-  try {
-    const response = await invoke<DesktopSnapshotResponse>(
-      command,
-      request ? { request } : undefined,
-    );
-    if (!response.verified || response.source !== 'desktop_control_authority') {
-      return unavailableResponse('Rust kontrol otoritesi yanıtı doğrulanamadı.');
-    }
-    return response;
-  } catch (error) {
-    return unavailableResponse(error);
-  }
+async function invokeProduct<T>(command: string, request?: unknown): Promise<T> {
+  return invoke<T>(command, request === undefined ? undefined : { request });
 }
 
-export function loadDesktopSnapshot(): Promise<DesktopSnapshotResponse> {
-  return invokeVerified('get_desktop_shell_snapshot');
+export function listProductJobs(): Promise<ProductJobView[]> {
+  return invokeProduct<ProductJobView[]>('list_product_jobs');
 }
 
-export async function loadProductionSignerStatus(): Promise<ProductionSignerStatus> {
-  try {
-    return await invoke<ProductionSignerStatus>('get_production_signer_status');
-  } catch {
-    return {
-      phase: 'rejected',
-      code: 'production_status_unavailable',
-      configuration_verified: false,
-      configuration_acl_verified: false,
-      pipe_clients_initialized: false,
-      live_service_identity_verified: false,
-      service_restart_detected: false,
-      recovery_required: false,
-      last_identity_proof_epoch_s: null,
-      production_issuance_enabled: false,
-      deployment_id: null,
-      backend_id: null,
-      manifest_digest: null,
-      trust_state_revision: null,
-      trust_state_binding_digest: null,
-      registry_revision: null,
-      registry_digest: null,
-      capability_generation: null,
-      attestation_generation: null,
-    };
-  }
+export function createProductJob(request: CreateProductJobRequest): Promise<ProductJobView> {
+  return invokeProduct<ProductJobView>('create_product_job', request);
 }
 
-export async function refreshProductionSignerStatus(): Promise<ProductionSignerStatus> {
-  return invoke<ProductionSignerStatus>('refresh_production_signer_status');
+export function importProductJobInput(
+  request: ImportProductJobInputRequest,
+): Promise<ProductJobView> {
+  return invokeProduct<ProductJobView>('import_product_job_input', request);
 }
 
-export async function recoverProductionSignerStatus(): Promise<ProductionSignerStatus> {
-  return invoke<ProductionSignerStatus>('recover_production_signer_status');
+function expectedRequest(job: ProductJobView): ExpectedProductJobRequest {
+  return {
+    job_id: job.record.job_id,
+    expected_state_digest: job.record.state_digest,
+  };
 }
 
-export function approveDesktopJob(
-  response: DesktopSnapshotResponse,
-): Promise<DesktopSnapshotResponse> {
-  const approval = response.snapshot.approval;
-  if (!response.verified || !approval) {
-    return Promise.resolve(unavailableResponse('Onay için doğrulanmış digest kümesi yok.'));
-  }
-  return invokeVerified('approve_desktop_job', {
-    expected_snapshot_digest: response.snapshot.snapshot_digest,
-    contract_digest: approval.contract_digest,
-    plan_digest: approval.plan_digest,
-    permission_digest: approval.permission_digest,
-  });
+export function prepareProductJob(job: ProductJobView): Promise<ProductJobView> {
+  return invokeProduct<ProductJobView>('prepare_product_job', expectedRequest(job));
 }
 
-export function startDesktopJobExecution(
-  response: DesktopSnapshotResponse,
-): Promise<DesktopSnapshotResponse> {
-  const approval = response.control.approval;
-  if (!response.verified || !approval) {
-    return Promise.resolve(unavailableResponse('Yürütme için backend onay kaydı yok.'));
-  }
-  return invokeVerified('start_desktop_job_execution', {
-    expected_snapshot_digest: response.snapshot.snapshot_digest,
-    approval_digest: approval.approval_digest,
-  });
+export function approveProductJob(job: ProductJobView): Promise<ProductJobView> {
+  return invokeProduct<ProductJobView>('approve_product_job', expectedRequest(job));
 }
 
-export function cancelDesktopJob(
-  response: DesktopSnapshotResponse,
-): Promise<DesktopSnapshotResponse> {
-  return invokeVerified('cancel_desktop_job', {
-    expected_snapshot_digest: response.snapshot.snapshot_digest,
-  });
+export function startProductJobExecution(job: ProductJobView): Promise<ProductJobView> {
+  return invokeProduct<ProductJobView>('start_product_job_execution', expectedRequest(job));
 }
 
-export function rollbackDesktopJob(
-  response: DesktopSnapshotResponse,
-): Promise<DesktopSnapshotResponse> {
-  return invokeVerified('rollback_desktop_job', {
-    expected_snapshot_digest: response.snapshot.snapshot_digest,
-  });
+export function syncProductJobFromProduction(job: ProductJobView): Promise<ProductJobView> {
+  return invokeProduct<ProductJobView>('sync_product_job_from_production', expectedRequest(job));
+}
+
+export function cancelProductJob(job: ProductJobView): Promise<ProductJobView> {
+  return invokeProduct<ProductJobView>('cancel_product_job', expectedRequest(job));
 }
