@@ -1,7 +1,7 @@
 name: Windows release evidence
 on:
   pull_request:
-    paths: ["apps/desktop/**", "apps/windows-production-signer-service/**", "tools/release/**", "docs/windows-signed-release.md", ".github/workflows/windows-signed-release.yml"]
+    paths: ["apps/desktop/**", "apps/windows-production-signer-service/**", "Cargo.lock", "crates/inkscape-adapter-runtime/**", "crates/brand-compliant-export-certified-path-runtime/**", "crates/print-ready-poster-preflight-certified-path-runtime/**", "tools/release/**", "docs/windows-signed-release.md", ".github/workflows/windows-signed-release.yml"]
   workflow_dispatch:
 permissions:
   contents: read
@@ -20,34 +20,18 @@ jobs:
           components: rustfmt
       - name: Release evidence attack tests
         run: python -m unittest tools.release.test_generate_release_evidence tools.release.test_finalize_windows_release_evidence tools.release.test_windows_release_attack_matrix
-      - name: Validate release JSON
+      - name: Validate release JSON and locked dependency graph
         run: |
           python -m json.tool tools/release/windows_release_policy.json >/dev/null
           python -m json.tool apps/desktop/src-tauri/tauri.release.conf.json >/dev/null
           python -m json.tool apps/desktop/src-tauri/tauri.ci-installer.conf.json >/dev/null
           python -m json.tool apps/desktop/src-tauri/tauri.ci-previous-installer.conf.json >/dev/null
+          cargo metadata --locked --no-deps --format-version 1 >/dev/null
       - name: Frontend regression
         working-directory: apps/desktop
         run: npm ci && npm test && npm run build
       - name: Rust format
         run: cargo fmt --all -- --check
-
-  dependency-lock-refresh:
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-      - name: Resolve patched parser versions
-        run: |
-          cargo update -p quick-xml --precise 0.41.0
-          cargo update -p lopdf --precise 0.42.0
-          cargo check -p ergaxiom-inkscape-adapter-runtime -p ergaxiom-brand-compliant-export-certified-path-runtime -p ergaxiom-print-ready-poster-preflight-certified-path-runtime
-      - uses: actions/upload-artifact@v4
-        with:
-          name: issue-78-patched-cargo-lock
-          path: Cargo.lock
-          if-no-files-found: error
-          retention-days: 1
 
   unsigned-candidate-is-blocked:
     runs-on: windows-2025
@@ -61,12 +45,27 @@ jobs:
           cache: npm
           cache-dependency-path: apps/desktop/package-lock.json
       - uses: dtolnay/rust-toolchain@stable
+      - name: Parse PowerShell release runners and prove missing certificate fails closed
+        shell: pwsh
+        run: |
+          foreach($script in Get-ChildItem tools/release -Filter '*.ps1') {
+            $tokens=$null;$errors=$null
+            [System.Management.Automation.Language.Parser]::ParseFile($script.FullName,[ref]$tokens,[ref]$errors)|Out-Null
+            if($errors.Count){throw "PowerShell parse failure in $($script.Name): $($errors[0].Message)"}
+          }
+          $dummy=Join-Path $env:RUNNER_TEMP 'unsigned-dummy.exe';Set-Content $dummy 'not-a-real-pe' -NoNewline
+          try {
+            ./tools/release/sign_windows_release.ps1 -PolicyPath tools/release/windows_release_policy.json -Artifact @($dummy)
+            throw 'Unresolved certificate policy unexpectedly reached signing'
+          } catch {
+            if($_.Exception.Message -notmatch 'SIGNING_IDENTITY_POLICY_UNRESOLVED'){throw}
+          }
       - name: Build exact PE inputs and NSIS installer
         shell: pwsh
         run: |
           npm --prefix apps/desktop ci
           npm --prefix apps/desktop run tauri -- build --no-bundle
-          cargo build --release -p ergaxiom-windows-production-signer-service
+          cargo build --release --locked -p ergaxiom-windows-production-signer-service
           New-Item -ItemType Directory -Force apps/desktop/src-tauri/release-resources | Out-Null
           Copy-Item target/release/ergaxiom-windows-production-signer-service.exe apps/desktop/src-tauri/release-resources/ergaxiom-windows-production-signer-service.exe
           npm --prefix apps/desktop run tauri -- bundle --config src-tauri/tauri.ci-installer.conf.json
@@ -109,7 +108,7 @@ jobs:
         run: |
           npm --prefix apps/desktop ci
           npm --prefix apps/desktop run tauri -- build --no-bundle
-          cargo build --release -p ergaxiom-windows-production-signer-service
+          cargo build --release --locked -p ergaxiom-windows-production-signer-service
           New-Item -ItemType Directory -Force apps/desktop/src-tauri/release-resources | Out-Null
           Copy-Item target/release/ergaxiom-windows-production-signer-service.exe apps/desktop/src-tauri/release-resources/ergaxiom-windows-production-signer-service.exe
       - name: Bundle previous and current test-only NSIS installers
