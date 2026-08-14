@@ -25,6 +25,7 @@ jobs:
           python -m json.tool tools/release/windows_release_policy.json >/dev/null
           python -m json.tool apps/desktop/src-tauri/tauri.release.conf.json >/dev/null
           python -m json.tool apps/desktop/src-tauri/tauri.ci-installer.conf.json >/dev/null
+          python -m json.tool apps/desktop/src-tauri/tauri.ci-previous-installer.conf.json >/dev/null
       - name: Frontend regression
         working-directory: apps/desktop
         run: npm ci && npm test && npm run build
@@ -88,6 +89,52 @@ jobs:
             ${{ runner.temp }}/base/**
             ${{ runner.temp }}/signatures.json
             ${{ runner.temp }}/final.json
+          retention-days: 14
+
+  installer-lifecycle-test:
+    name: NSIS install upgrade downgrade interruption recovery uninstall
+    runs-on: windows-2025
+    env:
+      SOURCE_COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: apps/desktop/package-lock.json
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Build desktop and production signer-service inputs
+        shell: pwsh
+        run: |
+          npm --prefix apps/desktop ci
+          npm --prefix apps/desktop run tauri -- build --no-bundle
+          cargo build --release -p ergaxiom-windows-production-signer-service
+          New-Item -ItemType Directory -Force apps/desktop/src-tauri/release-resources | Out-Null
+          Copy-Item target/release/ergaxiom-windows-production-signer-service.exe apps/desktop/src-tauri/release-resources/ergaxiom-windows-production-signer-service.exe
+      - name: Bundle previous and current test-only NSIS installers
+        shell: pwsh
+        run: |
+          npm --prefix apps/desktop run tauri -- bundle --config src-tauri/tauri.ci-previous-installer.conf.json
+          $previous=@(Get-ChildItem apps/desktop/src-tauri/target/release/bundle/nsis -Filter '*0.0.9*-setup.exe')
+          if($previous.Count-ne1){throw "Expected exactly one 0.0.9 installer, got $($previous.Count)"}
+          Copy-Item $previous[0].FullName "$env:RUNNER_TEMP\previous-setup.exe"
+          npm --prefix apps/desktop run tauri -- bundle --config src-tauri/tauri.ci-installer.conf.json
+          $current=@(Get-ChildItem apps/desktop/src-tauri/target/release/bundle/nsis -Filter '*0.1.0*-setup.exe')
+          if($current.Count-ne1){throw "Expected exactly one 0.1.0 installer, got $($current.Count)"}
+          Copy-Item $current[0].FullName "$env:RUNNER_TEMP\current-setup.exe"
+      - name: Execute lifecycle and attack matrix on the real installers
+        shell: pwsh
+        run: |
+          ./tools/release/test_windows_installer_lifecycle.ps1 -PolicyPath tools/release/windows_release_policy.json -PreviousInstaller "$env:RUNNER_TEMP\previous-setup.exe" -CurrentInstaller "$env:RUNNER_TEMP\current-setup.exe" -SourceCommit "$env:SOURCE_COMMIT" -EvidenceOut "$env:RUNNER_TEMP\installer-lifecycle-test.json"
+          $e=Get-Content "$env:RUNNER_TEMP\installer-lifecycle-test.json" -Raw|ConvertFrom-Json
+          if($e.test_mode-ne$true){throw 'Hosted lifecycle evidence must remain test-only'}
+          foreach($phase in @('clean_install','upgrade','downgrade_rejected','interrupted_upgrade_preserved_state','recovery_install','uninstall','production_state_preserved')){if($e.phases.$phase-ne$true){throw "Lifecycle phase failed: $phase"}}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-installer-lifecycle-TEST-ONLY
+          path: ${{ runner.temp }}/installer-lifecycle-test.json
+          if-no-files-found: error
           retention-days: 14
 
   production-preflight:
