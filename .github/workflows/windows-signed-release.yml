@@ -1,7 +1,7 @@
 name: Windows release evidence
 on:
   pull_request:
-    paths: ["apps/desktop/**", "apps/windows-production-signer-service/**", "Cargo.lock", "crates/inkscape-adapter-runtime/**", "crates/brand-compliant-export-certified-path-runtime/**", "crates/print-ready-poster-preflight-certified-path-runtime/**", "tools/release/**", "tools/windows/**", "docs/windows-signed-release.md", ".github/workflows/windows-signed-release.yml"]
+    paths: ["apps/desktop/**", "apps/windows-production-signer-service/**", "Cargo.lock", "crates/**", "tools/release/**", "tools/windows/**", "docs/windows-signed-release.md", ".github/workflows/windows-signed-release.yml"]
   workflow_dispatch:
 permissions:
   contents: read
@@ -31,6 +31,8 @@ jobs:
         run: test "$(git rev-parse HEAD)" = "$SOURCE_COMMIT"
       - name: Release evidence attack tests
         run: python -m unittest tools.release.test_generate_release_evidence tools.release.test_finalize_windows_release_evidence tools.release.test_windows_release_attack_matrix tools.windows.test_controlled_trust_gate
+      - name: Compile canonical production-chain verifier
+        run: cargo check --locked -p ergaxiom-production-execution-runtime --bin verify_production_release_chain
       - name: Validate release JSON and locked dependency graph
         run: |
           python -m json.tool tools/release/windows_release_policy.json >/dev/null
@@ -112,7 +114,7 @@ jobs:
           if($LASTEXITCODE-ne0){throw 'UNSIGNED_FINALIZER_FAILED'}
           $f=Get-Content $env:RUNNER_TEMP/final.json -Raw|ConvertFrom-Json
           if($f.release_eligible-ne$false){throw 'Unsigned/test candidate became production eligible'}
-          foreach($b in @('SIGNING_IDENTITY_POLICY_UNRESOLVED','AUTHENTICODE_NOT_VERIFIED','INSTALLER_LIFECYCLE_NOT_VERIFIED','PRODUCTION_CHAIN_EVIDENCE_NOT_VERIFIED','PRODUCTION_CHAIN_CANONICAL_VERIFIER_NOT_INTEGRATED','HARDWARE_OPERATIONAL_EVIDENCE_NOT_VERIFIED','DISTRIBUTION_LICENSE_NOT_APPROVED')){if($b-notin$f.blocking_reasons){throw "Missing blocker $b"}}
+          foreach($b in @('SIGNING_IDENTITY_POLICY_UNRESOLVED','AUTHENTICODE_NOT_VERIFIED','INSTALLER_LIFECYCLE_NOT_VERIFIED','PRODUCTION_CHAIN_EVIDENCE_NOT_VERIFIED','HARDWARE_OPERATIONAL_EVIDENCE_NOT_VERIFIED','DISTRIBUTION_LICENSE_NOT_APPROVED')){if($b-notin$f.blocking_reasons){throw "Missing blocker $b"}}
       - uses: actions/upload-artifact@v4
         with:
           name: windows-release-evidence-NOT-PRODUCTION
@@ -193,4 +195,4 @@ jobs:
           $p=Get-Content tools/release/windows_release_policy.json -Raw|ConvertFrom-Json
           if($p.signing.identity_status-ne'OWNER_APPROVED_PINNED' -or [string]::IsNullOrWhiteSpace([string]$p.signing.expected_subject) -or [string]::IsNullOrWhiteSpace([string]$p.signing.expected_certificate_sha256)){throw 'PRODUCTION BLOCKED: real code-signing identity pin is unresolved'}
           if($p.license.owner_decision_status-ne'APPROVED' -or [string]::IsNullOrWhiteSpace([string]$p.license.spdx_expression)){throw 'PRODUCTION BLOCKED: distribution license is unresolved'}
-          throw 'PRODUCTION BLOCKED: Issue #75 canonical production-chain verifier is not yet integrated'
+          Write-Host 'Repository-controlled production-chain verifier is integrated; external signed candidate, lifecycle and physical trust evidence are still required.'

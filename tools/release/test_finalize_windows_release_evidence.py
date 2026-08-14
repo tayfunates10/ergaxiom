@@ -16,12 +16,25 @@ def life(test=False):
     return {"schema_version":"0.1.0","source_commit":C,"installer_name":"Ergaxiom_0.1.0_x64-setup.exe","installer_sha256":I,"test_mode":test,"phases":{k:True for k in phases}}
 def gate(n): return {"schema_version":"0.1.0","gate":n,"source_commit":C,"verified":True,"evidence_artifacts":[{"name":n,"sha256":"e"*64}]}
 def lic(): return {"schema_version":"0.1.0","source_commit":C,"owner_approved":True,"spdx_expression":"Apache-2.0"}
+def canonical_prod():
+    value={"schema_version":"0.1.0","verifier_id":M.PRODUCTION_VERIFIER_ID,"gate":M.PRODUCTION_GATE,"verified":True,"source_commit":C,"job_id":"job.release.1","chain_stage":"certified","chain_revision":7,"chain_state_digest":"e"*64,"signer_service_sha256":V,"trust_state_binding_digest":"f"*64,"signer_identity_proof_digest":"1"*64,"certificate_id":"cert.release.1","certificate_digest":"2"*64,"replay_manifest_digest":"3"*64,"evidence_bundle_digest":"4"*64,"decision":"ACCEPTED","assurance_level":"E5","input_digests":{k:chr(97+i)*64 for i,k in enumerate(sorted(M.PRODUCTION_INPUTS))},"verification_digest":""}
+    value["verification_digest"]=M.sha(value)
+    return value
 
 class T(unittest.TestCase):
     def accepted(self,p=None,s=None,l=None,prod=None,hw=None):
         p=p or policy(); return M.build(base(),p,s or sig(p),l or life(),prod if prod is not None else gate("production_chain"),hw if hw is not None else gate("hardware_operational"),lic())
     def test_summary_only_external_evidence_never_promotes(self):
-        r=self.accepted(); self.assertFalse(r["release_eligible"]); self.assertFalse(r["production_chain"]["verified"]); self.assertFalse(r["hardware_operational"]["verified"]); self.assertIn("PRODUCTION_CHAIN_CANONICAL_VERIFIER_NOT_INTEGRATED",r["blocking_reasons"])
+        r=self.accepted(); self.assertFalse(r["release_eligible"]); self.assertFalse(r["production_chain"]["verified"]); self.assertFalse(r["hardware_operational"]["verified"]); self.assertIn("PRODUCTION_CHAIN_EVIDENCE_NOT_VERIFIED",r["blocking_reasons"]); self.assertNotIn("PRODUCTION_CHAIN_CANONICAL_VERIFIER_NOT_INTEGRATED",r["blocking_reasons"])
+    def test_canonical_production_verifier_evidence_is_accepted(self):
+        r=self.accepted(prod=canonical_prod()); self.assertTrue(r["production_chain"]["verified"]); self.assertNotIn("PRODUCTION_CHAIN_EVIDENCE_NOT_VERIFIED",r["blocking_reasons"])
+    def test_canonical_production_service_substitution_is_rejected(self):
+        p=canonical_prod(); p["signer_service_sha256"]="9"*64; p["verification_digest"]=""; p["verification_digest"]=M.sha(p); self.assertFalse(self.accepted(prod=p)["production_chain"]["verified"])
+    def test_rolled_back_chain_is_not_release_eligible(self):
+        p=canonical_prod(); p["chain_stage"]="rolled_back"; p["verification_digest"]=""; p["verification_digest"]=M.sha(p); self.assertFalse(self.accepted(prod=p)["production_chain"]["verified"])
+    def test_mutated_canonical_verifier_seal_is_rejected(self):
+        p=canonical_prod(); p["certificate_digest"]="9"*64
+        with self.assertRaises(M.ReleaseError): self.accepted(prod=p)
     def test_generic_verified_true_hardware_summary_is_rejected(self):
         r=self.accepted(hw=gate("hardware_operational")); self.assertFalse(r["hardware_operational"]["verified"]); self.assertTrue(r["hardware_operational"]["rejected_summary_only_evidence"])
     def test_test_identity_rejected(self):

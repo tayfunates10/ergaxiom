@@ -2,7 +2,18 @@
 param(
   [Parameter(Mandatory)][string]$PreparedReleaseDirectory,
   [Parameter(Mandatory)][string]$LifecycleEvidence,
-  [Parameter(Mandatory)][string]$ProductionChainEvidence,
+  [Parameter(Mandatory)][string]$ProductionChainRoot,
+  [Parameter(Mandatory)][string]$ProductionJobId,
+  [Parameter(Mandatory)][string]$ProductionGovernancePolicy,
+  [Parameter(Mandatory)][string]$ProductionTrustStateEnvelope,
+  [Parameter(Mandatory)][string]$ProductionDeploymentPolicy,
+  [Parameter(Mandatory)][string]$ProductionIdentityChallenge,
+  [Parameter(Mandatory)][string]$ProductionIdentityProof,
+  [Parameter(Mandatory)][string]$ProductionCompiledContract,
+  [Parameter(Mandatory)][string]$ProductionCompiledPlan,
+  [Parameter(Mandatory)][ValidateSet('E0','E1','E2','E3','E4','E5')][string]$ProductionAssuranceLevel,
+  [Parameter(Mandatory)][string]$ProductionExpectedExecutorId,
+  [string]$ProductionExpectedDeviceId,
   [Parameter(Mandatory)][string]$CapabilityProvisioningEvidence,
   [Parameter(Mandatory)][string]$AttestationProvisioningEvidence,
   [Parameter(Mandatory)][string]$PhysicalTpmPromotionEvidence,
@@ -41,14 +52,19 @@ try {
     $digest=(Get-FileHash $path -Algorithm SHA256).Hash.ToLowerInvariant()
     if($digest-cne[string]$record.sha256){throw "PREPARED_ARTIFACT_MUTATED: $($record.name)"}
   }
+  $serviceRecord=@($records|Where-Object{$_.name-ceq'ergaxiom-windows-production-signer-service.exe'})
+  if($serviceRecord.Count-ne1){throw 'PREPARED_SIGNER_SERVICE_CARDINALITY_REJECTED'}
+  $serviceDigest=[string]$serviceRecord[0].sha256
+  if($serviceDigest-notmatch'^[0-9a-f]{64}$'){throw 'PREPARED_SIGNER_SERVICE_DIGEST_REJECTED'}
 
   $policyPath=Join-Path $repoRoot 'tools\release\windows_release_policy.json'
   $policy=Get-Content $policyPath -Raw|ConvertFrom-Json -Depth 32
   if($policy.signing.identity_status-ne'OWNER_APPROVED_PINNED'){throw 'SIGNING_IDENTITY_POLICY_UNRESOLVED'}
   if($policy.license.owner_decision_status-ne'APPROVED'){throw 'DISTRIBUTION_LICENSE_NOT_APPROVED'}
 
-  $mandatory=@($LifecycleEvidence,$ProductionChainEvidence,$CapabilityProvisioningEvidence,$AttestationProvisioningEvidence,$PhysicalTpmPromotionEvidence,$GovernanceRecoveryReceipt,$SignerInstallationReceipt,$SignerRestartRecoveryReceipt,$LicenseDecision)
-  foreach($path in $mandatory){if(-not(Test-Path $path -PathType Leaf)){throw "MANDATORY_EVIDENCE_MISSING: $path"}}
+  $mandatoryFiles=@($LifecycleEvidence,$ProductionGovernancePolicy,$ProductionTrustStateEnvelope,$ProductionDeploymentPolicy,$ProductionIdentityChallenge,$ProductionIdentityProof,$ProductionCompiledContract,$ProductionCompiledPlan,$CapabilityProvisioningEvidence,$AttestationProvisioningEvidence,$PhysicalTpmPromotionEvidence,$GovernanceRecoveryReceipt,$SignerInstallationReceipt,$SignerRestartRecoveryReceipt,$LicenseDecision)
+  foreach($path in $mandatoryFiles){if(-not(Test-Path $path -PathType Leaf)){throw "MANDATORY_EVIDENCE_MISSING: $path"}}
+  if(-not(Test-Path $ProductionChainRoot -PathType Container)){throw 'PRODUCTION_CHAIN_ROOT_MISSING'}
 
   $out=[IO.Path]::GetFullPath($OutputDirectory); New-Item -ItemType Directory -Force $out|Out-Null
   $signatureEvidence=Join-Path $out 'windows-signature-evidence-reverified.json'
@@ -66,13 +82,40 @@ try {
     --output $hardwareSummary
   if($LASTEXITCODE-ne0){throw 'CONTROLLED_TRUST_GATE_REJECTED'}
 
+  $trustedNow=[DateTimeOffset]::UtcNow.ToUnixTimeSeconds()
+  $productionEvidence=Join-Path $out 'production-release-chain-verification.json'
+  $productionArgs=@(
+    'run','--quiet','--locked','-p','ergaxiom-production-execution-runtime','--bin','verify_production_release_chain','--',
+    '--repo-root',$repoRoot,
+    '--chain-root',(Resolve-Path $ProductionChainRoot).Path,
+    '--job-id',$ProductionJobId,
+    '--governance-policy',(Resolve-Path $ProductionGovernancePolicy).Path,
+    '--trust-state-envelope',(Resolve-Path $ProductionTrustStateEnvelope).Path,
+    '--deployment-policy',(Resolve-Path $ProductionDeploymentPolicy).Path,
+    '--identity-challenge',(Resolve-Path $ProductionIdentityChallenge).Path,
+    '--identity-proof',(Resolve-Path $ProductionIdentityProof).Path,
+    '--compiled-contract',(Resolve-Path $ProductionCompiledContract).Path,
+    '--compiled-plan',(Resolve-Path $ProductionCompiledPlan).Path,
+    '--assurance-level',$ProductionAssuranceLevel,
+    '--expected-executor-id',$ProductionExpectedExecutorId,
+    '--trusted-now-epoch-s',[string]$trustedNow,
+    '--source-commit',$sourceCommit,
+    '--expected-signed-service-sha256',$serviceDigest,
+    '--output',$productionEvidence
+  )
+  if(-not[string]::IsNullOrWhiteSpace($ProductionExpectedDeviceId)){$productionArgs+=@('--expected-device-id',$ProductionExpectedDeviceId)}
+  & cargo @productionArgs
+  if($LASTEXITCODE-ne0){throw 'PRODUCTION_CHAIN_CANONICAL_VERIFICATION_FAILED'}
+  $production=Get-Content $productionEvidence -Raw|ConvertFrom-Json -Depth 32
+  if($production.verified-ne$true -or $production.gate-ne'PRODUCTION_CHAIN_VERIFIED' -or $production.source_commit-ne$sourceCommit -or $production.signer_service_sha256-ne$serviceDigest){throw 'PRODUCTION_CHAIN_CANONICAL_OUTPUT_REJECTED'}
+
   $final=Join-Path $out 'ergaxiom-final-windows-release-evidence.json'
   & python tools/release/finalize_windows_release_evidence.py `
     --base-manifest $baseManifestPath `
     --policy $policyPath `
     --signature-evidence $signatureEvidence `
     --lifecycle-evidence (Resolve-Path $LifecycleEvidence).Path `
-    --production-chain-evidence (Resolve-Path $ProductionChainEvidence).Path `
+    --production-chain-evidence $productionEvidence `
     --capability-provisioning-evidence (Resolve-Path $CapabilityProvisioningEvidence).Path `
     --attestation-provisioning-evidence (Resolve-Path $AttestationProvisioningEvidence).Path `
     --physical-tpm-promotion-evidence (Resolve-Path $PhysicalTpmPromotionEvidence).Path `

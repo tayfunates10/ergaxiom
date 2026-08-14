@@ -13,6 +13,17 @@ from typing import Any
 
 H64 = re.compile(r"^[0-9a-f]{64}$")
 H40 = re.compile(r"^[0-9a-f]{40}$")
+PRODUCTION_VERIFIER_ID = "ergaxiom.production-release-chain-verifier"
+PRODUCTION_GATE = "PRODUCTION_CHAIN_VERIFIED"
+PRODUCTION_INPUTS = {
+    "compiled_contract",
+    "compiled_plan",
+    "deployment_policy",
+    "governance_policy",
+    "identity_challenge",
+    "identity_proof",
+    "trust_state_envelope",
+}
 
 
 class ReleaseError(RuntimeError):
@@ -166,21 +177,63 @@ def lifecycle(evidence: dict | None, commit: str, installer_name: str, installer
     return bool(ok), {"verified": bool(ok), "test_mode": evidence.get("test_mode"), "required_phases": required, "evidence_sha256": sha(evidence)}
 
 
-def production_chain(evidence: dict | None, commit: str) -> tuple[bool, dict | None]:
-    """Issue #75 currently exposes no canonical standalone verifier.
-
-    A caller-supplied JSON summary must never promote a production release. The gate
-    remains closed until the exact #75 certified-chain verifier is integrated here.
-    """
+def production_chain(evidence: dict | None, commit: str, service_digest: str) -> tuple[bool, dict | None]:
     if evidence is None:
         return False, None
-    # Parse/basic bind only for diagnostics; these fields are explicitly insufficient.
-    source_bound = evidence.get("source_commit") == commit
-    return False, {
-        "verified": False,
-        "source_bound": bool(source_bound),
-        "canonical_verifier_available": False,
-        "rejected_summary_only_evidence": True,
+    if (
+        evidence.get("schema_version") != "0.1.0"
+        or evidence.get("verifier_id") != PRODUCTION_VERIFIER_ID
+        or evidence.get("gate") != PRODUCTION_GATE
+        or evidence.get("verified") is not True
+        or evidence.get("source_commit") != commit
+        or evidence.get("chain_stage") != "certified"
+        or evidence.get("signer_service_sha256") != service_digest
+        or evidence.get("decision") != "ACCEPTED"
+    ):
+        return False, {
+            "verified": False,
+            "canonical_verifier": PRODUCTION_VERIFIER_ID,
+            "evidence_sha256": sha(evidence),
+        }
+    if not isinstance(evidence.get("job_id"), str) or not evidence["job_id"]:
+        raise ReleaseError("production chain job identity missing")
+    if not isinstance(evidence.get("certificate_id"), str) or not evidence["certificate_id"]:
+        raise ReleaseError("production chain certificate identity missing")
+    if not isinstance(evidence.get("chain_revision"), int) or evidence["chain_revision"] < 1:
+        raise ReleaseError("production chain revision invalid")
+    if evidence.get("assurance_level") not in {"E0", "E1", "E2", "E3", "E4", "E5"}:
+        raise ReleaseError("production chain assurance level invalid")
+    for field in (
+        "chain_state_digest", "trust_state_binding_digest", "signer_identity_proof_digest",
+        "certificate_digest", "replay_manifest_digest", "evidence_bundle_digest", "verification_digest",
+    ):
+        h64(evidence.get(field), f"production_chain.{field}")
+    inputs = evidence.get("input_digests")
+    if not isinstance(inputs, dict) or set(inputs) != PRODUCTION_INPUTS:
+        raise ReleaseError("production chain canonical input inventory")
+    for name, digest in inputs.items():
+        h64(digest, f"production_chain.input_digests.{name}")
+    sealed = dict(evidence)
+    recorded = sealed["verification_digest"]
+    sealed["verification_digest"] = ""
+    if sha(sealed) != recorded:
+        raise ReleaseError("production chain verification seal mismatch")
+    return True, {
+        "verified": True,
+        "canonical_verifier": PRODUCTION_VERIFIER_ID,
+        "job_id": evidence["job_id"],
+        "chain_revision": evidence["chain_revision"],
+        "chain_state_digest": evidence["chain_state_digest"],
+        "signer_service_sha256": service_digest,
+        "trust_state_binding_digest": evidence["trust_state_binding_digest"],
+        "signer_identity_proof_digest": evidence["signer_identity_proof_digest"],
+        "certificate_id": evidence["certificate_id"],
+        "certificate_digest": evidence["certificate_digest"],
+        "replay_manifest_digest": evidence["replay_manifest_digest"],
+        "evidence_bundle_digest": evidence["evidence_bundle_digest"],
+        "assurance_level": evidence["assurance_level"],
+        "input_digests": dict(sorted(inputs.items())),
+        "verification_digest": recorded,
         "evidence_sha256": sha(evidence),
     }
 
@@ -204,8 +257,6 @@ def hardware(
     legacy_summary: dict | None = None,
 ) -> tuple[bool, dict | None]:
     if legacy_summary is not None:
-        # A pre-computed `verified:true` JSON is not authority. Raw ceremony evidence
-        # must be re-verified by the canonical #77 verifier below.
         return False, {
             "verified": False,
             "rejected_summary_only_evidence": True,
@@ -257,18 +308,18 @@ def build(base, policy, sig=None, life=None, prod=None, hw=None, lic=None, hw_pa
     policy_ok(policy)
     artifact_digests, installer_name = artifacts(base, policy)
     commit = base["source"]["commit"]
+    service_digest = artifact_digests["ergaxiom-windows-production-signer-service.exe"]
     signing_ok, signing_summary = signing(sig, policy, artifact_digests)
     lifecycle_ok, lifecycle_summary = lifecycle(life, commit, installer_name, artifact_digests[installer_name])
-    production_ok, production_summary = production_chain(prod, commit)
-    hardware_ok, hardware_summary = hardware(hw_paths, artifact_digests["ergaxiom-windows-production-signer-service.exe"], hw)
+    production_ok, production_summary = production_chain(prod, commit, service_digest)
+    hardware_ok, hardware_summary = hardware(hw_paths, service_digest, hw)
     license_ok, license_summary = license_gate(lic, policy, commit)
     blockers: list[str] = []
     if policy["signing"].get("identity_status") != "OWNER_APPROVED_PINNED": blockers.append("SIGNING_IDENTITY_POLICY_UNRESOLVED")
     if not signing_ok:
         blockers += ["AUTHENTICODE_NOT_VERIFIED", "TRUSTED_TIMESTAMP_NOT_VERIFIED", "CERTIFICATE_CHAIN_NOT_VERIFIED", "SIGNING_IDENTITY_NOT_VERIFIED"]
     if not lifecycle_ok: blockers.append("INSTALLER_LIFECYCLE_NOT_VERIFIED")
-    if not production_ok:
-        blockers += ["PRODUCTION_CHAIN_EVIDENCE_NOT_VERIFIED", "PRODUCTION_CHAIN_CANONICAL_VERIFIER_NOT_INTEGRATED"]
+    if not production_ok: blockers.append("PRODUCTION_CHAIN_EVIDENCE_NOT_VERIFIED")
     if not hardware_ok: blockers.append("HARDWARE_OPERATIONAL_EVIDENCE_NOT_VERIFIED")
     if not license_ok: blockers.append("DISTRIBUTION_LICENSE_NOT_APPROVED")
     blockers = sorted(set(blockers))
