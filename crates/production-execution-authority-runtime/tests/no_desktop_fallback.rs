@@ -4,10 +4,15 @@ const PRODUCTION_PIPELINE: &str =
     include_str!("../../../apps/desktop/src-tauri/src/production_pipeline.rs");
 const PRODUCTION_RECOVERY: &str =
     include_str!("../../../apps/desktop/src-tauri/src/production_recovery.rs");
+const DESKTOP_COMMANDS: &str = include_str!("../../../apps/desktop/src-tauri/src/commands.rs");
+const PRODUCTION_STARTUP: &str =
+    include_str!("../../../apps/desktop/src-tauri/src/production_startup.rs");
 
 #[test]
 fn desktop_production_boundary_contains_no_development_signer_fallback() {
-    let source = format!("{PRODUCTION_EXECUTION}\n{PRODUCTION_PIPELINE}\n{PRODUCTION_RECOVERY}");
+    let source = format!(
+        "{PRODUCTION_EXECUTION}\n{PRODUCTION_PIPELINE}\n{PRODUCTION_RECOVERY}\n{DESKTOP_COMMANDS}\n{PRODUCTION_STARTUP}"
+    );
     let lowercase = source.to_ascii_lowercase();
 
     for forbidden in [
