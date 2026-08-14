@@ -1,4 +1,4 @@
-name: Issue 75 Final Source Repair
+name: Issue 75 Source Repair
 
 on:
   push:
@@ -8,13 +8,9 @@ on:
 permissions:
   contents: write
 
-concurrency:
-  group: issue75-final-source-repair
-  cancel-in-progress: true
-
 jobs:
   repair:
-    if: github.event.head_commit.message == 'issue75: run final source repair'
+    if: ${{ github.event.head_commit.message == 'issue75-run-source-repair-v2' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -25,33 +21,11 @@ jobs:
         with:
           toolchain: "1.85.0"
           components: rustfmt, clippy
-      - name: Apply exact Issue 75 repairs
+      - name: Repair verification error conversion
         shell: bash
         run: |
           set -euo pipefail
-          python - <<'PY'
-          from pathlib import Path
-
-          lib = Path('crates/production-execution-runtime/src/lib.rs')
-          text = lib.read_text()
-          needle = '''    #[error(transparent)]\n    Lease(#[from] ProductionSignerIdentityProofError),\n'''
-          replacement = '''    #[error(transparent)]\n    Lease(#[from] ProductionSignerIdentityProofError),\n    #[error(transparent)]\n    DesktopShell(#[from] DesktopShellError),\n'''
-          if replacement not in text:
-              if needle not in text:
-                  raise SystemExit('ProductionExecutionVerifyError lease anchor not found')
-              text = text.replace(needle, replacement, 1)
-              lib.write_text(text)
-
-          workflow = Path('.github/workflows/production-execution-chain.yml')
-          text = workflow.read_text()
-          old = '''      - name: Desktop production boundary compile\n        shell: pwsh\n        run: |\n          $output = cargo check --manifest-path apps/desktop/src-tauri/Cargo.toml --all-targets 2>&1 | Out-String\n          if ($LASTEXITCODE -ne 0) {\n            $escaped = $output.Replace('%', '%25').Replace("`r", '%0D').Replace("`n", '%0A')\n            Write-Output "::error title=desktop cargo check failed::$escaped"\n            exit $LASTEXITCODE\n          }\n'''
-          new = '''      - name: Desktop production boundary compile\n        shell: pwsh\n        run: |\n          cargo check --manifest-path apps/desktop/src-tauri/Cargo.toml --all-targets 2>&1 | Tee-Object -FilePath "$env:RUNNER_TEMP\\issue75-desktop-cargo-check.txt"\n          $status = $LASTEXITCODE\n          if ($status -ne 0) {\n            $tail = (Get-Content "$env:RUNNER_TEMP\\issue75-desktop-cargo-check.txt" -Tail 120) -join "`n"\n            $escaped = $tail.Replace('%', '%25').Replace("`r", '%0D').Replace("`n", '%0A')\n            Write-Output "::error title=desktop cargo check failed::$escaped"\n            exit $status\n          }\n'''
-          if new not in text:
-              if old not in text:
-                  raise SystemExit('desktop compile workflow anchor not found')
-              workflow.write_text(text.replace(old, new, 1))
-          PY
-
+          python -c "from pathlib import Path; p=Path('crates/production-execution-runtime/src/lib.rs'); s=p.read_text(); old='    #[error(transparent)]\\n    Lease(#[from] ProductionSignerIdentityProofError),\\n'; new=old+'    #[error(transparent)]\\n    DesktopShell(#[from] DesktopShellError),\\n'; assert new in s or old in s; p.write_text(s if new in s else s.replace(old,new,1))"
           cargo +1.85.0 fmt --all
           cargo +1.85.0 clippy -p ergaxiom-production-execution-runtime --all-targets -- -D warnings
           cargo +1.85.0 clippy -p ergaxiom-production-execution-authority-runtime --all-targets -- -D warnings
@@ -60,9 +34,9 @@ jobs:
           cargo +1.85.0 test -p ergaxiom-production-execution-authority-runtime
           cargo +1.85.0 test -p ergaxiom-graphic-production-evidence-runtime
           rm .github/workflows/issue75-final-source-repair.yml
-          git config user.name 'Tayfun'
-          git config user.email 'tayfuna766@gmail.com'
+          git config user.name Tayfun
+          git config user.email tayfuna766@gmail.com
           git add -A
           git diff --cached --check
-          git commit -m 'issue75: fix verification conversion and diagnostics'
+          git commit -m 'issue75: fix production verification conversion'
           git push origin HEAD:codex/issue-75
