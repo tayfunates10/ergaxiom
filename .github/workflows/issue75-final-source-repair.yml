@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   repair:
-    if: github.event.head_commit.message == 'issue75-run-source-repair-v8'
+    if: github.event.head_commit.message == 'issue75-run-source-repair-v9'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
