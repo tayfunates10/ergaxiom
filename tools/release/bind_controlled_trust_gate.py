@@ -11,8 +11,10 @@ It never promotes top-level release eligibility.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import importlib.util
 import json
+import re
 import sys
 from pathlib import Path
 from typing import Any
@@ -20,10 +22,19 @@ from typing import Any
 UNKNOWN = "UNKNOWN"
 PROVEN = "PROVEN_HARDWARE_BACKED"
 HARDWARE_BLOCKER = "CONTROLLED_WINDOWS_HARDWARE_OPERATIONAL_GATE_NOT_PROVEN"
+CHECKSUM_RE = re.compile(r"^([0-9a-f]{64})  (.+)$")
 
 
 class BindingError(RuntimeError):
     pass
+
+
+def sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
 
 
 def load_json(path: Path) -> dict[str, Any]:
@@ -43,6 +54,28 @@ def write_json(path: Path, value: dict[str, Any]) -> None:
         encoding="utf-8",
         newline="\n",
     )
+
+
+def update_checksums(path: Path, manifest_path: Path) -> None:
+    if not path.is_file():
+        raise BindingError(f"checksum file is missing: {path}")
+    manifest_name = manifest_path.name
+    manifest_digest = sha256_file(manifest_path)
+    output: list[str] = []
+    found = 0
+    for raw_line in path.read_text(encoding="utf-8").splitlines():
+        match = CHECKSUM_RE.fullmatch(raw_line)
+        if match is None:
+            raise BindingError("checksum file contains a malformed line")
+        _, name = match.groups()
+        if name == manifest_name:
+            found += 1
+            output.append(f"{manifest_digest}  {manifest_name}")
+        else:
+            output.append(raw_line)
+    if found != 1:
+        raise BindingError("release manifest checksum entry must appear exactly once")
+    path.write_text("\n".join(output) + "\n", encoding="utf-8", newline="\n")
 
 
 def load_controlled_gate_module():
@@ -124,6 +157,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument("--manifest", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--checksums", type=Path)
     parser.add_argument("--physical", type=Path)
     parser.add_argument("--governance", type=Path)
     parser.add_argument("--installation", type=Path)
@@ -149,6 +183,8 @@ def main(argv: list[str] | None = None) -> int:
         )
         manifest = load_json(args.manifest)
         write_json(args.output, bind_manifest(manifest, hardware_gate))
+        if args.checksums is not None:
+            update_checksums(args.checksums, args.output)
         return 0
     except (OSError, BindingError) as exc:
         print(f"controlled trust release binding failed: {exc}", file=sys.stderr)
