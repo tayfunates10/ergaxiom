@@ -6,7 +6,8 @@
   ReadEnvStr $R9 "ERGA_CI_INTERRUPT"
   StrCmp $R9 "1" 0 erga_ci_continue
     DetailPrint "TEST_ONLY: deterministic interrupted-upgrade injection."
-    Abort
+    SetErrorLevel 86
+    Quit
   erga_ci_continue:
 !macroend
 
