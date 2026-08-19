@@ -1,3 +1,4 @@
+use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
@@ -35,7 +36,9 @@ pub struct ProductionExecutionState {
 struct ProductionExecutionRuntime {
     deployment: LoadedBackendProductionDeployment,
     signer_client: ProductionSignerPipeClient,
-    authority: PersistentProductionExecutionAuthority,
+    policy_store_root: PathBuf,
+    execution_store_root: PathBuf,
+    authorities: BTreeMap<String, PersistentProductionExecutionAuthority>,
     active_service_identity: Option<SignerServiceIdentity>,
 }
 
@@ -54,6 +57,8 @@ impl ProductionExecutionState {
         }
     }
 
+    /// Compatibility boundary for the original desktop-shell lifecycle. Product Alpha uses
+    /// `with_fresh_lease_for_job` so each persistent user job owns a separate durable chain.
     pub fn with_fresh_lease<R>(
         &self,
         operation: impl FnOnce(
@@ -64,6 +69,21 @@ impl ProductionExecutionState {
             u64,
         ) -> Result<R, ProductionExecutionBoundaryError>,
     ) -> Result<R, ProductionExecutionBoundaryError> {
+        self.with_fresh_lease_for_job(DESKTOP_JOB_ID, operation)
+    }
+
+    pub fn with_fresh_lease_for_job<R>(
+        &self,
+        job_id: &str,
+        operation: impl FnOnce(
+            &mut PersistentProductionExecutionAuthority,
+            &VerifiedProductionSignerTrustLease,
+            &LoadedBackendProductionDeployment,
+            ProductionSignerPipeClient,
+            u64,
+        ) -> Result<R, ProductionExecutionBoundaryError>,
+    ) -> Result<R, ProductionExecutionBoundaryError> {
+        validate_job_id(job_id)?;
         let mut guard = self
             .inner
             .lock()
@@ -76,13 +96,31 @@ impl ProductionExecutionState {
         let trusted_now_epoch_s = current_epoch_s()?;
         let lease = runtime.fresh_lease(trusted_now_epoch_s)?;
         let client = runtime.signer_client;
-        operation(
-            &mut runtime.authority,
+        let chain_store_root = runtime.execution_store_root.join(job_id);
+        let mut authority = match runtime.authorities.remove(job_id) {
+            Some(authority) => authority,
+            None => {
+                let authority = PersistentProductionExecutionAuthority::load_or_create(
+                    runtime.policy_store_root.clone(),
+                    &chain_store_root,
+                    job_id,
+                    runtime.deployment.manifest.backend_id.clone(),
+                    Some(runtime.deployment.manifest.deployment_id.clone()),
+                )?;
+                validate_administrator_controlled_directory(&chain_store_root)
+                    .map_err(|_| ProductionExecutionBoundaryError::StoreAclRejected)?;
+                authority
+            }
+        };
+        let result = operation(
+            &mut authority,
             &lease,
             &runtime.deployment,
             client,
             trusted_now_epoch_s,
-        )
+        );
+        runtime.authorities.insert(job_id.to_owned(), authority);
+        result
     }
 
     #[must_use]
@@ -138,8 +176,8 @@ impl ProductionExecutionRuntime {
         let executor_id = deployment.manifest.backend_id.clone();
         let device_id = Some(deployment.manifest.deployment_id.clone());
         let chain_store_root = execution_store_root.join(DESKTOP_JOB_ID);
-        let authority = PersistentProductionExecutionAuthority::load_or_create(
-            policy_store_root,
+        let desktop_authority = PersistentProductionExecutionAuthority::load_or_create(
+            policy_store_root.clone(),
             &chain_store_root,
             DESKTOP_JOB_ID,
             executor_id,
@@ -147,11 +185,14 @@ impl ProductionExecutionRuntime {
         )?;
         validate_administrator_controlled_directory(&chain_store_root)
             .map_err(|_| ProductionExecutionBoundaryError::StoreAclRejected)?;
+        let authorities = BTreeMap::from([(DESKTOP_JOB_ID.to_owned(), desktop_authority)]);
 
         Ok(Self {
             deployment,
             signer_client: ProductionSignerPipeClient,
-            authority,
+            policy_store_root,
+            execution_store_root,
+            authorities,
             active_service_identity: None,
         })
     }
@@ -224,6 +265,18 @@ fn validate_loaded_configuration_acl(
     }
     validate_administrator_controlled_directory(Path::new(&signer_manifest.trust_store_root))
         .map_err(|_| ProductionExecutionBoundaryError::ConfigurationAclRejected)
+}
+
+fn validate_job_id(value: &str) -> Result<(), ProductionExecutionBoundaryError> {
+    if value.is_empty()
+        || value.len() > 160
+        || !value
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'_' | b'-'))
+    {
+        return Err(ProductionExecutionBoundaryError::JobIdentityRejected);
+    }
+    Ok(())
 }
 
 fn fixed_absolute_path(value: &str) -> Result<PathBuf, ProductionExecutionBoundaryError> {
@@ -301,6 +354,8 @@ pub enum ProductionExecutionBoundaryError {
     BackendIdentityUnavailable,
     #[error("production backend identity was rejected")]
     BackendIdentityRejected,
+    #[error("production job identity was rejected")]
+    JobIdentityRejected,
     #[error("production trusted clock was rejected")]
     TrustedClockRejected,
     #[error("production identity nonce is unavailable")]
@@ -332,6 +387,7 @@ impl ProductionExecutionBoundaryError {
             Self::ConfigurationRejected => "production_execution_configuration_rejected",
             Self::BackendIdentityUnavailable => "production_backend_identity_unavailable",
             Self::BackendIdentityRejected => "production_backend_identity_rejected",
+            Self::JobIdentityRejected => "production_job_identity_rejected",
             Self::TrustedClockRejected => "production_trusted_clock_rejected",
             Self::NonceUnavailable => "production_identity_nonce_unavailable",
             Self::SignerUnavailable => "production_signer_unavailable",
