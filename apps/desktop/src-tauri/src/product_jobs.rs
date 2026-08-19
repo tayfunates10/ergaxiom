@@ -1100,7 +1100,7 @@ fn product_state_root() -> Result<PathBuf, String> {
         if !base.is_absolute() {
             return Err("LOCALAPPDATA resolved to a non-absolute path".to_owned());
         }
-        return Ok(base.join("Ergaxiom").join("ProductAlpha"));
+        Ok(base.join("Ergaxiom").join("ProductAlpha"))
     }
     #[cfg(not(windows))]
     {
