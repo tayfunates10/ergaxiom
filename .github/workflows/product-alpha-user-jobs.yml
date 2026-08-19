@@ -1,0 +1,170 @@
+name: Product Alpha User Jobs
+
+on:
+  pull_request:
+    paths:
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "crates/desktop-user-job-runtime/**"
+      - "crates/production-execution-runtime/**"
+      - "apps/desktop/**"
+      - ".github/workflows/product-alpha-user-jobs.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  SOURCE_COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
+
+concurrency:
+  group: product-alpha-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  frontend:
+    name: Product UI trust boundary
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: apps/desktop
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.SOURCE_COMMIT }}
+          persist-credentials: false
+      - name: Reject source identity substitution
+        shell: bash
+        working-directory: ${{ github.workspace }}
+        run: test "$(git rev-parse HEAD)" = "$SOURCE_COMMIT"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: apps/desktop/package-lock.json
+      - run: npm ci
+      - run: npm audit --audit-level=high
+      - run: npm run check
+      - run: npm test
+      - run: npm run build
+
+  persistent-user-jobs:
+    name: Persistent user job authority
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.SOURCE_COMMIT }}
+          persist-credentials: false
+      - name: Reject source identity substitution
+        run: test "$(git rev-parse HEAD)" = "$SOURCE_COMMIT"
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.85.0"
+          components: rustfmt, clippy
+      - name: Strict workspace lock
+        run: cargo metadata --locked --format-version 1 > /dev/null
+      - name: Rust formatting
+        run: cargo fmt --all -- --check
+      - name: User-job Clippy
+        run: cargo clippy -p ergaxiom-desktop-user-job-runtime --all-targets --all-features -- -D warnings
+      - name: Persistence restart and corruption tests
+        run: cargo test -p ergaxiom-desktop-user-job-runtime
+      - name: AI-2 production-chain regression
+        run: cargo test -p ergaxiom-production-execution-runtime
+
+  certified-paths:
+    name: Four certified Graphic Designer paths
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.SOURCE_COMMIT }}
+          persist-credentials: false
+      - name: Reject source identity substitution
+        run: test "$(git rev-parse HEAD)" = "$SOURCE_COMMIT"
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.85.0"
+          components: clippy
+      - run: cargo test -p ergaxiom-intent-contract-compiler-runtime -p ergaxiom-typed-planner-runtime
+      - run: cargo test -p ergaxiom-graphic-designer-twin-runtime
+      - run: cargo test -p ergaxiom-background-cleanup-certified-path-runtime
+      - run: cargo test -p ergaxiom-brand-compliant-export-certified-path-runtime
+      - run: cargo test -p ergaxiom-print-ready-poster-preflight-certified-path-runtime
+
+  tauri-authority:
+    name: Tauri persistent lifecycle boundary
+    runs-on: windows-2025
+    defaults:
+      run:
+        working-directory: apps/desktop
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.SOURCE_COMMIT }}
+          persist-credentials: false
+      - name: Reject source identity substitution
+        shell: pwsh
+        working-directory: ${{ github.workspace }}
+        run: |
+          $actual=(git rev-parse HEAD).Trim()
+          if($actual-ne$env:SOURCE_COMMIT){throw "Checked out $actual but expected $env:SOURCE_COMMIT"}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: apps/desktop/package-lock.json
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.85.0"
+          components: rustfmt, clippy
+      - run: npm ci
+      - name: Strict Tauri lock
+        run: cargo metadata --locked --manifest-path src-tauri/Cargo.toml --format-version 1 > $null
+      - run: cargo fmt --manifest-path src-tauri/Cargo.toml --all -- --check
+      - run: cargo clippy --locked --manifest-path src-tauri/Cargo.toml --all-targets --all-features -- -D warnings
+      - run: cargo test --locked --manifest-path src-tauri/Cargo.toml --all-targets
+      - run: npm run tauri -- build --no-bundle
+
+  lock-diagnostics:
+    name: Lockfile diagnostics
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.SOURCE_COMMIT }}
+          persist-credentials: false
+      - name: Reject source identity substitution
+        run: test "$(git rev-parse HEAD)" = "$SOURCE_COMMIT"
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.85.0"
+      - name: Generate workspace lock candidate for repair only
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp Cargo.lock "$RUNNER_TEMP/Cargo.lock.before"
+          cargo generate-lockfile
+          cp Cargo.lock "$RUNNER_TEMP/Cargo.lock.generated"
+          git diff -- Cargo.lock | tee "$RUNNER_TEMP/workspace-lock.diff"
+          cp "$RUNNER_TEMP/Cargo.lock.before" Cargo.lock
+      - name: Generate Tauri lock candidate for repair only
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp apps/desktop/src-tauri/Cargo.lock "$RUNNER_TEMP/tauri-Cargo.lock.before"
+          cargo generate-lockfile --manifest-path apps/desktop/src-tauri/Cargo.toml
+          cp apps/desktop/src-tauri/Cargo.lock "$RUNNER_TEMP/tauri-Cargo.lock.generated"
+          git diff -- apps/desktop/src-tauri/Cargo.lock | tee "$RUNNER_TEMP/tauri-lock.diff"
+          cp "$RUNNER_TEMP/tauri-Cargo.lock.before" apps/desktop/src-tauri/Cargo.lock
+      - uses: actions/upload-artifact@v4
+        with:
+          name: issue76-lockfile-diagnostics
+          path: |
+            ${{ runner.temp }}/Cargo.lock.generated
+            ${{ runner.temp }}/tauri-Cargo.lock.generated
+            ${{ runner.temp }}/workspace-lock.diff
+            ${{ runner.temp }}/tauri-lock.diff
+          if-no-files-found: error
+          retention-days: 7
