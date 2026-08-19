@@ -4,110 +4,87 @@ on:
   push:
     branches:
       - codex/issue-75
+  pull_request:
+    paths:
+      - "crates/graphic-production-evidence-runtime/**"
+      - "crates/production-execution-authority-runtime/**"
+      - "crates/production-execution-runtime/**"
+      - "crates/backend-issuance-runtime/**"
+      - "apps/desktop/src-tauri/**"
+      - ".github/workflows/production-execution-chain.yml"
+      - "Cargo.toml"
+      - "Cargo.lock"
+  workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  repair-pr90-rust185-inkscape:
+  production-execution-runtime:
+    name: production-execution-runtime
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
-        with:
-          ref: fix/rust-1-85-inkscape-let-chains
-          fetch-depth: 0
       - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: "1.85.0"
-          components: rustfmt
-      - name: Rewrite unsupported let chains
+          components: rustfmt, clippy
+      - name: Capture formatting gate state
         shell: bash
         run: |
-          python - <<'PY'
-          from pathlib import Path
-
-          path = Path('crates/inkscape-adapter-runtime/src/operators.rs')
-          text = path.read_text()
-
-          start_old = '''                if let Some(expected_parent) = parent_id
-                    && element_id(&start, reader.decoder())?.as_deref() == Some(expected_parent)
-                {
-                    target_count += 1;
-                    if target_count > 1 {
-                        return Err(InkscapeAdapterError::DuplicateElementId(
-                            expected_parent.to_owned(),
-                        )
-                        .into());
-                    }
-                    target_depth = Some(current_depth);
-                }
-'''
-          start_new = '''                let expected_parent = parent_id.unwrap_or_default();
-                if parent_id.is_some()
-                    && element_id(&start, reader.decoder())?.as_deref() == Some(expected_parent)
-                {
-                    target_count += 1;
-                    if target_count > 1 {
-                        return Err(InkscapeAdapterError::DuplicateElementId(
-                            expected_parent.to_owned(),
-                        )
-                        .into());
-                    }
-                    target_depth = Some(current_depth);
-                }
-'''
-
-          empty_old = '''                if let Some(expected_parent) = parent_id
-                    && element_id(&empty, reader.decoder())?.as_deref() == Some(expected_parent)
-                {
-                    return Err(ProofBoundOperatorError::InvalidLayer(
-                        expected_parent.to_owned(),
-                    ));
-                }
-'''
-          empty_new = '''                let expected_parent = parent_id.unwrap_or_default();
-                if parent_id.is_some()
-                    && element_id(&empty, reader.decoder())?.as_deref() == Some(expected_parent)
-                {
-                    return Err(ProofBoundOperatorError::InvalidLayer(
-                        expected_parent.to_owned(),
-                    ));
-                }
-'''
-
-          attrs_old = '''                if let Some(id) = id
-                    && let Some(attribute_changes) = changes.get(&id)
-                {
-'''
-          attrs_new = '''                let matched_change = id.as_ref().and_then(|id| {
-                    changes
-                        .get(id)
-                        .map(|attribute_changes| (id, attribute_changes))
-                });
-                if let Some((id, attribute_changes)) = matched_change {
-'''
-
-          replacements = [
-              (start_old, start_new, 1),
-              (empty_old, empty_new, 1),
-              (attrs_old, attrs_new, 2),
-          ]
-          for old, new, expected in replacements:
-              actual = text.count(old)
-              if actual != expected:
-                  raise SystemExit(f'expected {expected} matches, found {actual}')
-              text = text.replace(old, new)
-
-          path.write_text(text)
-          PY
-          cargo +1.85.0 fmt --package ergaxiom-inkscape-adapter-runtime
-          test "$(git diff --name-only)" = "crates/inkscape-adapter-runtime/src/operators.rs"
-          git diff --check
-      - name: Commit repaired source to PR 90 branch
+          set +e
+          cargo +1.85.0 fmt --all -- --check > "$RUNNER_TEMP/issue75-rustfmt.txt" 2>&1
+          status=$?
+          echo "$status" > "$RUNNER_TEMP/issue75-rustfmt-status"
+          cargo +1.85.0 fmt --all
+          exit 0
+      - name: Clippy production execution store
+        run: cargo +1.85.0 clippy --locked -p ergaxiom-production-execution-runtime --all-targets --keep-going -- -D warnings
+      - name: Clippy persistent production authority
+        run: cargo +1.85.0 clippy --locked -p ergaxiom-production-execution-authority-runtime --all-targets --keep-going -- -D warnings
+      - name: Clippy production evidence
+        run: cargo +1.85.0 clippy --locked -p ergaxiom-graphic-production-evidence-runtime --all-targets --keep-going -- -D warnings
+      - name: Runtime tests
+        run: cargo +1.85.0 test --locked -p ergaxiom-production-execution-runtime
+      - name: Authority tests
+        run: cargo +1.85.0 test --locked -p ergaxiom-production-execution-authority-runtime
+      - name: Production evidence tests
+        run: cargo +1.85.0 test --locked -p ergaxiom-graphic-production-evidence-runtime
+      - name: Backend persistent issuance regression
+        run: cargo +1.85.0 test --locked -p ergaxiom-backend-issuance-runtime --test persistent_production_capability
+      - name: Backend production issuance regression
+        run: cargo +1.85.0 test --locked -p ergaxiom-backend-issuance-runtime --test production_authorization
+      - name: Enforce formatting gate
+        if: always()
         shell: bash
         run: |
-          git config user.name "ergaxiom-ci-repair"
-          git config user.email "actions@users.noreply.github.com"
-          git add crates/inkscape-adapter-runtime/src/operators.rs
-          git commit -m "fix: keep Inkscape operators compatible with Rust 1.85"
-          git push origin HEAD:fix/rust-1-85-inkscape-let-chains
+          status="$(cat "$RUNNER_TEMP/issue75-rustfmt-status")"
+          if [ "$status" -ne 0 ]; then
+            output="$(cat "$RUNNER_TEMP/issue75-rustfmt.txt")"
+            escaped="${output//'%'/'%25'}"
+            escaped="${escaped//$'\r'/'%0D'}"
+            escaped="${escaped//$'\n'/'%0A'}"
+            echo "::error title=rustfmt check failed::$escaped"
+            exit 1
+          fi
+
+  desktop-boundary:
+    name: desktop-boundary
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.85.0"
+          components: clippy
+      - name: Desktop production boundary compile
+        shell: pwsh
+        run: |
+          cargo +1.85.0 check --locked --manifest-path apps/desktop/src-tauri/Cargo.toml --all-targets 2>&1 | Tee-Object -FilePath "$env:RUNNER_TEMP\issue75-desktop-cargo-check.txt"
+          $status = $LASTEXITCODE
+          if ($status -ne 0) {
+            $tail = (Get-Content "$env:RUNNER_TEMP\issue75-desktop-cargo-check.txt" -Tail 120) -join "`n"
+            $escaped = $tail.Replace('%', '%25').Replace("`r", '%0D').Replace("`n", '%0A')
+            Write-Output "::error title=desktop cargo check failed::$escaped"
+            exit $status
+          }
