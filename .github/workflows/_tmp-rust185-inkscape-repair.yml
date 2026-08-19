@@ -1,6 +1,11 @@
 name: One-shot Rust 1.85 Inkscape repair
 
 on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - .github/workflows/_tmp-rust185-inkscape-repair.yml
   push:
     branches:
       - fix/rust-1-85-inkscape-let-chains
@@ -12,6 +17,7 @@ permissions:
 
 jobs:
   repair:
+    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
