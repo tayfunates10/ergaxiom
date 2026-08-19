@@ -1,13 +1,15 @@
+import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
 import appSource from './App.tsx?raw';
-import css from './product-jobs.css?inline';
 import {
   backendAcceptanceVerified,
   fileImportRequest,
   type GraphicDesignerJobKind,
   type ProductJobView,
 } from './product-jobs';
+
+const css = readFileSync(new URL('./product-jobs.css', import.meta.url), 'utf8');
 
 function job(kind: GraphicDesignerJobKind): ProductJobView {
   return {
