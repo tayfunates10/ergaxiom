@@ -15,7 +15,7 @@ use ergaxiom_brand_compliant_export_certified_path_runtime::{
 };
 use ergaxiom_contract_runtime::compile_contract;
 use ergaxiom_desktop_shell_runtime::{
-    ApprovalSummary, DesktopApprovalRequest, DesktopApprovalRecord, DesktopCommandAction,
+    ApprovalSummary, DesktopApprovalRecord, DesktopApprovalRequest, DesktopCommandAction,
     DesktopControlStatus, DesktopShellMaterial, DesktopShellSnapshot, DigestItem, PlanStepSummary,
     StageStatus, TrustComponentStatus, build_desktop_shell_snapshot, issue_desktop_approval,
     issue_desktop_command_receipt, verify_desktop_approval_for_execution,
@@ -246,7 +246,8 @@ pub fn approve_product_job(
     ) {
         return Err("job is not awaiting canonical approval".to_owned());
     }
-    let awaiting_snapshot = build_product_control_snapshot(store, DesktopControlStatus::AwaitingApproval, None)?;
+    let awaiting_snapshot =
+        build_product_control_snapshot(store, DesktopControlStatus::AwaitingApproval, None)?;
     let approval = issue_desktop_approval(
         &awaiting_snapshot,
         &DesktopApprovalRequest {
@@ -322,7 +323,9 @@ pub fn start_product_job_execution(
         return Err("stale product job snapshot".to_owned());
     }
     if store.current().phase != UserJobPhase::Approved {
-        return Err("job must have a fresh exact-digest approval before production execution".to_owned());
+        return Err(
+            "job must have a fresh exact-digest approval before production execution".to_owned(),
+        );
     }
     let approval_binding = store
         .current()
@@ -351,16 +354,19 @@ pub fn start_product_job_execution(
     }
 
     let chain = execution_state
-        .with_fresh_lease_for_job(&request.job_id, |authority, _lease, _deployment, _client, _now| {
-            if authority.chain_state().stage == ProductionExecutionStage::Initial {
-                authority.record_approval(
-                    approval_binding.approved_snapshot.clone(),
-                    approval_binding.record.clone(),
-                    approval_binding.approve_receipt.clone(),
-                )?;
-            }
-            Ok(authority.chain_state().clone())
-        })
+        .with_fresh_lease_for_job(
+            &request.job_id,
+            |authority, _lease, _deployment, _client, _now| {
+                if authority.chain_state().stage == ProductionExecutionStage::Initial {
+                    authority.record_approval(
+                        approval_binding.approved_snapshot.clone(),
+                        approval_binding.record.clone(),
+                        approval_binding.approve_receipt.clone(),
+                    )?;
+                }
+                Ok(authority.chain_state().clone())
+            },
+        )
         .map_err(boundary_error)?;
     store
         .record_production_observation(
@@ -398,9 +404,10 @@ pub fn sync_product_job_from_production(
         return Err("stale product job snapshot".to_owned());
     }
     let production = execution_state
-        .with_fresh_lease_for_job(&request.job_id, |authority, _lease, _deployment, _client, _now| {
-            Ok(authority.chain_state().clone())
-        })
+        .with_fresh_lease_for_job(
+            &request.job_id,
+            |authority, _lease, _deployment, _client, _now| Ok(authority.chain_state().clone()),
+        )
         .map_err(boundary_error)?;
     apply_production_chain(store, production)?;
     product_view(store)
@@ -451,21 +458,18 @@ fn apply_production_chain(
             .evidence_bundle
             .clone()
             .ok_or_else(|| "certified production chain is missing Evidence Bundle".to_owned())?;
-        let replay = serde_json::to_value(
-            production
-                .replay_manifest
-                .as_ref()
-                .ok_or_else(|| "certified production chain is missing Replay Manifest".to_owned())?,
-        )
-        .map_err(|error| error.to_string())?;
+        let replay =
+            serde_json::to_value(production.replay_manifest.as_ref().ok_or_else(|| {
+                "certified production chain is missing Replay Manifest".to_owned()
+            })?)
+            .map_err(|error| error.to_string())?;
         let final_snapshot = production
             .final_snapshot
             .as_ref()
             .ok_or_else(|| "certified production chain is missing final snapshot".to_owned())?;
-        let verification = final_snapshot
-            .certificate
-            .as_ref()
-            .ok_or_else(|| "certified production chain is missing certificate verification".to_owned())?;
+        let verification = final_snapshot.certificate.as_ref().ok_or_else(|| {
+            "certified production chain is missing certificate verification".to_owned()
+        })?;
         let validator_results = final_snapshot
             .validators
             .iter()
@@ -473,15 +477,13 @@ fn apply_production_chain(
             .collect::<Result<Vec<_>, _>>()
             .map_err(|error| error.to_string())?;
         let evidence = EvidenceBinding {
-            evidence_bundle_digest: production
-                .evidence_bundle_digest
-                .clone()
-                .ok_or_else(|| "certified production chain is missing Evidence Bundle digest".to_owned())?,
+            evidence_bundle_digest: production.evidence_bundle_digest.clone().ok_or_else(|| {
+                "certified production chain is missing Evidence Bundle digest".to_owned()
+            })?,
             evidence_bundle: bundle,
-            replay_manifest_digest: production
-                .replay_manifest_digest
-                .clone()
-                .ok_or_else(|| "certified production chain is missing Replay Manifest digest".to_owned())?,
+            replay_manifest_digest: production.replay_manifest_digest.clone().ok_or_else(|| {
+                "certified production chain is missing Replay Manifest digest".to_owned()
+            })?,
             replay_manifest: replay,
             validator_results,
             failure_map: None,
@@ -497,16 +499,12 @@ fn apply_production_chain(
             .map_err(|error| error.to_string())?;
 
         if store.current().phase != UserJobPhase::RecoveryRequired {
-            let package = serde_json::to_value(
-                production
-                    .acceptance_package
-                    .as_ref()
-                    .ok_or_else(|| {
-                        "certified production chain is missing Acceptance Certificate package"
-                            .to_owned()
-                    })?,
-            )
-            .map_err(|error| error.to_string())?;
+            let package =
+                serde_json::to_value(production.acceptance_package.as_ref().ok_or_else(|| {
+                    "certified production chain is missing Acceptance Certificate package"
+                        .to_owned()
+                })?)
+                .map_err(|error| error.to_string())?;
             let expected = store.current().state_digest.clone();
             store
                 .record_certificate(
@@ -1106,10 +1104,7 @@ fn product_state_root() -> Result<PathBuf, String> {
     }
     #[cfg(not(windows))]
     {
-        Ok(std::env::temp_dir().join(format!(
-            "ergaxiom-product-alpha-{}",
-            std::process::id()
-        )))
+        Ok(std::env::temp_dir().join(format!("ergaxiom-product-alpha-{}", std::process::id())))
     }
 }
 
