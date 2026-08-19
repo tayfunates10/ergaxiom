@@ -271,7 +271,7 @@ fn zlib_store(bytes: &[u8]) -> Vec<u8> {
 }
 
 fn zlib_unstore(bytes: &[u8]) -> Result<Vec<u8>, PngError> {
-    if bytes.len() < 11 || (u16::from(bytes[0]) << 8 | u16::from(bytes[1])) % 31 != 0 {
+    if bytes.len() < 11 || ((u16::from(bytes[0]) << 8) | u16::from(bytes[1])) % 31 != 0 {
         return Err(PngError::InvalidZlib);
     }
     let mut cursor = 2_usize;

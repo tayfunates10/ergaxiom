@@ -37,7 +37,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Install Linux Tauri dependencies
         if: runner.os == 'Linux'
@@ -49,16 +49,17 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
+          toolchain: "1.85.0"
           components: rustfmt, clippy
 
       - name: Check Tauri formatting
-        run: cargo fmt --manifest-path apps/desktop/src-tauri/Cargo.toml --all -- --check
+        run: cargo +1.85.0 fmt --manifest-path apps/desktop/src-tauri/Cargo.toml --all -- --check
 
       - name: Lint production startup boundary
         shell: bash
         run: |
           set -o pipefail
-          cargo clippy \
+          cargo +1.85.0 clippy \
             --locked \
             --manifest-path apps/desktop/src-tauri/Cargo.toml \
             --all-targets \
@@ -79,7 +80,7 @@ jobs:
         shell: bash
         run: |
           set -o pipefail
-          cargo test \
+          cargo +1.85.0 test \
             --locked \
             --manifest-path apps/desktop/src-tauri/Cargo.toml \
             --all-targets \

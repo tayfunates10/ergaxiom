@@ -531,6 +531,9 @@ fn live_status(
     status.service_restart_detected = recovery_required;
     status.recovery_required = recovery_required;
     status.last_identity_proof_epoch_s = last_identity_proof_epoch_s;
+    status.production_issuance_enabled = phase == ProductionSignerStartupPhase::LiveVerified
+        && live_service_identity_verified
+        && !recovery_required;
     status
 }
 
@@ -827,8 +830,9 @@ mod tests {
 
     #[test]
     fn public_live_status_does_not_expose_process_or_pipe_identity() {
+        let manifest = public_manifest();
         let status = live_status(
-            &public_manifest(),
+            &manifest,
             true,
             ProductionSignerStartupPhase::LiveVerified,
             "production_signer_live_identity_verified",
@@ -848,6 +852,28 @@ mod tests {
         ] {
             assert!(!json.contains(forbidden), "leaked field: {forbidden}");
         }
-        assert!(!status.production_issuance_enabled);
+        assert!(status.production_issuance_enabled);
+
+        for (phase, identity_verified, recovery_required) in [
+            (ProductionSignerStartupPhase::Configured, false, false),
+            (ProductionSignerStartupPhase::ServiceRejected, false, false),
+            (ProductionSignerStartupPhase::RecoveryRequired, false, true),
+            (ProductionSignerStartupPhase::LiveVerified, false, false),
+            (ProductionSignerStartupPhase::LiveVerified, true, true),
+        ] {
+            let blocked = live_status(
+                &manifest,
+                true,
+                phase,
+                "production_issuance_must_remain_blocked",
+                identity_verified,
+                recovery_required,
+                Some(1234),
+            );
+            assert!(
+                !blocked.production_issuance_enabled,
+                "issuance escaped the live-identity gate for {phase:?}"
+            );
+        }
     }
 }

@@ -2,22 +2,27 @@
 
 mod commands;
 mod pipeline;
+mod production_execution;
+mod production_pipeline;
 mod production_startup;
 
 #[cfg(windows)]
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    let control_state = match commands::DesktopControlState::new() {
-        Ok(state) => state,
-        Err(error) => {
-            eprintln!("ergaxiom desktop control authority failed to initialize: {error}");
-            std::process::exit(1);
-        }
-    };
+    let production_execution_state = production_execution::ProductionExecutionState::initialize();
+    let control_state =
+        match commands::DesktopControlState::recover_or_new(&production_execution_state) {
+            Ok(state) => state,
+            Err(error) => {
+                eprintln!("ergaxiom desktop control authority failed restart recovery: {error}");
+                std::process::exit(1);
+            }
+        };
     let production_state = production_startup::ProductionStartupState::initialize();
     let result = tauri::Builder::default()
         .manage(control_state)
         .manage(production_state)
+        .manage(production_execution_state)
         .invoke_handler(tauri::generate_handler![
             commands::get_desktop_shell_snapshot,
             commands::approve_desktop_job,
@@ -39,13 +44,15 @@ pub fn run() {
 #[cfg(not(windows))]
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    let control_state = match commands::DesktopControlState::new() {
-        Ok(state) => state,
-        Err(error) => {
-            eprintln!("ergaxiom desktop control authority failed to initialize: {error}");
-            return;
-        }
-    };
+    let production_execution_state = production_execution::ProductionExecutionState::initialize();
+    let control_state =
+        match commands::DesktopControlState::recover_or_new(&production_execution_state) {
+            Ok(state) => state,
+            Err(error) => {
+                eprintln!("ergaxiom desktop control authority failed to initialize: {error}");
+                return;
+            }
+        };
     let production_state = production_startup::ProductionStartupState::initialize();
 
     // Ergaxiom Product Alpha is Windows-first. Constructing the complete command boundary keeps
@@ -54,6 +61,7 @@ pub fn run() {
     let _builder = tauri::Builder::default()
         .manage(control_state)
         .manage(production_state)
+        .manage(production_execution_state)
         .invoke_handler(tauri::generate_handler![
             commands::get_desktop_shell_snapshot,
             commands::approve_desktop_job,

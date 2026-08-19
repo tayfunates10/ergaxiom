@@ -1,36 +1,33 @@
-use ergaxiom_contract_runtime::compile_contract;
+use ergaxiom_contract_runtime::{CompiledContract, compile_contract};
 use ergaxiom_desktop_shell_runtime::{
     ApprovalSummary, DesktopApprovalRecord, DesktopControlStatus, DesktopShellMaterial,
     DesktopShellSnapshot, DigestItem, PlanStepSummary, StageStatus, TrustComponentStatus,
-    ValidatorSummary, build_desktop_shell_snapshot,
+    build_desktop_shell_snapshot,
 };
 use ergaxiom_graphic_designer_twin_runtime::{
     ApprovedCopy, ApprovedLogo, BrandProfile, CanvasSpecification, GraphicDesignJob, PixelRect,
-    Rgba8, execute_graphic_design_twin,
+    Rgba8,
 };
 use ergaxiom_intent_contract_compiler_runtime::{
     InputArtifactIntent, IntentCompileOutcome, StaticSocialPostIntent,
     compile_static_social_post_intent,
 };
 use ergaxiom_occupational_twin_runtime::{ApplicationIdentity, EnvironmentIdentity, TwinWorkspace};
-use ergaxiom_operator_plan_runtime::compile_plan;
-use ergaxiom_operator_simulation_runtime::SimulatedStepStatus;
+use ergaxiom_operator_plan_runtime::{CompiledPlan, compile_plan};
 use ergaxiom_typed_planner_runtime::{
     StaticSocialPostPlanIdentity, TypedPlanOutcome, synthesize_static_social_post_plan,
 };
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 
-const GENERATED_AT: &str = "2026-07-23T14:00:00Z";
-const JOB_ID: &str = "job.desktop-shell.0001";
+pub(crate) const GENERATED_AT: &str = "2026-07-23T14:00:00Z";
+pub(crate) const JOB_ID: &str = "job.desktop-shell.0001";
 
 #[derive(Clone, Copy)]
 pub enum PipelineSnapshotMode<'a> {
     AwaitingApproval,
     Approved(&'a DesktopApprovalRecord),
-    Executed(&'a DesktopApprovalRecord),
     Cancelled(Option<&'a DesktopApprovalRecord>),
-    RolledBack(&'a DesktopApprovalRecord),
 }
 
 impl<'a> PipelineSnapshotMode<'a> {
@@ -38,18 +35,14 @@ impl<'a> PipelineSnapshotMode<'a> {
         match self {
             Self::AwaitingApproval => DesktopControlStatus::AwaitingApproval,
             Self::Approved(_) => DesktopControlStatus::Approved,
-            Self::Executed(_) => DesktopControlStatus::Executed,
             Self::Cancelled(_) => DesktopControlStatus::Cancelled,
-            Self::RolledBack(_) => DesktopControlStatus::RolledBack,
         }
     }
 
     fn approval(self) -> Option<&'a DesktopApprovalRecord> {
         match self {
             Self::AwaitingApproval => None,
-            Self::Approved(record) | Self::Executed(record) | Self::RolledBack(record) => {
-                Some(record)
-            }
+            Self::Approved(record) => Some(record),
             Self::Cancelled(record) => record,
         }
     }
@@ -57,26 +50,35 @@ impl<'a> PipelineSnapshotMode<'a> {
     fn approval_status(self) -> StageStatus {
         match self {
             Self::AwaitingApproval => StageStatus::Pending,
-            Self::Approved(_) | Self::Executed(_) | Self::RolledBack(_) => StageStatus::Passed,
+            Self::Approved(_) => StageStatus::Passed,
             Self::Cancelled(_) => StageStatus::Blocked,
         }
     }
 
-    fn exposes_execution(self) -> bool {
-        matches!(self, Self::Executed(_))
-    }
-
-    fn placeholder_step_status(self) -> StageStatus {
+    fn step_status(self) -> StageStatus {
         match self {
-            Self::Cancelled(_) | Self::RolledBack(_) => StageStatus::Blocked,
+            Self::Cancelled(_) => StageStatus::Blocked,
             _ => StageStatus::Pending,
         }
     }
 }
 
-pub fn build_pipeline_snapshot(
-    mode: PipelineSnapshotMode<'_>,
-) -> Result<DesktopShellSnapshot, String> {
+pub(crate) struct PreparedDesktopJob {
+    pub capsule: Value,
+    pub contract: Value,
+    pub compiled_contract: CompiledContract,
+    pub compiled_plan: CompiledPlan,
+    pub job: GraphicDesignJob,
+    pub staged_inputs: Vec<DigestItem>,
+    pub contract_digest: String,
+    pub capsule_digest: String,
+    pub capability_requirement_digest: String,
+    pub proof_obligation_count: usize,
+    pub unresolved_mandatory_unknowns: usize,
+    pub mandatory_step_count: usize,
+}
+
+pub(crate) fn prepare_desktop_job() -> Result<PreparedDesktopJob, String> {
     let capsule: Value = serde_json::from_str(include_str!(
         "../../../../professions/graphic-designer/profession.json"
     ))
@@ -128,12 +130,11 @@ pub fn build_pipeline_snapshot(
     } = compile_static_social_post_intent(&intent, &capsule)
         .map_err(|error| format!("intent compilation failed: {error}"))?
     else {
-        return Err("fully resolved desktop fixture unexpectedly needs resolution".to_owned());
+        return Err("fully resolved desktop job unexpectedly needs resolution".to_owned());
     };
 
     let TypedPlanOutcome::Planned {
         plan,
-        plan_digest,
         capability_requirement_digest,
         mandatory_step_count,
         ..
@@ -154,16 +155,6 @@ pub fn build_pipeline_snapshot(
         .map_err(|error| format!("contract recompile failed: {error}"))?;
     let compiled_plan = compile_plan(&plan, &capsule, &compiled_contract)
         .map_err(|error| format!("plan recompile failed: {error}"))?;
-    let mut workspace = twin_workspace()?;
-    let run = execute_graphic_design_twin(
-        &mut workspace,
-        &compiled_contract,
-        &contract,
-        &compiled_plan,
-        &job,
-    )
-    .map_err(|error| format!("Occupational Twin execution failed: {error}"))?;
-
     let staged_inputs = vec![
         digest_item(
             &job.approved_logo.artifact_id,
@@ -181,65 +172,49 @@ pub fn build_pipeline_snapshot(
             &brand_profile_bytes,
         ),
     ];
-    let steps = run
-        .simulation
+
+    Ok(PreparedDesktopJob {
+        capsule,
+        contract,
+        compiled_contract,
+        compiled_plan,
+        job,
+        staged_inputs,
+        contract_digest,
+        capsule_digest,
+        capability_requirement_digest,
+        proof_obligation_count,
+        unresolved_mandatory_unknowns,
+        mandatory_step_count,
+    })
+}
+
+pub fn build_pipeline_snapshot(
+    mode: PipelineSnapshotMode<'_>,
+) -> Result<DesktopShellSnapshot, String> {
+    let prepared = prepare_desktop_job()?;
+    let steps = prepared
+        .compiled_plan
         .steps
         .iter()
         .map(|step| PlanStepSummary {
             step_id: step.step_id.clone(),
-            operator_id: compiled_plan
-                .steps
-                .iter()
-                .find(|planned| planned.step_id == step.step_id)
-                .map(|planned| planned.operator_id.clone())
-                .unwrap_or_else(|| "unknown.operator".to_owned()),
-            status: if mode.exposes_execution() {
-                simulation_status(step.status)
-            } else {
-                mode.placeholder_step_status()
-            },
-            before_digest: mode
-                .exposes_execution()
-                .then(|| step.before_snapshot_digest.clone()),
-            after_digest: mode
-                .exposes_execution()
-                .then(|| step.after_snapshot_digest.clone()),
+            operator_id: step.operator_id.clone(),
+            status: mode.step_status(),
+            before_digest: None,
+            after_digest: None,
         })
         .collect();
-    let validators = if mode.exposes_execution() {
-        run.validation
-            .observations
-            .iter()
-            .map(|observation| ValidatorSummary {
-                validator_id: observation.validator_id.clone(),
-                claim_id: observation.claim_id.clone(),
-                report_digest: observation.evidence_digest.clone(),
-                status: if observation.passed {
-                    StageStatus::Passed
-                } else {
-                    StageStatus::Failed
-                },
-                actionable_message: (!observation.passed).then(|| {
-                    format!(
-                        "Observed value did not satisfy the sealed expectation: {}",
-                        observation.expected
-                    )
-                }),
-            })
-            .collect()
-    } else {
-        Vec::new()
-    };
 
     build_desktop_shell_snapshot(DesktopShellMaterial {
         generated_at: GENERATED_AT.to_owned(),
         job_id: Some(JOB_ID.to_owned()),
         unresolved: Vec::new(),
-        staged_inputs,
+        staged_inputs: prepared.staged_inputs,
         contract: Some(DigestItem {
-            id: compiled_contract.contract_id.clone(),
+            id: prepared.compiled_contract.contract_id.clone(),
             media_type: Some("application/json".to_owned()),
-            digest: contract_digest,
+            digest: prepared.contract_digest,
             status: StageStatus::Passed,
         }),
         approval: Some(ApprovalSummary {
@@ -247,9 +222,9 @@ pub fn build_pipeline_snapshot(
                 .approval()
                 .map(|record| record.approval_id.clone())
                 .unwrap_or_else(|| "approval.desktop-shell.pending".to_owned()),
-            contract_digest: compiled_contract.seal.contract_digest.clone(),
-            plan_digest: plan_digest.clone(),
-            permission_digest: capability_requirement_digest,
+            contract_digest: prepared.compiled_contract.seal.contract_digest.clone(),
+            plan_digest: prepared.compiled_plan.plan_digest.clone(),
+            permission_digest: prepared.capability_requirement_digest,
             expires_at_epoch_s: mode
                 .approval()
                 .map(|record| record.expires_at_epoch_s)
@@ -257,29 +232,25 @@ pub fn build_pipeline_snapshot(
             status: mode.approval_status(),
         }),
         plan: Some(DigestItem {
-            id: compiled_plan.plan_id.clone(),
+            id: prepared.compiled_plan.plan_id.clone(),
             media_type: Some("application/json".to_owned()),
-            digest: plan_digest,
+            digest: prepared.compiled_plan.plan_digest.clone(),
             status: StageStatus::Passed,
         }),
         steps,
-        validators,
+        validators: Vec::new(),
         evidence_bundle: None,
-        replay_manifest: mode.exposes_execution().then(|| DigestItem {
-            id: run.simulation.simulation_id.clone(),
-            media_type: Some("application/json".to_owned()),
-            digest: run.simulation.simulation_digest.clone(),
-            status: StageStatus::Passed,
-        }),
+        replay_manifest: None,
         certificate: None,
         profession_capsules: vec![TrustComponentStatus {
             component_id: "ergaxiom.profession.graphic-designer".to_owned(),
-            version: capsule
+            version: prepared
+                .capsule
                 .get("version")
                 .and_then(Value::as_str)
                 .unwrap_or("unknown")
                 .to_owned(),
-            digest: capsule_digest,
+            digest: prepared.capsule_digest,
             trusted: true,
         }],
         adapters: vec![TrustComponentStatus {
@@ -288,36 +259,23 @@ pub fn build_pipeline_snapshot(
             digest: sha256_hex(b"ergaxiom.design-document-model@0.1.0"),
             trusted: true,
         }],
-        trusted_keys: vec![TrustComponentStatus {
-            component_id: "final-attestation-key".to_owned(),
-            version: "not-loaded".to_owned(),
-            digest: sha256_hex(b"final-attestation-key:not-loaded"),
-            trusted: false,
-        }],
+        trusted_keys: Vec::new(),
         metadata: json!({
-            "pipeline": "intent_compiler -> typed_planner -> occupational_twin",
+            "pipeline": "intent_compiler -> typed_planner -> production_authorization_boundary",
             "control_status": mode.control_status(),
             "approval_digest": mode.approval().map(|record| record.approval_digest.clone()),
-            "execution_material_exposed": mode.exposes_execution(),
-            "twin_validation_passed": run.validation.all_mandatory_passed,
-            "simulation_conforms_to_plan": run.simulation.conforms_to_plan,
-            "proof_obligation_count": proof_obligation_count,
-            "proof_evidence_count": run.proof_evidence.len(),
-            "mandatory_step_count": mandatory_step_count,
-            "unresolved_mandatory_unknowns": unresolved_mandatory_unknowns,
-            "validation_report_digest": mode
-                .exposes_execution()
-                .then(|| run.validation.report_digest.clone()),
-            "raster_digest": mode
-                .exposes_execution()
-                .then(|| run.validation.raster_digest.clone()),
-            "acceptance_blocker": "Execution lifecycle is locally sealed, but a production Evidence Bundle and Acceptance Certificate are not loaded."
+            "execution_material_exposed": false,
+            "twin_executed": false,
+            "proof_obligation_count": prepared.proof_obligation_count,
+            "mandatory_step_count": prepared.mandatory_step_count,
+            "unresolved_mandatory_unknowns": prepared.unresolved_mandatory_unknowns,
+            "acceptance_blocker": "Production Capability issuance, durable consumption, Twin execution, Evidence Bundle and Acceptance Certificate are required."
         }),
     })
     .map_err(|error| format!("desktop snapshot construction failed: {error}"))
 }
 
-fn graphic_job() -> GraphicDesignJob {
+pub(crate) fn graphic_job() -> GraphicDesignJob {
     GraphicDesignJob {
         schema_version: "0.1.0".to_owned(),
         job_id: JOB_ID.to_owned(),
@@ -386,7 +344,7 @@ fn digest_item(id: &str, media_type: &str, content: &[u8]) -> DigestItem {
     }
 }
 
-fn twin_workspace() -> Result<TwinWorkspace, String> {
+pub(crate) fn twin_workspace() -> Result<TwinWorkspace, String> {
     TwinWorkspace::new(
         "workspace.desktop-shell",
         EnvironmentIdentity {
@@ -394,7 +352,7 @@ fn twin_workspace() -> Result<TwinWorkspace, String> {
             architecture: "x86_64".to_owned(),
             runtime_id: "ergaxiom.desktop-shell".to_owned(),
             runtime_version: "0.1.0".to_owned(),
-            clock_source: "sealed-fixture-clock".to_owned(),
+            clock_source: "trusted-production-boundary-clock".to_owned(),
             sandbox_id: "sandbox.desktop-shell".to_owned(),
             applications: vec![ApplicationIdentity {
                 application_id: "ergaxiom.design-document-model".to_owned(),
@@ -406,36 +364,37 @@ fn twin_workspace() -> Result<TwinWorkspace, String> {
     .map_err(|error| format!("Twin workspace creation failed: {error}"))
 }
 
-fn simulation_status(status: SimulatedStepStatus) -> StageStatus {
-    match status {
-        SimulatedStepStatus::Succeeded => StageStatus::Passed,
-        SimulatedStepStatus::Rejected | SimulatedStepStatus::RolledBack => StageStatus::Failed,
-        SimulatedStepStatus::Blocked => StageStatus::Blocked,
-        SimulatedStepStatus::Missing => StageStatus::Unknown,
-    }
-}
-
-fn sha256_hex(bytes: &[u8]) -> String {
+pub(crate) fn sha256_hex(bytes: &[u8]) -> String {
     format!("{:x}", Sha256::digest(bytes))
 }
 
 #[cfg(test)]
 mod tests {
     use ergaxiom_desktop_shell_runtime::{
-        AuthorityStatus, DesktopApprovalRequest, DesktopControlStatus, StageStatus,
-        issue_desktop_approval, verify_desktop_shell_snapshot,
+        AuthorityStatus, DesktopApprovalRequest, StageStatus, issue_desktop_approval,
+        verify_desktop_shell_snapshot,
     };
+    use serde_json::Value;
 
     use super::{PipelineSnapshotMode, build_pipeline_snapshot};
 
     #[test]
-    fn pipeline_hides_execution_material_until_exact_approval() {
+    fn pre_execution_pipeline_never_runs_or_exposes_twin_material() {
         let awaiting = build_pipeline_snapshot(PipelineSnapshotMode::AwaitingApproval)
-            .expect("pipeline fixture must build");
+            .expect("prepare-only pipeline must build");
         assert!(verify_desktop_shell_snapshot(&awaiting).expect("snapshot must verify"));
         assert_eq!(awaiting.authority_status, AuthorityStatus::Ready);
         assert!(awaiting.validators.is_empty());
         assert!(awaiting.replay_manifest.is_none());
+        assert!(awaiting.evidence_bundle.is_none());
+        assert!(awaiting.certificate.is_none());
+        assert_eq!(
+            awaiting
+                .metadata
+                .get("twin_executed")
+                .and_then(Value::as_bool),
+            Some(false)
+        );
         assert!(
             awaiting
                 .steps
@@ -443,10 +402,7 @@ mod tests {
                 .all(|step| step.status == StageStatus::Pending)
         );
 
-        let pending = awaiting
-            .approval
-            .as_ref()
-            .expect("pending approval binding");
+        let pending = awaiting.approval.as_ref().expect("pending approval");
         let approval = issue_desktop_approval(
             &awaiting,
             &DesktopApprovalRequest {
@@ -459,32 +415,15 @@ mod tests {
             1_000,
             900,
         )
-        .expect("exact approval must issue");
-        let executed = build_pipeline_snapshot(PipelineSnapshotMode::Executed(&approval))
-            .expect("executed snapshot must build");
+        .expect("approval must issue");
+        let approved = build_pipeline_snapshot(PipelineSnapshotMode::Approved(&approval))
+            .expect("approved snapshot must build without Twin execution");
         assert_eq!(
-            executed
+            approved
                 .metadata
-                .get("control_status")
-                .and_then(serde_json::Value::as_str),
-            Some("executed")
-        );
-        assert!(executed.replay_manifest.is_some());
-        assert!(
-            executed
-                .steps
-                .iter()
-                .all(|step| step.status == StageStatus::Passed)
-        );
-        assert!(
-            executed
-                .validators
-                .iter()
-                .all(|validator| validator.status == StageStatus::Passed)
-        );
-        assert_eq!(
-            DesktopControlStatus::Executed,
-            super::PipelineSnapshotMode::Executed(&approval).control_status()
+                .get("twin_executed")
+                .and_then(Value::as_bool),
+            Some(false)
         );
     }
 }
