@@ -1,0 +1,47 @@
+name: One-shot Issue 76 Clippy repair
+
+on:
+  push:
+    branches:
+      - codex/ai3-issue76-persistent-user-jobs
+    paths:
+      - .github/workflows/_tmp-issue76-clippy-repair.yml
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: codex/ai3-issue76-persistent-user-jobs
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.85.0
+          components: rustfmt
+      - name: Remove the single needless return
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('apps/desktop/src-tauri/src/product_jobs.rs')
+          text = path.read_text()
+          old = '        return Ok(base.join("Ergaxiom").join("ProductAlpha"));\n'
+          new = '        Ok(base.join("Ergaxiom").join("ProductAlpha"))\n'
+          if text.count(old) != 1:
+              raise SystemExit(f'expected exactly one needless-return match, found {text.count(old)}')
+          path.write_text(text.replace(old, new, 1))
+          PY
+          cargo +1.85.0 fmt --manifest-path apps/desktop/src-tauri/Cargo.toml --all
+          test "$(git diff --name-only)" = "apps/desktop/src-tauri/src/product_jobs.rs"
+          git diff --check
+      - name: Commit repair
+        shell: bash
+        run: |
+          git config user.name "ergaxiom-ci-repair"
+          git config user.email "actions@users.noreply.github.com"
+          git add apps/desktop/src-tauri/src/product_jobs.rs
+          git commit -m "fix(issue76): satisfy strict Clippy in product job store"
+          git push origin HEAD:codex/ai3-issue76-persistent-user-jobs
