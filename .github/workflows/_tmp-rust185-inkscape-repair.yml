@@ -1,0 +1,120 @@
+name: One-shot Rust 1.85 Inkscape repair
+
+on:
+  push:
+    branches:
+      - fix/rust-1-85-inkscape-let-chains
+    paths:
+      - .github/workflows/_tmp-rust185-inkscape-repair.yml
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: fix/rust-1-85-inkscape-let-chains
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.85.0
+          components: rustfmt
+      - name: Rewrite unstable let chains without semantic changes
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('crates/inkscape-adapter-runtime/src/operators.rs')
+          text = path.read_text()
+
+          replacements = [
+              (
+                  '''                if let Some(expected_parent) = parent_id
+                    && element_id(&start, reader.decoder())?.as_deref() == Some(expected_parent)
+                {
+                    target_count += 1;
+                    if target_count > 1 {
+                        return Err(InkscapeAdapterError::DuplicateElementId(
+                            expected_parent.to_owned(),
+                        )
+                        .into());
+                    }
+                    target_depth = Some(current_depth);
+                }
+''',
+                  '''                if let Some(expected_parent) = parent_id {
+                    if element_id(&start, reader.decoder())?.as_deref() == Some(expected_parent) {
+                        target_count += 1;
+                        if target_count > 1 {
+                            return Err(InkscapeAdapterError::DuplicateElementId(
+                                expected_parent.to_owned(),
+                            )
+                            .into());
+                        }
+                        target_depth = Some(current_depth);
+                    }
+                }
+''',
+              ),
+              (
+                  '''                if let Some(expected_parent) = parent_id
+                    && element_id(&empty, reader.decoder())?.as_deref() == Some(expected_parent)
+                {
+                    return Err(ProofBoundOperatorError::InvalidLayer(
+                        expected_parent.to_owned(),
+                    ));
+                }
+''',
+                  '''                if let Some(expected_parent) = parent_id {
+                    if element_id(&empty, reader.decoder())?.as_deref() == Some(expected_parent) {
+                        return Err(ProofBoundOperatorError::InvalidLayer(
+                            expected_parent.to_owned(),
+                        ));
+                    }
+                }
+''',
+              ),
+              (
+                  '''                if let Some(id) = id
+                    && let Some(attribute_changes) = changes.get(&id)
+                {
+''',
+                  '''                let matched_change = id.as_ref().and_then(|id| {
+                    changes
+                        .get(id)
+                        .map(|attribute_changes| (id, attribute_changes))
+                });
+                if let Some((id, attribute_changes)) = matched_change {
+''',
+              ),
+          ]
+
+          for old, new in replacements:
+              count = text.count(old)
+              expected = 2 if old.startswith('                if let Some(id) = id') else 1
+              if count != expected:
+                  raise SystemExit(f'expected {expected} exact matches, found {count}')
+              text = text.replace(old, new)
+
+          path.write_text(text)
+          PY
+      - name: Format only the repaired package
+        run: cargo +1.85.0 fmt --package ergaxiom-inkscape-adapter-runtime
+      - name: Enforce one-file scope
+        shell: bash
+        run: |
+          test "$(git diff --name-only)" = "crates/inkscape-adapter-runtime/src/operators.rs"
+          git diff --check
+      - name: Verify Rust 1.85 package compile
+        run: cargo +1.85.0 check --locked -p ergaxiom-inkscape-adapter-runtime
+      - name: Commit repair
+        shell: bash
+        run: |
+          git config user.name "ergaxiom-ci-repair"
+          git config user.email "actions@users.noreply.github.com"
+          git add crates/inkscape-adapter-runtime/src/operators.rs
+          git commit -m "fix: keep Inkscape operators compatible with Rust 1.85"
+          git push origin HEAD:fix/rust-1-85-inkscape-let-chains
