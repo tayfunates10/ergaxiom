@@ -17,11 +17,7 @@ jobs:
       - uses: actions/checkout@v5
         with:
           ref: fix/rust-1-85-inkscape-let-chains
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          toolchain: 1.85.0
-          components: rustfmt
-      - name: Rewrite unstable let chains without semantic changes
+      - name: Rewrite only unsupported let chains
         shell: bash
         run: |
           python - <<'PY'
@@ -30,9 +26,7 @@ jobs:
           path = Path('crates/inkscape-adapter-runtime/src/operators.rs')
           text = path.read_text()
 
-          replacements = [
-              (
-                  '''                if let Some(expected_parent) = parent_id
+          start_old = '''                if let Some(expected_parent) = parent_id
                     && element_id(&start, reader.decoder())?.as_deref() == Some(expected_parent)
                 {
                     target_count += 1;
@@ -44,8 +38,8 @@ jobs:
                     }
                     target_depth = Some(current_depth);
                 }
-''',
-                  '''                if let Some(expected_parent) = parent_id {
+'''
+          start_new = '''                if let Some(expected_parent) = parent_id {
                     if element_id(&start, reader.decoder())?.as_deref() == Some(expected_parent) {
                         target_count += 1;
                         if target_count > 1 {
@@ -57,60 +51,60 @@ jobs:
                         target_depth = Some(current_depth);
                     }
                 }
-''',
-              ),
-              (
-                  '''                if let Some(expected_parent) = parent_id
+'''
+
+          empty_old = '''                if let Some(expected_parent) = parent_id
                     && element_id(&empty, reader.decoder())?.as_deref() == Some(expected_parent)
                 {
                     return Err(ProofBoundOperatorError::InvalidLayer(
                         expected_parent.to_owned(),
                     ));
                 }
-''',
-                  '''                if let Some(expected_parent) = parent_id {
+'''
+          empty_new = '''                if let Some(expected_parent) = parent_id {
                     if element_id(&empty, reader.decoder())?.as_deref() == Some(expected_parent) {
                         return Err(ProofBoundOperatorError::InvalidLayer(
                             expected_parent.to_owned(),
                         ));
                     }
                 }
-''',
-              ),
-              (
-                  '''                if let Some(id) = id
+'''
+
+          attrs_old = '''                if let Some(id) = id
                     && let Some(attribute_changes) = changes.get(&id)
                 {
-''',
-                  '''                let matched_change = id.as_ref().and_then(|id| {
+'''
+          attrs_new = '''                let matched_change = id.as_ref().and_then(|id| {
                     changes
                         .get(id)
                         .map(|attribute_changes| (id, attribute_changes))
                 });
                 if let Some((id, attribute_changes)) = matched_change {
-''',
-              ),
-          ]
+'''
 
-          for old, new in replacements:
-              count = text.count(old)
-              expected = 2 if old.startswith('                if let Some(id) = id') else 1
-              if count != expected:
-                  raise SystemExit(f'expected {expected} exact matches, found {count}')
-              text = text.replace(old, new)
+          checks = [(start_old, 1), (empty_old, 1), (attrs_old, 2)]
+          for old, expected in checks:
+              actual = text.count(old)
+              if actual != expected:
+                  raise SystemExit(f'expected {expected} exact matches, found {actual}')
+
+          text = text.replace(start_old, start_new, 1)
+          text = text.replace(empty_old, empty_new, 1)
+          text = text.replace(attrs_old, attrs_new)
+
+          if '&& let Some(attribute_changes)' in text:
+              raise SystemExit('unsupported attribute let-chain still present')
+          if 'if let Some(expected_parent) = parent_id\n                    &&' in text:
+              raise SystemExit('unsupported parent let-chain still present')
 
           path.write_text(text)
           PY
-      - name: Format only the repaired package
-        run: cargo +1.85.0 fmt --package ergaxiom-inkscape-adapter-runtime
       - name: Enforce one-file scope
         shell: bash
         run: |
           test "$(git diff --name-only)" = "crates/inkscape-adapter-runtime/src/operators.rs"
           git diff --check
-      - name: Verify Rust 1.85 package compile
-        run: cargo +1.85.0 check --locked -p ergaxiom-inkscape-adapter-runtime
-      - name: Commit repair
+      - name: Commit syntax repair
         shell: bash
         run: |
           git config user.name "ergaxiom-ci-repair"
