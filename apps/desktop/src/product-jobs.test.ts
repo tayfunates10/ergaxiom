@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import appSource from './App.tsx?raw';
-import css from './product-jobs.css?raw';
+import css from './product-jobs.css?inline';
 import {
   backendAcceptanceVerified,
   fileImportRequest,
