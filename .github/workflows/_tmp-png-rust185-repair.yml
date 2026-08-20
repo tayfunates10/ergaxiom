@@ -1,0 +1,118 @@
+name: Temporary PNG Rust 1.85 repair
+
+on:
+  push:
+    branches:
+      - fix/rust-1-85-png-validator-let-chains
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: fix/rust-1-85-png-validator-let-chains
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.85.0"
+          components: rustfmt, clippy
+
+      - name: Apply Rust 1.85 compatibility fix and CI coverage
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          source_path = Path("crates/png-artifact-validator-runtime/src/lib.rs")
+          source = source_path.read_text()
+
+          old_bit_depth = '''    if let Some(expected) = policy.expected_bit_depth
+              && report.bit_depth != expected
+          {
+              violations.push(PngPolicyViolation::BitDepthMismatch {
+                  expected,
+                  actual: report.bit_depth,
+              });
+          }
+          '''
+          new_bit_depth = '''    match policy.expected_bit_depth {
+              Some(expected) if report.bit_depth != expected => {
+                  violations.push(PngPolicyViolation::BitDepthMismatch {
+                      expected,
+                      actual: report.bit_depth,
+                  });
+              }
+              _ => {}
+          }
+          '''
+          if old_bit_depth not in source:
+              raise SystemExit("expected bit-depth let-chain not found")
+          source = source.replace(old_bit_depth, new_bit_depth, 1)
+
+          old_icc = '''    if let PngProfileRequirement::IccProfile { profile_name } = &policy.profile_requirement
+              && profile_name.trim().is_empty()
+          {
+              return Err(PngArtifactError::EmptyIccProfileName);
+          }
+          '''
+          new_icc = '''    match &policy.profile_requirement {
+              PngProfileRequirement::IccProfile { profile_name } if profile_name.trim().is_empty() => {
+                  return Err(PngArtifactError::EmptyIccProfileName);
+              }
+              _ => {}
+          }
+          '''
+          if old_icc not in source:
+              raise SystemExit("expected ICC let-chain not found")
+          source = source.replace(old_icc, new_icc, 1)
+          source_path.write_text(source)
+
+          production_path = Path(".github/workflows/production-execution-chain.yml")
+          production = production_path.read_text()
+          validator_path = '      - "crates/png-artifact-validator-runtime/**"\n'
+          anchor = '      - "crates/inkscape-adapter-runtime/**"\n'
+          if validator_path not in production:
+              if anchor not in production:
+                  raise SystemExit("production workflow anchor not found")
+              production = production.replace(anchor, anchor + validator_path, 1)
+          production_path.write_text(production)
+
+          tauri_path = Path(".github/workflows/tauri-production-startup.yml")
+          tauri = tauri_path.read_text()
+          tauri_anchor = '      - "crates/backend-issuance-runtime/**"\n'
+          expected_occurrences = tauri.count(tauri_anchor)
+          if expected_occurrences != 2:
+              raise SystemExit(f"expected two Tauri anchors, found {expected_occurrences}")
+          if tauri.count(validator_path) == 0:
+              tauri = tauri.replace(tauri_anchor, tauri_anchor + validator_path)
+          elif tauri.count(validator_path) != 2:
+              raise SystemExit("unexpected partial Tauri validator path coverage")
+          tauri_path.write_text(tauri)
+          PY
+
+      - name: Format workspace
+        run: cargo +1.85.0 fmt --all
+
+      - name: Verify formatting
+        run: cargo +1.85.0 fmt --all -- --check
+
+      - name: Strict PNG validator Clippy
+        run: cargo +1.85.0 clippy --locked -p ergaxiom-png-artifact-validator-runtime --all-targets -- -D warnings
+
+      - name: PNG validator tests
+        run: cargo +1.85.0 test --locked -p ergaxiom-png-artifact-validator-runtime
+
+      - name: Commit final repair without temporary workflow
+        shell: bash
+        run: |
+          rm .github/workflows/_tmp-png-rust185-repair.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git diff --cached --check
+          git commit -m "fix: keep PNG validator compatible with Rust 1.85"
+          git push origin HEAD:fix/rust-1-85-png-validator-let-chains
