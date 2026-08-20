@@ -409,13 +409,14 @@ pub fn validate_report(
             actual: report.height,
         });
     }
-    if let Some(expected) = policy.expected_bit_depth
-        && report.bit_depth != expected
-    {
-        violations.push(PngPolicyViolation::BitDepthMismatch {
-            expected,
-            actual: report.bit_depth,
-        });
+    match policy.expected_bit_depth {
+        Some(expected) if report.bit_depth != expected => {
+            violations.push(PngPolicyViolation::BitDepthMismatch {
+                expected,
+                actual: report.bit_depth,
+            });
+        }
+        _ => {}
     }
     if !policy.allowed_color_types.contains(&report.color_type) {
         violations.push(PngPolicyViolation::ColorTypeNotAllowed {
@@ -487,10 +488,11 @@ fn validate_policy(policy: &PngValidationPolicy) -> Result<(), PngArtifactError>
     if policy.allowed_color_types.is_empty() {
         return Err(PngArtifactError::EmptyAllowedColorTypes);
     }
-    if let PngProfileRequirement::IccProfile { profile_name } = &policy.profile_requirement
-        && profile_name.trim().is_empty()
-    {
-        return Err(PngArtifactError::EmptyIccProfileName);
+    match &policy.profile_requirement {
+        PngProfileRequirement::IccProfile { profile_name } if profile_name.trim().is_empty() => {
+            return Err(PngArtifactError::EmptyIccProfileName);
+        }
+        _ => {}
     }
     Ok(())
 }
