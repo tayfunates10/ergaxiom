@@ -1,0 +1,45 @@
+name: Temporary lopdf Rust 1.85 lock repair
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/_tmp-lopdf-rust185-lock-repair.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  repair-lock:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: fix/rust-1-85-lopdf-compat
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.85.0"
+          components: rustfmt, clippy
+
+      - name: Resolve exact lopdf candidate into workspace lock
+        run: cargo +1.85.0 update -p lopdf --precise 0.40.0
+
+      - name: Verify locked print PDF graph on Rust 1.85
+        run: cargo +1.85.0 check --locked -p ergaxiom-print-ready-poster-preflight-certified-path-runtime --all-targets
+
+      - name: Run print PDF deterministic tests on Rust 1.85
+        run: cargo +1.85.0 test --locked -p ergaxiom-print-ready-poster-preflight-certified-path-runtime
+
+      - name: Commit generated lock only
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Cargo.lock
+          git diff --cached --check
+          git diff --cached --quiet && { echo "Cargo.lock did not change"; exit 1; }
+          git commit -m "chore: lock Rust 1.85-compatible lopdf"
+          git push origin HEAD:fix/rust-1-85-lopdf-compat
