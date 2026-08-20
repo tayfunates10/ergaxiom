@@ -1,0 +1,90 @@
+name: Temporary print digest cross-toolchain repair
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/_tmp-print-digest-cross-toolchain-repair.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  repair-test-helper:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: fix/rust-1-85-lopdf-compat
+
+      - name: Patch test SHA-256 helper without lint suppression
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path("crates/print-ready-poster-preflight-certified-path-runtime/tests/path.rs")
+          source = path.read_text(encoding="utf-8")
+          old_import = "use std::{error::Error, fmt::Write as _};"
+          new_import = "use std::error::Error;"
+          old_fn = '''fn sha256(bytes: &[u8]) -> String {
+              let digest = Sha256::digest(bytes);
+              let mut encoded = String::with_capacity(digest.len() * 2);
+              for byte in digest {
+                  write!(&mut encoded, "{byte:02x}").expect("writing to a String cannot fail");
+              }
+              encoded
+          }'''
+          new_fn = '''fn sha256(bytes: &[u8]) -> String {
+              const HEX: &[u8; 16] = b"0123456789abcdef";
+              let digest = Sha256::digest(bytes);
+              let mut encoded = String::with_capacity(digest.len() * 2);
+              for byte in digest {
+                  encoded.push(char::from(HEX[usize::from(byte >> 4)]));
+                  encoded.push(char::from(HEX[usize::from(byte & 0x0f)]));
+              }
+              encoded
+          }'''
+          if old_import not in source:
+              raise SystemExit("expected fmt::Write test import not found")
+          if old_fn not in source:
+              raise SystemExit("expected write!/expect test SHA helper not found")
+          path.write_text(source.replace(old_import, new_import, 1).replace(old_fn, new_fn, 1), encoding="utf-8")
+          PY
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.85.0"
+          components: rustfmt, clippy
+
+      - name: Rust 1.85 formatting
+        run: cargo +1.85.0 fmt --all -- --check
+
+      - name: Rust 1.85 strict Clippy
+        run: cargo +1.85.0 clippy --locked -p ergaxiom-print-ready-poster-preflight-certified-path-runtime --all-targets --all-features -- -D warnings
+
+      - name: Rust 1.85 deterministic tests
+        run: cargo +1.85.0 test --locked -p ergaxiom-print-ready-poster-preflight-certified-path-runtime
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: stable
+          components: rustfmt, clippy
+
+      - name: Stable strict Clippy
+        run: cargo +stable clippy --locked -p ergaxiom-print-ready-poster-preflight-certified-path-runtime --all-targets --all-features -- -D warnings
+
+      - name: Commit verified test helper repair
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add crates/print-ready-poster-preflight-certified-path-runtime/tests/path.rs
+          git diff --cached --check
+          git diff --cached --quiet && { echo "test helper did not change"; exit 1; }
+          git commit -m "fix: keep print digest helper lint-safe across toolchains"
+          git push origin HEAD:fix/rust-1-85-lopdf-compat
