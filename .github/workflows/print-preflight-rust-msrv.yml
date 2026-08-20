@@ -1,0 +1,51 @@
+name: Print preflight Rust MSRV
+
+on:
+  pull_request:
+    paths:
+      - "Cargo.lock"
+      - "crates/print-ready-poster-preflight-certified-path-runtime/**"
+      - ".github/workflows/print-preflight-rust-msrv.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "Cargo.lock"
+      - "crates/print-ready-poster-preflight-certified-path-runtime/**"
+      - ".github/workflows/print-preflight-rust-msrv.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: print-preflight-rust-msrv-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  rust-1-85:
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-24.04
+          - windows-2025
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v5
+
+      - name: Install Rust 1.85
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.85.0"
+          components: rustfmt, clippy
+
+      - name: Check locked print preflight graph
+        run: cargo +1.85.0 check --locked -p ergaxiom-print-ready-poster-preflight-certified-path-runtime --all-targets
+
+      - name: Strict Clippy on locked print preflight graph
+        run: cargo +1.85.0 clippy --locked -p ergaxiom-print-ready-poster-preflight-certified-path-runtime --all-targets --all-features -- -D warnings
+
+      - name: Run deterministic print preflight tests
+        run: cargo +1.85.0 test --locked -p ergaxiom-print-ready-poster-preflight-certified-path-runtime
