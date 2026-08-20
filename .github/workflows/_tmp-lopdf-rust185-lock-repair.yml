@@ -24,11 +24,18 @@ jobs:
           toolchain: "1.85.0"
           components: rustfmt, clippy
 
-      - name: Resolve exact lopdf candidate into workspace lock
-        run: cargo +1.85.0 update -p lopdf --precise 0.40.0
+      - name: Resolve Rust 1.85-compatible PDF dependency graph
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo +1.85.0 update -p lopdf --precise 0.40.0
+          cargo +1.85.0 update -p time --precise 0.3.45
 
       - name: Verify locked print PDF graph on Rust 1.85
         run: cargo +1.85.0 check --locked -p ergaxiom-print-ready-poster-preflight-certified-path-runtime --all-targets
+
+      - name: Lint print PDF graph on Rust 1.85
+        run: cargo +1.85.0 clippy --locked -p ergaxiom-print-ready-poster-preflight-certified-path-runtime --all-targets --all-features -- -D warnings
 
       - name: Run print PDF deterministic tests on Rust 1.85
         run: cargo +1.85.0 test --locked -p ergaxiom-print-ready-poster-preflight-certified-path-runtime
@@ -36,10 +43,11 @@ jobs:
       - name: Commit generated lock only
         shell: bash
         run: |
+          set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add Cargo.lock
           git diff --cached --check
           git diff --cached --quiet && { echo "Cargo.lock did not change"; exit 1; }
-          git commit -m "chore: lock Rust 1.85-compatible lopdf"
+          git commit -m "chore: lock Rust 1.85-compatible print PDF graph"
           git push origin HEAD:fix/rust-1-85-lopdf-compat
