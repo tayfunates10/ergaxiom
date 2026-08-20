@@ -1,4 +1,4 @@
-use std::error::Error;
+use std::{error::Error, fmt::Write as _};
 
 use ed25519_dalek::SigningKey;
 use ergaxiom_contract_runtime::compile_contract;
@@ -311,10 +311,12 @@ fn capsule() -> Result<Value, Box<dyn Error>> {
 }
 
 fn sha256(bytes: &[u8]) -> String {
-    Sha256::digest(bytes)
-        .iter()
-        .map(|byte| format!("{byte:02x}"))
-        .collect()
+    let digest = Sha256::digest(bytes);
+    let mut encoded = String::with_capacity(digest.len() * 2);
+    for byte in digest {
+        write!(&mut encoded, "{byte:02x}").expect("writing to a String cannot fail");
+    }
+    encoded
 }
 
 #[allow(dead_code)]
