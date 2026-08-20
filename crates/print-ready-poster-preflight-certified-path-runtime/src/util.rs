@@ -1,5 +1,3 @@
-use std::fmt::Write as _;
-
 use ergaxiom_proof_kernel::HashingError;
 use serde::Serialize;
 use serde_json::Value;
@@ -18,10 +16,12 @@ pub enum PrintDigestError {
 
 #[must_use]
 pub fn sha256_hex(bytes: &[u8]) -> String {
+    const HEX: &[u8; 16] = b"0123456789abcdef";
     let digest = Sha256::digest(bytes);
     let mut encoded = String::with_capacity(digest.len() * 2);
     for byte in digest {
-        write!(&mut encoded, "{byte:02x}").expect("writing to a String cannot fail");
+        encoded.push(char::from(HEX[usize::from(byte >> 4)]));
+        encoded.push(char::from(HEX[usize::from(byte & 0x0f)]));
     }
     encoded
 }
