@@ -1223,7 +1223,8 @@ fn insert_fragment(
                     }
                     root_seen = true;
                 }
-                if let Some(expected_parent) = parent_id
+                let expected_parent = parent_id.unwrap_or_default();
+                if parent_id.is_some()
                     && element_id(&start, reader.decoder())?.as_deref() == Some(expected_parent)
                 {
                     target_count += 1;
@@ -1241,7 +1242,8 @@ fn insert_fragment(
                 depth = current_depth;
             }
             Event::Empty(empty) => {
-                if let Some(expected_parent) = parent_id
+                let expected_parent = parent_id.unwrap_or_default();
+                if parent_id.is_some()
                     && element_id(&empty, reader.decoder())?.as_deref() == Some(expected_parent)
                 {
                     return Err(ProofBoundOperatorError::InvalidLayer(
@@ -1309,9 +1311,12 @@ fn rewrite_element_attributes(
             Event::Start(start) => {
                 let attributes = decode_attributes(&start, reader.decoder())?;
                 let id = attributes.get("id").cloned();
-                if let Some(id) = id
-                    && let Some(attribute_changes) = changes.get(&id)
-                {
+                let matched_change = id.and_then(|id| {
+                    changes
+                        .get(&id)
+                        .map(|attribute_changes| (id, attribute_changes))
+                });
+                if let Some((id, attribute_changes)) = matched_change {
                     if !seen.insert(id.clone()) {
                         return Err(InkscapeAdapterError::DuplicateElementId(id).into());
                     }
@@ -1330,9 +1335,12 @@ fn rewrite_element_attributes(
             Event::Empty(empty) => {
                 let attributes = decode_attributes(&empty, reader.decoder())?;
                 let id = attributes.get("id").cloned();
-                if let Some(id) = id
-                    && let Some(attribute_changes) = changes.get(&id)
-                {
+                let matched_change = id.and_then(|id| {
+                    changes
+                        .get(&id)
+                        .map(|attribute_changes| (id, attribute_changes))
+                });
+                if let Some((id, attribute_changes)) = matched_change {
                     if !seen.insert(id.clone()) {
                         return Err(InkscapeAdapterError::DuplicateElementId(id).into());
                     }
