@@ -1,9 +1,6 @@
 name: Temporary PNG Rust 1.85 repair
 
 on:
-  push:
-    branches:
-      - fix/rust-1-85-png-validator-let-chains
   pull_request:
     branches:
       - main
@@ -26,7 +23,7 @@ jobs:
           toolchain: "1.85.0"
           components: rustfmt, clippy
 
-      - name: Apply Rust 1.85 compatibility fix and CI coverage
+      - name: Apply Rust 1.85 compatibility fix
         shell: bash
         run: |
           python - <<'PY'
@@ -83,28 +80,6 @@ jobs:
               raise SystemExit("expected ICC let-chain not found")
           source = source.replace(old_icc, new_icc, 1)
           source_path.write_text(source)
-
-          production_path = Path(".github/workflows/production-execution-chain.yml")
-          production = production_path.read_text()
-          validator_path = '      - "crates/png-artifact-validator-runtime/**"\n'
-          anchor = '      - "crates/inkscape-adapter-runtime/**"\n'
-          if validator_path not in production:
-              if anchor not in production:
-                  raise SystemExit("production workflow anchor not found")
-              production = production.replace(anchor, anchor + validator_path, 1)
-          production_path.write_text(production)
-
-          tauri_path = Path(".github/workflows/tauri-production-startup.yml")
-          tauri = tauri_path.read_text()
-          tauri_anchor = '      - "crates/backend-issuance-runtime/**"\n'
-          expected_occurrences = tauri.count(tauri_anchor)
-          if expected_occurrences != 2:
-              raise SystemExit(f"expected two Tauri anchors, found {expected_occurrences}")
-          if tauri.count(validator_path) == 0:
-              tauri = tauri.replace(tauri_anchor, tauri_anchor + validator_path)
-          elif tauri.count(validator_path) != 2:
-              raise SystemExit("unexpected partial Tauri validator path coverage")
-          tauri_path.write_text(tauri)
           PY
 
       - name: Format workspace
@@ -119,13 +94,12 @@ jobs:
       - name: PNG validator tests
         run: cargo +1.85.0 test --locked -p ergaxiom-png-artifact-validator-runtime
 
-      - name: Commit final repair without temporary workflow
+      - name: Commit validated Rust source only
         shell: bash
         run: |
-          rm .github/workflows/_tmp-png-rust185-repair.yml
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -A
+          git add crates/png-artifact-validator-runtime/src/lib.rs
           git diff --cached --check
           git commit -m "fix: keep PNG validator compatible with Rust 1.85"
           git push origin HEAD:fix/rust-1-85-png-validator-let-chains
