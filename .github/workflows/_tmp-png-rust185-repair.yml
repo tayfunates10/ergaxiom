@@ -35,42 +35,50 @@ jobs:
           source_path = Path("crates/png-artifact-validator-runtime/src/lib.rs")
           source = source_path.read_text()
 
-          old_bit_depth = '''    if let Some(expected) = policy.expected_bit_depth
-              && report.bit_depth != expected
-          {
-              violations.push(PngPolicyViolation::BitDepthMismatch {
-                  expected,
-                  actual: report.bit_depth,
-              });
-          }
-          '''
-          new_bit_depth = '''    match policy.expected_bit_depth {
-              Some(expected) if report.bit_depth != expected => {
-                  violations.push(PngPolicyViolation::BitDepthMismatch {
-                      expected,
-                      actual: report.bit_depth,
-                  });
-              }
-              _ => {}
-          }
-          '''
+          old_bit_depth = "\n".join([
+              "    if let Some(expected) = policy.expected_bit_depth",
+              "        && report.bit_depth != expected",
+              "    {",
+              "        violations.push(PngPolicyViolation::BitDepthMismatch {",
+              "            expected,",
+              "            actual: report.bit_depth,",
+              "        });",
+              "    }",
+              "",
+          ])
+          new_bit_depth = "\n".join([
+              "    match policy.expected_bit_depth {",
+              "        Some(expected) if report.bit_depth != expected => {",
+              "            violations.push(PngPolicyViolation::BitDepthMismatch {",
+              "                expected,",
+              "                actual: report.bit_depth,",
+              "            });",
+              "        }",
+              "        _ => {}",
+              "    }",
+              "",
+          ])
           if old_bit_depth not in source:
               raise SystemExit("expected bit-depth let-chain not found")
           source = source.replace(old_bit_depth, new_bit_depth, 1)
 
-          old_icc = '''    if let PngProfileRequirement::IccProfile { profile_name } = &policy.profile_requirement
-              && profile_name.trim().is_empty()
-          {
-              return Err(PngArtifactError::EmptyIccProfileName);
-          }
-          '''
-          new_icc = '''    match &policy.profile_requirement {
-              PngProfileRequirement::IccProfile { profile_name } if profile_name.trim().is_empty() => {
-                  return Err(PngArtifactError::EmptyIccProfileName);
-              }
-              _ => {}
-          }
-          '''
+          old_icc = "\n".join([
+              "    if let PngProfileRequirement::IccProfile { profile_name } = &policy.profile_requirement",
+              "        && profile_name.trim().is_empty()",
+              "    {",
+              "        return Err(PngArtifactError::EmptyIccProfileName);",
+              "    }",
+              "",
+          ])
+          new_icc = "\n".join([
+              "    match &policy.profile_requirement {",
+              "        PngProfileRequirement::IccProfile { profile_name } if profile_name.trim().is_empty() => {",
+              "            return Err(PngArtifactError::EmptyIccProfileName);",
+              "        }",
+              "        _ => {}",
+              "    }",
+              "",
+          ])
           if old_icc not in source:
               raise SystemExit("expected ICC let-chain not found")
           source = source.replace(old_icc, new_icc, 1)
