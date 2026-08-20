@@ -11,6 +11,7 @@ on:
       - "crates/production-execution-runtime/**"
       - "crates/backend-issuance-runtime/**"
       - "crates/inkscape-adapter-runtime/**"
+      - "crates/png-artifact-validator-runtime/**"
       - "apps/desktop/src-tauri/**"
       - ".github/workflows/production-execution-chain.yml"
       - "Cargo.toml"
