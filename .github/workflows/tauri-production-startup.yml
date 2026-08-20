@@ -23,85 +23,9 @@ on:
       - ".github/workflows/tauri-production-startup.yml"
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  repair-rust185-inkscape-source:
-    name: One-shot Rust 1.85 Inkscape source repair
-    if: github.event_name == 'pull_request' && github.event.pull_request.number == 90
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: actions/checkout@v5
-        with:
-          ref: fix/rust-1-85-inkscape-let-chains
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          toolchain: "1.85.0"
-          components: rustfmt
-      - name: Rewrite unsupported let chains without changing semantics
-        shell: bash
-        run: |
-          python - <<'PY'
-          from pathlib import Path
-          path = Path('crates/inkscape-adapter-runtime/src/operators.rs')
-          text = path.read_text()
-          start_old = "\n".join([
-              "                if let Some(expected_parent) = parent_id",
-              "                    && element_id(&start, reader.decoder())?.as_deref() == Some(expected_parent)",
-              "                {",
-          ]) + "\n"
-          start_new = "\n".join([
-              "                let expected_parent = parent_id.unwrap_or_default();",
-              "                if parent_id.is_some()",
-              "                    && element_id(&start, reader.decoder())?.as_deref() == Some(expected_parent)",
-              "                {",
-          ]) + "\n"
-          empty_old = "\n".join([
-              "                if let Some(expected_parent) = parent_id",
-              "                    && element_id(&empty, reader.decoder())?.as_deref() == Some(expected_parent)",
-              "                {",
-          ]) + "\n"
-          empty_new = "\n".join([
-              "                let expected_parent = parent_id.unwrap_or_default();",
-              "                if parent_id.is_some()",
-              "                    && element_id(&empty, reader.decoder())?.as_deref() == Some(expected_parent)",
-              "                {",
-          ]) + "\n"
-          attrs_old = "\n".join([
-              "                if let Some(id) = id",
-              "                    && let Some(attribute_changes) = changes.get(&id)",
-              "                {",
-          ]) + "\n"
-          attrs_new = "\n".join([
-              "                let matched_change = id.and_then(|id| {",
-              "                    changes",
-              "                        .get(&id)",
-              "                        .map(|attribute_changes| (id, attribute_changes))",
-              "                });",
-              "                if let Some((id, attribute_changes)) = matched_change {",
-          ]) + "\n"
-          checks = [(start_old, 1), (empty_old, 1), (attrs_old, 2)]
-          for old, expected in checks:
-              actual = text.count(old)
-              if actual != expected:
-                  raise SystemExit(f'expected {expected} exact matches, found {actual}')
-          text = text.replace(start_old, start_new, 1)
-          text = text.replace(empty_old, empty_new, 1)
-          text = text.replace(attrs_old, attrs_new)
-          path.write_text(text)
-          PY
-          cargo +1.85.0 fmt --package ergaxiom-inkscape-adapter-runtime
-          test "$(git diff --name-only)" = "crates/inkscape-adapter-runtime/src/operators.rs"
-          git diff --check
-      - name: Commit exact source repair
-        shell: bash
-        run: |
-          git config user.name "ergaxiom-ci-repair"
-          git config user.email "actions@users.noreply.github.com"
-          git add crates/inkscape-adapter-runtime/src/operators.rs
-          git commit -m "fix: keep Inkscape operators compatible with Rust 1.85"
-          git push origin HEAD:fix/rust-1-85-inkscape-let-chains
-
   startup-boundary:
     name: Verify Tauri production startup (${{ matrix.os }})
     strategy:
