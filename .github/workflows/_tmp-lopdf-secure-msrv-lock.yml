@@ -1,0 +1,58 @@
+name: Temporary secure lopdf Rust 1.85 lock repair
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/_tmp-lopdf-secure-msrv-lock.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  repair-lock:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: fix/rust-1-85-lopdf-compat
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.85.0"
+          components: rustfmt, clippy
+
+      - name: Resolve patched minimal lopdf graph
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo +1.85.0 update -p lopdf --precise 0.43.0
+          grep -A3 '^name = "lopdf"$' Cargo.lock
+          if grep -q '^name = "time"$' Cargo.lock; then
+            echo "vulnerable/unneeded time dependency remains in the resolved root graph" >&2
+            cargo +1.85.0 tree -i time || true
+            exit 1
+          fi
+
+      - name: Verify Rust 1.85 locked graph
+        run: cargo +1.85.0 check --locked -p ergaxiom-print-ready-poster-preflight-certified-path-runtime --all-targets
+
+      - name: Strict Clippy on Rust 1.85
+        run: cargo +1.85.0 clippy --locked -p ergaxiom-print-ready-poster-preflight-certified-path-runtime --all-targets --all-features -- -D warnings
+
+      - name: Deterministic print-preflight tests on Rust 1.85
+        run: cargo +1.85.0 test --locked -p ergaxiom-print-ready-poster-preflight-certified-path-runtime
+
+      - name: Commit verified secure lock
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Cargo.lock
+          git diff --cached --check
+          git diff --cached --quiet && { echo "Cargo.lock did not change"; exit 1; }
+          git commit -m "fix: lock patched Rust 1.85 print PDF graph"
+          git push origin HEAD:fix/rust-1-85-lopdf-compat
