@@ -5,6 +5,7 @@ on:
     paths:
       - "apps/desktop/**"
       - "crates/backend-issuance-runtime/**"
+      - "crates/png-artifact-validator-runtime/**"
       - "crates/windows-production-signer-host-runtime/**"
       - "crates/windows-production-key-governance-runtime/**"
       - "crates/windows-production-signer-runtime/**"
@@ -16,6 +17,7 @@ on:
     paths:
       - "apps/desktop/**"
       - "crates/backend-issuance-runtime/**"
+      - "crates/png-artifact-validator-runtime/**"
       - "crates/windows-production-signer-host-runtime/**"
       - "crates/windows-production-key-governance-runtime/**"
       - "crates/windows-production-signer-runtime/**"
