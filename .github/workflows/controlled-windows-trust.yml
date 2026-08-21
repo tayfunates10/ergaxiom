@@ -1,0 +1,267 @@
+name: Controlled Windows trust
+
+on:
+  pull_request:
+    paths:
+      - "tools/windows/controlled_trust_gate.py"
+      - "tools/windows/test_controlled_trust_gate.py"
+      - "tools/release/bind_controlled_trust_gate.py"
+      - "tools/release/test_bind_controlled_trust_gate.py"
+      - "schemas/windows-physical-tpm-promotion-evidence.schema.json"
+      - "schemas/windows-governance-recovery-receipt.schema.json"
+      - "docs/operations/controlled-windows-trust.md"
+      - ".github/workflows/controlled-windows-trust.yml"
+      - "apps/windows-production-signer-provisioner/**"
+      - "apps/windows-production-signer-service/**"
+      - "crates/windows-cng-key-provider-runtime/**"
+      - "crates/windows-production-key-governance-runtime/**"
+      - "crates/windows-production-installation-evidence-runtime/**"
+      - "crates/windows-production-signer-host-runtime/**"
+      - "crates/windows-production-signer-provisioning-runtime/**"
+  push:
+    branches: [main]
+    paths:
+      - "tools/windows/controlled_trust_gate.py"
+      - "tools/windows/test_controlled_trust_gate.py"
+      - "tools/release/bind_controlled_trust_gate.py"
+      - "tools/release/test_bind_controlled_trust_gate.py"
+      - "schemas/windows-physical-tpm-promotion-evidence.schema.json"
+      - "schemas/windows-governance-recovery-receipt.schema.json"
+      - "docs/operations/controlled-windows-trust.md"
+      - ".github/workflows/controlled-windows-trust.yml"
+  workflow_dispatch:
+    inputs:
+      run_controlled_hardware:
+        description: "Run the physical TPM ceremony on the dedicated controlled runner"
+        required: true
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  policy-verifier:
+    name: Verify fail-closed trust policy
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Compile verifiers
+        run: >-
+          python -m py_compile
+          tools/windows/controlled_trust_gate.py
+          tools/windows/test_controlled_trust_gate.py
+          tools/release/bind_controlled_trust_gate.py
+          tools/release/test_bind_controlled_trust_gate.py
+      - name: Run platform-neutral trust attacks
+        run: >-
+          python -m unittest
+          tools.windows.test_controlled_trust_gate
+          tools.release.test_bind_controlled_trust_gate
+      - name: Prove missing evidence stays UNKNOWN
+        shell: bash
+        run: |
+          set +e
+          python tools/windows/controlled_trust_gate.py verify \
+            --physical "$RUNNER_TEMP/missing-physical.json" \
+            --governance "$RUNNER_TEMP/missing-governance.json" \
+            --installation "$RUNNER_TEMP/missing-installation.json" \
+            --recovery "$RUNNER_TEMP/missing-recovery.json" \
+            --capability-provisioning "$RUNNER_TEMP/missing-capability-provisioning.json" \
+            --attestation-provisioning "$RUNNER_TEMP/missing-attestation-provisioning.json" \
+            --output "$RUNNER_TEMP/gate.json"
+          code=$?
+          set -e
+          test "$code" -eq 2
+          python - "$RUNNER_TEMP/gate.json" <<'PY'
+          import json, sys
+          gate=json.load(open(sys.argv[1], encoding="utf-8"))
+          assert gate["hardware_operational_gate"] == "UNKNOWN"
+          assert gate["hardware_operational_eligible"] is False
+          PY
+      - name: Prove hosted CI cannot promote
+        shell: bash
+        run: |
+          python - <<'PY'
+          import importlib.util
+          spec=importlib.util.spec_from_file_location("gate", "tools/windows/controlled_trust_gate.py")
+          gate=importlib.util.module_from_spec(spec); spec.loader.exec_module(gate)
+          d="a"*64
+          value={
+            "schema_version":"0.1.0","promotion_status":gate.PROVEN,
+            "ceremony_id":"hosted-ci-attack","recorded_at_epoch_s":1,
+            "execution_context":"CONTROLLED_WINDOWS_MACHINE","platform":"windows",
+            "hosted_ci":True,"runner_environment":"github-hosted",
+            "controlled_hardware_runner":False,"elevated_administrator":True,
+            "machine_identity_digest":d,"machine_inventory_digest":d,
+            "physical_hardware_attestation_digest":d,"operator_quorum_digest":d,
+            "tpm":{"present":True,"ready":True,"enabled":True,"activated":True},
+            "cng_provider":{"name":gate.PLATFORM_PROVIDER,"implementation_flags":1,"hardware_flag_present":True,"software_flag_present":False},
+            "roles":{},"installation_receipt_sha256":d,"recovery_receipt_sha256":d,
+            "governance_recovery_receipt_sha256":d,"ceremony_digest":d,
+          }
+          try: gate.verify_physical_evidence(value)
+          except gate.EvidenceError: pass
+          else: raise SystemExit("hosted CI was incorrectly promotable")
+          PY
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - name: Rust formatting
+        run: cargo fmt --all -- --check
+      - name: Lint controlled Windows boundary
+        run: >-
+          cargo clippy
+          -p ergaxiom-windows-cng-key-provider-runtime
+          -p ergaxiom-windows-production-key-governance-runtime
+          -p ergaxiom-windows-production-installation-evidence-runtime
+          -p ergaxiom-windows-production-signer-host-runtime
+          -p ergaxiom-windows-production-signer-provisioning-runtime
+          -p ergaxiom-windows-production-signer-provisioner
+          -p ergaxiom-windows-production-signer-service
+          --all-targets --all-features -- -D warnings
+      - name: Test controlled Windows boundary
+        run: >-
+          cargo test
+          -p ergaxiom-windows-cng-key-provider-runtime
+          -p ergaxiom-windows-production-key-governance-runtime
+          -p ergaxiom-windows-production-installation-evidence-runtime
+          -p ergaxiom-windows-production-signer-host-runtime
+          -p ergaxiom-windows-production-signer-provisioning-runtime
+          -p ergaxiom-windows-production-signer-provisioner
+          -p ergaxiom-windows-production-signer-service
+
+  hosted-windows-policy:
+    name: Hosted Windows is verifier-only
+    runs-on: windows-2025
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Confirm no physical evidence is emitted
+        shell: pwsh
+        run: |
+          $gatePath = Join-Path $env:RUNNER_TEMP "gate.json"
+          $arguments = @(
+            "tools/windows/controlled_trust_gate.py",
+            "verify",
+            "--physical", (Join-Path $env:RUNNER_TEMP "absent-physical.json"),
+            "--governance", (Join-Path $env:RUNNER_TEMP "absent-governance.json"),
+            "--installation", (Join-Path $env:RUNNER_TEMP "absent-installation.json"),
+            "--recovery", (Join-Path $env:RUNNER_TEMP "absent-recovery.json"),
+            "--capability-provisioning", (Join-Path $env:RUNNER_TEMP "absent-capability-provisioning.json"),
+            "--attestation-provisioning", (Join-Path $env:RUNNER_TEMP "absent-attestation-provisioning.json"),
+            "--output", $gatePath
+          )
+          $process = Start-Process -FilePath "python" -ArgumentList $arguments -NoNewWindow -Wait -PassThru
+          if ($process.ExitCode -ne 2) { throw "HOSTED_RUNNER_FAIL_CLOSED_REJECTED" }
+          $gate = Get-Content $gatePath -Raw | ConvertFrom-Json
+          if ($gate.hardware_operational_gate -ne "UNKNOWN" -or $gate.hardware_operational_eligible) {
+            throw "HOSTED_RUNNER_WAS_PROMOTED"
+          }
+
+  controlled-hardware-ceremony:
+    name: Physical TPM ceremony
+    if: github.event_name == 'workflow_dispatch' && inputs.run_controlled_hardware
+    runs-on: [self-hosted, windows, x64, ergaxiom-controlled-tpm]
+    environment: controlled-windows-production
+    timeout-minutes: 30
+    env:
+      ERGAXIOM_CONTROLLED_HARDWARE_RUNNER: "1"
+      ERGAXIOM_SIGNER_MANIFEST_PATH: ${{ vars.ERGAXIOM_SIGNER_MANIFEST_PATH }}
+      ERGAXIOM_GOVERNANCE_RECOVERY_RECEIPT_PATH: ${{ vars.ERGAXIOM_GOVERNANCE_RECOVERY_RECEIPT_PATH }}
+      ERGAXIOM_MACHINE_INVENTORY_DIGEST: ${{ vars.ERGAXIOM_MACHINE_INVENTORY_DIGEST }}
+      ERGAXIOM_PHYSICAL_HARDWARE_ATTESTATION_DIGEST: ${{ vars.ERGAXIOM_PHYSICAL_HARDWARE_ATTESTATION_DIGEST }}
+      ERGAXIOM_OPERATOR_QUORUM_DIGEST: ${{ vars.ERGAXIOM_OPERATOR_QUORUM_DIGEST }}
+      ERGAXIOM_CAPABILITY_GENERATION: ${{ vars.ERGAXIOM_CAPABILITY_GENERATION }}
+      ERGAXIOM_ATTESTATION_GENERATION: ${{ vars.ERGAXIOM_ATTESTATION_GENERATION }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Build controlled binaries
+        run: cargo build --release -p ergaxiom-windows-production-signer-provisioner -p ergaxiom-windows-production-signer-service
+      - name: Execute elevated TPM/CNG and signer recovery ceremony
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          if ("${{ runner.environment }}" -ne "self-hosted" -or $env:ERGAXIOM_CONTROLLED_HARDWARE_RUNNER -ne "1") { throw "CONTROLLED_RUNNER_REQUIRED" }
+          $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
+          $principal = [Security.Principal.WindowsPrincipal]::new($identity)
+          if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) { throw "ELEVATED_ADMIN_REQUIRED" }
+          $tpm = Get-Tpm
+          if (-not ($tpm.TpmPresent -and $tpm.TpmReady -and $tpm.TpmEnabled -and $tpm.TpmActivated)) { throw "PHYSICAL_TPM_NOT_READY" }
+          foreach ($name in "ERGAXIOM_MACHINE_INVENTORY_DIGEST","ERGAXIOM_PHYSICAL_HARDWARE_ATTESTATION_DIGEST","ERGAXIOM_OPERATOR_QUORUM_DIGEST") {
+            if ((Get-Item "env:$name").Value -notmatch '^[0-9a-f]{64}$') { throw "MISSING_REVIEWED_DIGEST_$name" }
+          }
+          $root = Join-Path $env:RUNNER_TEMP "ergaxiom-controlled-$env:GITHUB_RUN_ID"
+          New-Item -ItemType Directory -Path $root -ErrorAction Stop | Out-Null
+          $provisioner = Join-Path $PWD "target\release\ergaxiom-windows-production-signer-provisioner.exe"
+          $service = Join-Path $PWD "target\release\ergaxiom-windows-production-signer-service.exe"
+          $cap = Join-Path $root "capability-provisioning.json"
+          $att = Join-Path $root "attestation-provisioning.json"
+          & $provisioner --role capability --generation $env:ERGAXIOM_CAPABILITY_GENERATION --output $cap
+          if ($LASTEXITCODE) { throw "CAPABILITY_PROVISIONING_FAILED" }
+          & $provisioner --role attestation --generation $env:ERGAXIOM_ATTESTATION_GENERATION --output $att
+          if ($LASTEXITCODE) { throw "ATTESTATION_PROVISIONING_FAILED" }
+          $capj=Get-Content $cap -Raw|ConvertFrom-Json; $attj=Get-Content $att -Raw|ConvertFrom-Json
+          foreach ($e in @($capj,$attj)) {
+            if ($e.receipt.provider -ne "Microsoft Platform Crypto Provider" -or $e.receipt.export_policy -ne "non-exportable" -or -not $e.key_possession.signature_base64url) { throw "PROVISIONING_POLICY_MISMATCH" }
+          }
+          & $service --validate --manifest $env:ERGAXIOM_SIGNER_MANIFEST_PATH
+          if ($LASTEXITCODE) {
+            & $service --install --manifest $env:ERGAXIOM_SIGNER_MANIFEST_PATH
+            if ($LASTEXITCODE) { throw "SERVICE_INSTALL_FAILED" }
+            Start-Service ErgaxiomProductionSigner
+          }
+          $install=Join-Path $root "installation.json"; $recovery=Join-Path $root "recovery.json"
+          & $service --capture-installation --manifest $env:ERGAXIOM_SIGNER_MANIFEST_PATH --ceremony-id "issue77-$env:GITHUB_RUN_ID" --output $install
+          if ($LASTEXITCODE) { throw "INSTALLATION_CAPTURE_FAILED" }
+          & $service --exercise-recovery --manifest $env:ERGAXIOM_SIGNER_MANIFEST_PATH --exercise-id "issue77-recovery-$env:GITHUB_RUN_ID" --output $recovery
+          if ($LASTEXITCODE) { throw "RECOVERY_EXERCISE_FAILED" }
+          & $service --verify-installation-receipt --receipt $install
+          if ($LASTEXITCODE) { throw "INSTALLATION_RECEIPT_VERIFY_FAILED" }
+          & $service --verify-recovery-receipt --receipt $recovery
+          if ($LASTEXITCODE) { throw "RECOVERY_RECEIPT_VERIFY_FAILED" }
+          $ij=Get-Content $install -Raw|ConvertFrom-Json
+          if ($ij.service_snapshot.service_account -ne "LocalSystem" -or $ij.service_snapshot.runtime_state -ne "RUNNING") { throw "LOCALSYSTEM_SERVICE_REQUIRED" }
+          $gov=(Resolve-Path $env:ERGAXIOM_GOVERNANCE_RECOVERY_RECEIPT_PATH).Path
+          $govj=Get-Content $gov -Raw|ConvertFrom-Json
+          $capSha=(Get-FileHash $cap -Algorithm SHA256).Hash.ToLowerInvariant(); $attSha=(Get-FileHash $att -Algorithm SHA256).Hash.ToLowerInvariant()
+          $physicalDraft=Join-Path $root "physical-draft.json"; $physical=Join-Path $root "physical-tpm-evidence.json"
+          $doc=[ordered]@{
+            schema_version="0.1.0"; promotion_status="PROVEN_HARDWARE_BACKED"; ceremony_id="issue77-$env:GITHUB_RUN_ID"; recorded_at_epoch_s=[DateTimeOffset]::UtcNow.ToUnixTimeSeconds(); execution_context="CONTROLLED_WINDOWS_MACHINE"; platform="windows"; hosted_ci=$false; runner_environment="self-hosted"; controlled_hardware_runner=$true; elevated_administrator=$true;
+            machine_identity_digest=$ij.machine_identity_digest; machine_inventory_digest=$env:ERGAXIOM_MACHINE_INVENTORY_DIGEST; physical_hardware_attestation_digest=$env:ERGAXIOM_PHYSICAL_HARDWARE_ATTESTATION_DIGEST; operator_quorum_digest=$env:ERGAXIOM_OPERATOR_QUORUM_DIGEST;
+            tpm=[ordered]@{present=$tpm.TpmPresent;ready=$tpm.TpmReady;enabled=$tpm.TpmEnabled;activated=$tpm.TpmActivated};
+            cng_provider=[ordered]@{name="Microsoft Platform Crypto Provider";implementation_flags=$ij.active_keys[0].provider_implementation_flags;hardware_flag_present=$ij.active_keys[0].provider_hardware_flag_present;software_flag_present=$ij.active_keys[0].provider_software_flag_present};
+            roles=[ordered]@{
+              capability=[ordered]@{generation=[int]$env:ERGAXIOM_CAPABILITY_GENERATION;provider=$capj.receipt.provider;export_policy=$capj.receipt.export_policy;key_possession_verified=$true;provisioning_evidence_sha256=$capSha;public_key_digest=$capj.receipt.public_key_digest;receipt_digest=$capj.receipt.receipt_digest;evidence_digest=$capj.evidence_digest};
+              attestation=[ordered]@{generation=[int]$env:ERGAXIOM_ATTESTATION_GENERATION;provider=$attj.receipt.provider;export_policy=$attj.receipt.export_policy;key_possession_verified=$true;provisioning_evidence_sha256=$attSha;public_key_digest=$attj.receipt.public_key_digest;receipt_digest=$attj.receipt.receipt_digest;evidence_digest=$attj.evidence_digest}
+            };
+            installation_receipt_sha256=(Get-FileHash $install -Algorithm SHA256).Hash.ToLowerInvariant(); recovery_receipt_sha256=(Get-FileHash $recovery -Algorithm SHA256).Hash.ToLowerInvariant(); governance_recovery_receipt_sha256=(Get-FileHash $gov -Algorithm SHA256).Hash.ToLowerInvariant(); ceremony_digest=""
+          }
+          $doc|ConvertTo-Json -Depth 8|Set-Content -Encoding utf8NoBOM $physicalDraft
+          python tools/windows/controlled_trust_gate.py seal-physical --input $physicalDraft --output $physical
+          if ($LASTEXITCODE) { throw "PHYSICAL_EVIDENCE_REJECTED" }
+          python tools/windows/controlled_trust_gate.py verify `
+            --physical $physical `
+            --governance $gov `
+            --installation $install `
+            --recovery $recovery `
+            --capability-provisioning $cap `
+            --attestation-provisioning $att `
+            --output (Join-Path $root "controlled-trust-gate.json")
+          if ($LASTEXITCODE) { throw "CONTROLLED_TRUST_GATE_REJECTED" }
+          Remove-Item $physicalDraft -Force
+      - name: Upload public controlled-hardware evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: controlled-windows-trust-${{ github.run_id }}
+          path: ${{ runner.temp }}/ergaxiom-controlled-${{ github.run_id }}
+          retention-days: 30
