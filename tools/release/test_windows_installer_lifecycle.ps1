@@ -31,6 +31,7 @@ $sentinel = Join-Path $stateRoot 'ci-lifecycle-state.txt'
 $marker = [Guid]::NewGuid().ToString('N')
 $processTimeoutMs = 180000
 $stateConvergenceTimeoutMs = 30000
+$stateStableWindowMs = 3000
 
 function RunProcess([string]$path, [string[]]$arguments) {
   $process = Start-Process -FilePath $path -ArgumentList $arguments -PassThru
@@ -72,18 +73,41 @@ function ObservedVersions {
   }
   return @($versions)
 }
-function WaitForVersion([string]$version) {
+function WaitForStableVersion([string]$version) {
   $stopwatch = [Diagnostics.Stopwatch]::StartNew()
+  $stableSinceMs = $null
   do {
     $entries = @(Entries)
+    $matches = $false
     if ($entries.Count -eq 1) {
       $displayVersionProperty = $entries[0].PSObject.Properties['DisplayVersion']
-      if ($null -ne $displayVersionProperty -and [string]$displayVersionProperty.Value -eq $version) { return }
+      $matches = $null -ne $displayVersionProperty -and [string]$displayVersionProperty.Value -eq $version
+    }
+    if ($matches) {
+      if ($null -eq $stableSinceMs) { $stableSinceMs = $stopwatch.ElapsedMilliseconds }
+      if (($stopwatch.ElapsedMilliseconds - $stableSinceMs) -ge $stateStableWindowMs) { return }
+    } else {
+      $stableSinceMs = $null
     }
     Start-Sleep -Milliseconds 250
   } while ($stopwatch.ElapsedMilliseconds -lt $stateConvergenceTimeoutMs)
   $observed = @(ObservedVersions)
-  throw "VERSION_TRANSITION_TIMEOUT: expected=$version observed=$($observed -join ',') entries=$(@(Entries).Count)"
+  throw "VERSION_STABILITY_TIMEOUT: expected=$version observed=$($observed -join ',') entries=$(@(Entries).Count) stable_window_ms=$stateStableWindowMs"
+}
+function WaitForStableUninstalled {
+  $stopwatch = [Diagnostics.Stopwatch]::StartNew()
+  $stableSinceMs = $null
+  do {
+    if (@(Entries).Count -eq 0) {
+      if ($null -eq $stableSinceMs) { $stableSinceMs = $stopwatch.ElapsedMilliseconds }
+      if (($stopwatch.ElapsedMilliseconds - $stableSinceMs) -ge $stateStableWindowMs) { return }
+    } else {
+      $stableSinceMs = $null
+    }
+    Start-Sleep -Milliseconds 250
+  } while ($stopwatch.ElapsedMilliseconds -lt $stateConvergenceTimeoutMs)
+  $observed = @(ObservedVersions)
+  throw "UNINSTALL_STABILITY_TIMEOUT: observed=$($observed -join ',') entries=$(@(Entries).Count) stable_window_ms=$stateStableWindowMs"
 }
 function OneEntry([string]$version) {
   $entries = @(Entries)
@@ -115,8 +139,7 @@ function UninstallCurrent {
   if (-not (Test-Path $full)) { throw 'UNINSTALLER_MISSING' }
   $exitCode = RunProcess $full @('/S')
   if ($exitCode -ne 0) { throw "UNINSTALL_FAILED: $exitCode" }
-  Start-Sleep -Seconds 1
-  if (@(Entries).Count -ne 0) { throw 'UNINSTALL_REGISTRY_REMAINS' }
+  WaitForStableUninstalled
 }
 function AssertSentinel {
   if (-not (Test-Path $sentinel) -or (Get-Content $sentinel -Raw).Trim() -ne $marker) { throw 'PRODUCTION_STATE_SENTINEL_LOST' }
@@ -127,18 +150,19 @@ New-Item -ItemType Directory -Force $stateRoot | Out-Null
 Set-Content -Path $sentinel -Value $marker -Encoding ascii -NoNewline
 
 RunInstaller $previous $true | Out-Null
-WaitForVersion '0.0.9'
+WaitForStableVersion '0.0.9'
 AssertInstalled '0.0.9' | Out-Null
 AssertSentinel
 $clean = $true
 
 RunUpdater $current $true | Out-Null
-WaitForVersion '0.1.0'
+WaitForStableVersion '0.1.0'
 AssertInstalled '0.1.0' | Out-Null
 AssertSentinel
 $upgrade = $true
 
 $downgradeExit = RunInstaller $previous $false
+WaitForStableVersion '0.1.0'
 AssertInstalled '0.1.0' | Out-Null
 AssertSentinel
 $downgradeRejected = $true
@@ -146,19 +170,20 @@ $downgradeRejected = $true
 UninstallCurrent
 AssertSentinel
 RunInstaller $previous $true | Out-Null
-WaitForVersion '0.0.9'
+WaitForStableVersion '0.0.9'
 AssertInstalled '0.0.9' | Out-Null
 AssertSentinel
 
 $env:ERGA_CI_INTERRUPT = '1'
 try { $interruptExit = RunUpdater $current $false } finally { Remove-Item Env:ERGA_CI_INTERRUPT -ErrorAction SilentlyContinue }
 if ($interruptExit -eq 0) { throw 'INTERRUPTED_UPGRADE_UNEXPECTED_SUCCESS' }
+WaitForStableVersion '0.0.9'
 AssertInstalled '0.0.9' | Out-Null
 AssertSentinel
 $interrupted = $true
 
 RunUpdater $current $true | Out-Null
-WaitForVersion '0.1.0'
+WaitForStableVersion '0.1.0'
 AssertInstalled '0.1.0' | Out-Null
 AssertSentinel
 $recovery = $true
