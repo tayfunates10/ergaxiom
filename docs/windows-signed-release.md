@@ -1,6 +1,6 @@
 # Signed Windows release boundary
 
-Issue #78 makes Windows release eligibility fail closed. The canonical installer is NSIS with per-machine scope, `%ProgramFiles%\Ergaxiom` as the application root and downgrades disabled. The shipped inventory is fixed to `ergaxiom-desktop.exe`, `ergaxiom-windows-production-signer-service.exe` and exactly one `*-setup.exe` installer. UIA, Windows bridge and Inkscape adapter code are recorded as linked runtime inputs rather than separate shipped executables.
+Issue #78 makes Windows release eligibility fail closed. The canonical installer is NSIS with per-machine scope, `%ProgramFiles%\Ergaxiom` as the application root and downgrades disabled. Windows update execution is pinned to Tauri's **quiet** NSIS updater contract (`/S /UPDATE`) instead of inheriting an implicit updater UI default. The shipped inventory is fixed to `ergaxiom-desktop.exe`, `ergaxiom-windows-production-signer-service.exe` and exactly one `*-setup.exe` installer. UIA, Windows bridge and Inkscape adapter code are recorded as linked runtime inputs rather than separate shipped executables.
 
 ## Authenticode policy
 
@@ -12,7 +12,7 @@ The repository intentionally contains no real private key or production certific
 
 ## Installer and production signer-service boundary
 
-`apps/desktop/src-tauri/tauri.release.conf.json` selects NSIS, `perMachine`, `allowDowngrades: false`, and packages the already-signed production signer-service executable. The installer does not manufacture production trust state. Installing/validating `ErgaxiomProductionSigner` as LocalSystem remains the controlled Issue #77 ceremony because the manifest binds the exact service executable digest, trust state, caller allowlist, deployment policy and active TPM/CNG generations.
+`apps/desktop/src-tauri/tauri.release.conf.json` selects NSIS, `perMachine`, `allowDowngrades: false`, and packages the already-signed production signer-service executable. `tools/release/windows_release_policy.json` additionally pins `updater_install_mode: quiet`; lifecycle verification rejects any other updater mode. The installer does not manufacture production trust state. Installing/validating `ErgaxiomProductionSigner` as LocalSystem remains the controlled Issue #77 ceremony because the manifest binds the exact service executable digest, trust state, caller allowlist, deployment policy and active TPM/CNG generations.
 
 A copied service executable never enables production issuance. Production acceptance requires the canonical `tools/windows/controlled_trust_gate.py` verifier to re-read all six raw Issue #77 evidence files. A pre-computed `verified: true` hardware summary is deliberately insufficient.
 
@@ -20,7 +20,7 @@ The six mandatory raw files are Capability provisioning evidence, Attestation pr
 
 ## Installer lifecycle coverage
 
-Hosted Windows CI creates real version `0.0.9` and `0.1.0` NSIS installers and tests clean install, normal upgrade, downgrade rejection, deterministic interrupted upgrade, recovery, uninstall and `%ProgramData%\Ergaxiom` state preservation. This record always says `test_mode: true` and can never satisfy production eligibility.
+Hosted Windows CI creates real version `0.0.9` and `0.1.0` NSIS installers and tests clean install, quiet updater upgrade (`/S /UPDATE`), downgrade rejection, deterministic interrupted upgrade, recovery, uninstall and `%ProgramData%\Ergaxiom` state preservation. Registry state must converge to the exact expected version and remain stable before a phase is accepted. This record always says `test_mode: true` and can never satisfy production eligibility.
 
 Controlled production lifecycle evidence must be bound to the exact source commit and signed installer SHA-256 with `test_mode: false`. It must prove all of: clean install, LocalSystem service installation, running-service validation, protected-state ACL verification, upgrade, downgrade rejection, interrupted-upgrade state preservation, rollback/recovery, recovery install, uninstall, and production-state preservation.
 
@@ -62,17 +62,17 @@ After the controlled lifecycle, #75 production-chain evidence, six #77 raw evide
   -OutputDirectory C:\ergaxiom-release\final
 ```
 
-`finalize_prepared_windows_release.ps1` refuses source-commit drift, dirty tracked source, artifact cardinality/name substitution or any post-prepare SHA-256 mutation. It re-verifies Authenticode on the prepared files, reruns the canonical #77 controlled-trust verifier over all raw ceremony files, and only then invokes the final release decision.
+`finalize_prepared_windows_release.ps1` refuses source-commit drift, dirty tracked source, artifact cardinality/name substitution or any post-prepare SHA-256 mutation. It re-verifies Authenticode on the prepared files, reruns the canonical #77 controlled-trust verifier over all raw ceremony files, independently verifies the persisted production execution chain, and only then invokes the final release decision.
 
 ## Production-chain fail-closed boundary
 
-Issue #75 currently has no standalone canonical production-chain verifier in its branch. Therefore `finalize_windows_release_evidence.py` deliberately **does not trust** a caller-authored `production_chain` JSON even when it contains `verified: true`. Until a canonical #75 verifier/export contract is available and integrated, the explicit blocker `PRODUCTION_CHAIN_CANONICAL_VERIFIER_NOT_INTEGRATED` remains present. This avoids turning a summary file into production authority.
+`crates/production-execution-runtime/src/bin/verify_production_release_chain.rs` is the release-specific canonical production-chain verifier integrated by this layer. It does not trust a caller-authored `production_chain: { verified: true }` summary. It independently consumes the persisted production-chain state together with the raw Work Contract and Operator Plan, checked-out profession catalog/capsule, governance/trust state, a fresh deployed signer identity challenge/proof, deployment policy and the exact signed signer-service SHA-256.
 
-Once #75 supplies that verifier, it must independently bind the persisted production Capability Token, authorization/command/execution receipts, Evidence Bundle, Replay Manifest, Acceptance Certificate, recovery state and exact source/artifact identities. The #78 gate will consume that canonical proof; it will not weaken to a boolean summary.
+Release eligibility requires a recovered `Certified` production chain and independent verification of Capability consumption, Evidence Bundle, Replay Manifest and Acceptance Certificate for the same source and artifact identities. Missing, stale, substituted or unverifiable production-chain material remains fail closed.
 
 ## Final release evidence and attacks
 
-`tools/release/finalize_windows_release_evidence.py` rejects partial/substituted inventories, post-sign mutation, test identities, failed SignTool verification, missing code-signing EKU, wrong subject/certificate pin, invalid/revoked/untrusted chain, missing/untrusted timestamp, incomplete production lifecycle, generic hardware summaries, missing raw controlled-trust evidence, signer-service hash substitution, missing canonical #75 verification and unresolved license evidence.
+`tools/release/finalize_windows_release_evidence.py` rejects partial/substituted inventories, post-sign mutation, test identities, failed SignTool verification, missing code-signing EKU, wrong subject/certificate pin, invalid/revoked/untrusted chain, missing/untrusted timestamp, incomplete production lifecycle, generic hardware summaries, missing raw controlled-trust evidence, signer-service hash substitution, unverifiable production-chain evidence and unresolved license evidence.
 
 A signed artifact by itself is not a production release. Final `release_eligible: true` requires every independent gate to be proven for the exact candidate.
 
@@ -80,8 +80,8 @@ A signed artifact by itself is not a production release. Final `release_eligible
 
 `.github/workflows/windows-signed-release.yml` runs release attack tests, the canonical controlled-trust verifier tests, unsigned-candidate rejection and the real hosted NSIS lifecycle matrix. Hosted artifacts are explicitly test-only/not-production. Workflow checkouts are pinned to the exact PR head source commit.
 
-Before publication an independent controlled Windows reviewer must reproduce the prepared artifact hashes, inspect the exact #77 installation/recovery evidence, verify #75 production evidence through its canonical verifier, rerun signature/chain/timestamp checks, validate the signed installer lifecycle, and confirm the final manifest says exactly `release_eligible: true`.
+Before publication an independent controlled Windows reviewer must reproduce the prepared artifact hashes, inspect the exact #77 installation/recovery evidence, verify #75 production evidence through the canonical release verifier, rerun signature/chain/timestamp checks, validate the signed installer lifecycle, and confirm the final manifest says exactly `release_eligible: true`.
 
 ## Current blockers
 
-Production remains intentionally blocked. There is no owner-pinned real code-signing certificate, no owner-selected SPDX license, no controlled production installer lifecycle evidence, no final canonical Issue #75 production-chain verifier/evidence, and no physical Issue #77 ceremony against this exact signed candidate. Hosted CI cannot replace any of those gates.
+Production remains intentionally blocked. There is no owner-pinned real code-signing certificate, no owner-selected SPDX license, no controlled production installer lifecycle evidence, no real persisted `Certified` production job with fresh deployed signer proof for this signed candidate, and no physical Issue #77 ceremony against this exact signed candidate. Hosted CI cannot replace any of those gates.
