@@ -39,10 +39,16 @@ function RunProcess([string]$path, [string[]]$arguments) {
   }
   return $process.ExitCode
 }
-function RunInstaller([string]$path, [bool]$expectSuccess) {
-  $exitCode = RunProcess $path @('/S')
+function RunInstaller([string]$path, [bool]$expectSuccess, [string[]]$arguments = @('/S')) {
+  $exitCode = RunProcess $path $arguments
   if ($expectSuccess -and $exitCode -ne 0) { throw "INSTALLER_FAILED: $exitCode" }
   return $exitCode
+}
+function RunUpdater([string]$path, [bool]$expectSuccess) {
+  # Match Tauri's Windows updater contract: passive UI plus explicit update mode.
+  # Do not use /S here; silent install is retained below for clean-install and
+  # downgrade-attack coverage, while /UPDATE exercises the real update path.
+  return RunInstaller $path $expectSuccess @('/P', '/UPDATE')
 }
 function Entries {
   $result = @()
@@ -103,7 +109,7 @@ AssertInstalled '0.0.9' | Out-Null
 AssertSentinel
 $clean = $true
 
-RunInstaller $current $true | Out-Null
+RunUpdater $current $true | Out-Null
 AssertInstalled '0.1.0' | Out-Null
 AssertSentinel
 $upgrade = $true
@@ -120,13 +126,13 @@ AssertInstalled '0.0.9' | Out-Null
 AssertSentinel
 
 $env:ERGA_CI_INTERRUPT = '1'
-try { $interruptExit = RunInstaller $current $false } finally { Remove-Item Env:ERGA_CI_INTERRUPT -ErrorAction SilentlyContinue }
+try { $interruptExit = RunUpdater $current $false } finally { Remove-Item Env:ERGA_CI_INTERRUPT -ErrorAction SilentlyContinue }
 if ($interruptExit -eq 0) { throw 'INTERRUPTED_UPGRADE_UNEXPECTED_SUCCESS' }
 AssertInstalled '0.0.9' | Out-Null
 AssertSentinel
 $interrupted = $true
 
-RunInstaller $current $true | Out-Null
+RunUpdater $current $true | Out-Null
 AssertInstalled '0.1.0' | Out-Null
 AssertSentinel
 $recovery = $true
