@@ -12,6 +12,7 @@ members = [
   "crates/capability-runtime",
   "crates/contract-runtime",
   "crates/desktop-shell-runtime",
+  "crates/desktop-user-job-runtime",
   "crates/evidence-runtime",
   "crates/execution-runtime",
   "crates/governed-verification-runtime",

@@ -2,6 +2,7 @@
 
 mod commands;
 mod pipeline;
+mod product_jobs;
 mod production_execution;
 mod production_pipeline;
 mod production_startup;
@@ -19,16 +20,26 @@ pub fn run() {
             }
         };
     let production_state = production_startup::ProductionStartupState::initialize();
+    let product_job_state = product_jobs::ProductJobState::initialize();
     let result = tauri::Builder::default()
         .manage(control_state)
         .manage(production_state)
         .manage(production_execution_state)
+        .manage(product_job_state)
         .invoke_handler(tauri::generate_handler![
             commands::get_desktop_shell_snapshot,
             commands::approve_desktop_job,
             commands::start_desktop_job_execution,
             commands::cancel_desktop_job,
             commands::rollback_desktop_job,
+            product_jobs::list_product_jobs,
+            product_jobs::create_product_job,
+            product_jobs::import_product_job_input,
+            product_jobs::prepare_product_job,
+            product_jobs::approve_product_job,
+            product_jobs::start_product_job_execution,
+            product_jobs::sync_product_job_from_production,
+            product_jobs::cancel_product_job,
             production_startup::get_production_signer_status,
             production_startup::refresh_production_signer_status,
             production_startup::recover_production_signer_status
@@ -54,6 +65,7 @@ pub fn run() {
             }
         };
     let production_state = production_startup::ProductionStartupState::initialize();
+    let product_job_state = product_jobs::ProductJobState::initialize();
 
     // Ergaxiom Product Alpha is Windows-first. Constructing the complete command boundary keeps
     // non-Windows compilation and fail-closed startup tests honest without generating a runnable
@@ -62,12 +74,21 @@ pub fn run() {
         .manage(control_state)
         .manage(production_state)
         .manage(production_execution_state)
+        .manage(product_job_state)
         .invoke_handler(tauri::generate_handler![
             commands::get_desktop_shell_snapshot,
             commands::approve_desktop_job,
             commands::start_desktop_job_execution,
             commands::cancel_desktop_job,
             commands::rollback_desktop_job,
+            product_jobs::list_product_jobs,
+            product_jobs::create_product_job,
+            product_jobs::import_product_job_input,
+            product_jobs::prepare_product_job,
+            product_jobs::approve_product_job,
+            product_jobs::start_product_job_execution,
+            product_jobs::sync_product_job_from_production,
+            product_jobs::cancel_product_job,
             production_startup::get_production_signer_status,
             production_startup::refresh_production_signer_status,
             production_startup::recover_production_signer_status
