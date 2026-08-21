@@ -1,0 +1,71 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ergaxiom.dev/schemas/operator-candidate.schema.json",
+  "title": "Ergaxiom Candidate Operator Proposal",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "candidate_id", "capsule_id", "job_type", "proposal_only", "source_demonstration_digests", "operator", "execution_boundary", "signing", "promotion", "candidate_digest"],
+  "properties": {
+    "schema_version": {"const": "0.1.0"},
+    "candidate_id": {"type": "string", "minLength": 1},
+    "capsule_id": {"type": "string", "minLength": 1},
+    "job_type": {"type": "string", "minLength": 1},
+    "proposal_only": {"const": true},
+    "source_demonstration_digests": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string", "pattern": "^[0-9a-f]{64}$"}},
+    "operator": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["operator_id", "version", "capability_scope", "preconditions", "postconditions", "actions", "unsupported_observation_policy"],
+      "properties": {
+        "operator_id": {"type": "string", "minLength": 1},
+        "version": {"type": "string", "minLength": 1},
+        "capability_scope": {"type": "array", "uniqueItems": true, "items": {"type": "string"}},
+        "preconditions": {"type": "array", "uniqueItems": true, "items": {"type": "string"}},
+        "postconditions": {"type": "array", "uniqueItems": true, "items": {"type": "string"}},
+        "actions": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["capability", "operation", "parameter_names"],
+            "properties": {
+              "capability": {"type": "string", "minLength": 1},
+              "operation": {"type": "string", "minLength": 1},
+              "parameter_names": {"type": "array", "uniqueItems": true, "items": {"type": "string"}}
+            }
+          }
+        },
+        "unsupported_observation_policy": {"const": "UNKNOWN"}
+      }
+    },
+    "execution_boundary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["allowed_environments", "live_user_work_allowed"],
+      "properties": {
+        "allowed_environments": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"enum": ["isolated_test", "occupational_twin"]}},
+        "live_user_work_allowed": {"const": false}
+      }
+    },
+    "signing": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["role", "production_key_access", "production_signing_role"],
+      "properties": {
+        "role": {"const": "candidate-operator"},
+        "production_key_access": {"const": false},
+        "production_signing_role": {"const": "production-capsule"}
+      }
+    },
+    "promotion": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["automatic_production_allowed", "manual_release_required"],
+      "properties": {
+        "automatic_production_allowed": {"const": false},
+        "manual_release_required": {"const": true}
+      }
+    },
+    "candidate_digest": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+  }
+}

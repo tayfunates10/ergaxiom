@@ -1,0 +1,73 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ergaxiom.dev/schemas/operator-certification.schema.json",
+  "title": "Ergaxiom Candidate Operator Certification",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "candidate_digest", "isolation", "suites", "human_review", "lifecycle", "training_provenance"],
+  "properties": {
+    "schema_version": {"const": "0.1.0"},
+    "candidate_digest": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "isolation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["executed_environments", "live_user_work_used"],
+      "properties": {
+        "executed_environments": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"enum": ["isolated_test", "occupational_twin"]}},
+        "live_user_work_used": {"const": false}
+      }
+    },
+    "suites": {
+      "type": "array",
+      "minItems": 3,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["kind", "run_id", "total", "failures", "unknowns"],
+        "properties": {
+          "kind": {"enum": ["regression", "property_fuzz", "adversarial"]},
+          "run_id": {"type": "string", "minLength": 1},
+          "total": {"type": "integer", "minimum": 1},
+          "failures": {"type": "integer", "minimum": 0},
+          "unknowns": {"type": "integer", "minimum": 0}
+        }
+      }
+    },
+    "human_review": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["reviewer", "decision", "independent_from_candidate_signer"],
+      "properties": {
+        "reviewer": {"type": "string", "minLength": 1},
+        "decision": {"enum": ["approve", "reject"]},
+        "independent_from_candidate_signer": {"type": "boolean"}
+      }
+    },
+    "lifecycle": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["from_version", "to_version", "canary_required", "rollback_supported", "rollback_target", "revoked_versions"],
+      "properties": {
+        "from_version": {"type": "string", "minLength": 1},
+        "to_version": {"type": "string", "minLength": 1},
+        "canary_required": {"const": true},
+        "rollback_supported": {"const": true},
+        "rollback_target": {"type": "string", "minLength": 1},
+        "revoked_versions": {"type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 1}}
+      }
+    },
+    "training_provenance": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["source_id", "license"],
+        "properties": {
+          "source_id": {"type": "string", "minLength": 1},
+          "license": {"type": "string", "minLength": 1}
+        }
+      }
+    }
+  }
+}

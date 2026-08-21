@@ -5,15 +5,19 @@ on:
     branches:
       - main
       - agent/**
+      - codex/**
     paths:
       - "schemas/**"
       - "professions/**"
       - "examples/work-contracts/**"
+      - "examples/profession-learning/**"
       - "tools/validate_foundation.py"
       - "tools/validate_schema_catalog.py"
       - "tools/scaffold_profession.py"
+      - "tools/profession_lab.py"
       - "tools/test_validate_foundation.py"
       - "tools/test_scaffold_profession.py"
+      - "tools/test_profession_lab.py"
       - "requirements-dev.txt"
       - ".github/workflows/foundation-validation.yml"
   pull_request:
@@ -21,11 +25,14 @@ on:
       - "schemas/**"
       - "professions/**"
       - "examples/work-contracts/**"
+      - "examples/profession-learning/**"
       - "tools/validate_foundation.py"
       - "tools/validate_schema_catalog.py"
       - "tools/scaffold_profession.py"
+      - "tools/profession_lab.py"
       - "tools/test_validate_foundation.py"
       - "tools/test_scaffold_profession.py"
+      - "tools/test_profession_lab.py"
       - "requirements-dev.txt"
       - ".github/workflows/foundation-validation.yml"
 
@@ -34,9 +41,9 @@ permissions:
 
 jobs:
   validate:
-    name: Validate schemas, contracts and capsule links
+    name: Validate schemas, contracts, capsules and laboratory isolation
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 8
 
     steps:
       - name: Check out repository
@@ -55,14 +62,20 @@ jobs:
       - name: Validate schema catalog
         run: python tools/validate_schema_catalog.py
 
-      - name: Run profession catalog and scaffold attack tests
-        run: python -m unittest tools.test_validate_foundation tools.test_scaffold_profession
+      - name: Run profession catalog, scaffold and laboratory attack tests
+        run: python -m unittest tools.test_validate_foundation tools.test_scaffold_profession tools.test_profession_lab
+
+      - name: Compile Python validation tooling
+        run: python -m compileall -q tools
 
       - name: Validate Phase 0 foundation
         shell: bash
         run: |
           set -o pipefail
           python tools/validate_foundation.py 2>&1 | tee "$RUNNER_TEMP/foundation-validation.log"
+
+      - name: Reject whitespace and patch errors
+        run: git diff --check
 
       - name: Upload foundation diagnostics
         if: always()

@@ -1,0 +1,62 @@
+{
+  "schema_version": "0.1.0",
+  "demonstration_id": "demo.technical-writer.plain-text-revision.001",
+  "capsule_id": "ergaxiom.profession.technical-writer",
+  "job_type": "plain_text_revision",
+  "environment": {
+    "mode": "occupational_twin",
+    "identity": "twin.text-editor.v1"
+  },
+  "application": {
+    "application_id": "ergaxiom.test.text-editor",
+    "version": "1.0.0",
+    "identity_digest": "sha256:test-text-editor-v1"
+  },
+  "provenance": {
+    "source_id": "ergaxiom.synthetic.expert-demo.001",
+    "license": "CC0-1.0",
+    "content_sha256": "26a47cb9bb7c8a6fa2ff0c88c1c02c16a30e21a9f69009b4379c8f7a724185a7",
+    "notes": "SHA-256 of the fixed synthetic source payload 'Ergaxiom synthetic Technical Writer demonstration source v1'; no live user data."
+  },
+  "declared_capability_scope": [
+    "text.read",
+    "text.replace"
+  ],
+  "decision_points": [
+    {
+      "decision_id": "inspect-text",
+      "preconditions": [
+        "document_open",
+        "selection_known"
+      ],
+      "observation": "KNOWN",
+      "action": {
+        "capability": "text.read",
+        "operation": "read_selection",
+        "parameters": {}
+      },
+      "postconditions": [
+        "source_text_observed"
+      ]
+    },
+    {
+      "decision_id": "apply-revision",
+      "preconditions": [
+        "source_text_observed",
+        "replacement_approved"
+      ],
+      "observation": "KNOWN",
+      "action": {
+        "capability": "text.replace",
+        "operation": "replace_selection",
+        "parameters": {
+          "replacement": "Clear corrected text."
+        }
+      },
+      "postconditions": [
+        "selection_replaced",
+        "document_still_open"
+      ]
+    }
+  ]
+}
