@@ -1,0 +1,2 @@
+# Preserve checksum-verified third-party source verbatim; Ergaxiom-owned files keep normal whitespace checks.
+vendor/lopdf-0.42.0/** -whitespace
