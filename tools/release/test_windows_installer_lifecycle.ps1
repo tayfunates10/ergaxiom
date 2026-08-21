@@ -30,6 +30,7 @@ $stateRoot = Join-Path $env:ProgramData 'Ergaxiom'
 $sentinel = Join-Path $stateRoot 'ci-lifecycle-state.txt'
 $marker = [Guid]::NewGuid().ToString('N')
 $processTimeoutMs = 180000
+$stateConvergenceTimeoutMs = 30000
 
 function RunProcess([string]$path, [string[]]$arguments) {
   $process = Start-Process -FilePath $path -ArgumentList $arguments -PassThru
@@ -62,6 +63,27 @@ function Entries {
     }
   }
   return @($result)
+}
+function ObservedVersions {
+  $versions = @()
+  foreach ($entry in @(Entries)) {
+    $property = $entry.PSObject.Properties['DisplayVersion']
+    if ($null -ne $property) { $versions += [string]$property.Value } else { $versions += '<missing>' }
+  }
+  return @($versions)
+}
+function WaitForVersion([string]$version) {
+  $stopwatch = [Diagnostics.Stopwatch]::StartNew()
+  do {
+    $entries = @(Entries)
+    if ($entries.Count -eq 1) {
+      $displayVersionProperty = $entries[0].PSObject.Properties['DisplayVersion']
+      if ($null -ne $displayVersionProperty -and [string]$displayVersionProperty.Value -eq $version) { return }
+    }
+    Start-Sleep -Milliseconds 250
+  } while ($stopwatch.ElapsedMilliseconds -lt $stateConvergenceTimeoutMs)
+  $observed = @(ObservedVersions)
+  throw "VERSION_TRANSITION_TIMEOUT: expected=$version observed=$($observed -join ',') entries=$(@(Entries).Count)"
 }
 function OneEntry([string]$version) {
   $entries = @(Entries)
@@ -105,11 +127,13 @@ New-Item -ItemType Directory -Force $stateRoot | Out-Null
 Set-Content -Path $sentinel -Value $marker -Encoding ascii -NoNewline
 
 RunInstaller $previous $true | Out-Null
+WaitForVersion '0.0.9'
 AssertInstalled '0.0.9' | Out-Null
 AssertSentinel
 $clean = $true
 
 RunUpdater $current $true | Out-Null
+WaitForVersion '0.1.0'
 AssertInstalled '0.1.0' | Out-Null
 AssertSentinel
 $upgrade = $true
@@ -122,6 +146,7 @@ $downgradeRejected = $true
 UninstallCurrent
 AssertSentinel
 RunInstaller $previous $true | Out-Null
+WaitForVersion '0.0.9'
 AssertInstalled '0.0.9' | Out-Null
 AssertSentinel
 
@@ -133,6 +158,7 @@ AssertSentinel
 $interrupted = $true
 
 RunUpdater $current $true | Out-Null
+WaitForVersion '0.1.0'
 AssertInstalled '0.1.0' | Out-Null
 AssertSentinel
 $recovery = $true
