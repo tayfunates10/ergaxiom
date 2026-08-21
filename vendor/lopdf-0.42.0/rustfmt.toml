@@ -1,3 +1,5 @@
+# Preserve the checksum-verified upstream source layout. Ergaxiom workspace members remain formatted normally.
+disable_all_formatting = true
 format_strings = false
 reorder_imports = true
 fn_params_layout = "Compressed"
