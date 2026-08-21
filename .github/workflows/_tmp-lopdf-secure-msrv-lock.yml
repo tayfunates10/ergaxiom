@@ -25,21 +25,19 @@ jobs:
           toolchain: "1.85.0"
           components: rustfmt, clippy
 
-      - name: Vendor exact security-patched lopdf 0.42.0
+      - name: Fetch and vendor exact security-patched lopdf 0.42.0
         shell: bash
         run: |
           set -euo pipefail
           git fetch origin main --depth=1
-          rm -rf vendor/lopdf-0.42.0 /tmp/lopdf-0.42.0 /tmp/lopdf-0.42.0.crate
-          mkdir -p vendor /tmp/lopdf-0.42.0
+          rm -rf vendor/lopdf-0.42.0
+          mkdir -p vendor
 
           python - <<'PY' > /tmp/lopdf.expected.sha256
           import re
           import subprocess
 
-          lock = subprocess.check_output(
-              ["git", "show", "origin/main:Cargo.lock"], text=True
-          )
+          lock = subprocess.check_output(["git", "show", "origin/main:Cargo.lock"], text=True)
           for block in lock.split("[[package]]"):
               if re.search(r'\nname = "lopdf"\n', "\n" + block) and 'version = "0.42.0"' in block:
                   match = re.search(r'checksum = "([0-9a-f]{64})"', block)
@@ -51,74 +49,87 @@ jobs:
               raise SystemExit("main does not contain the expected lopdf 0.42.0 lock entry")
           PY
 
-          curl --fail --location --retry 5 \
-            https://crates.io/api/v1/crates/lopdf/0.42.0/download \
-            --output /tmp/lopdf-0.42.0.crate
-          actual="$(sha256sum /tmp/lopdf-0.42.0.crate | awk '{print $1}')"
+          python - <<'PY'
+          from pathlib import Path
+          manifest = Path("crates/print-ready-poster-preflight-certified-path-runtime/Cargo.toml")
+          text = manifest.read_text(encoding="utf-8")
+          old_dep = 'lopdf = { version = "=0.43.0", default-features = false }'
+          new_dep = 'lopdf = { version = "=0.42.0", default-features = false }'
+          if old_dep not in text:
+              raise SystemExit("expected temporary lopdf 0.43 dependency not found")
+          manifest.write_text(text.replace(old_dep, new_dep, 1), encoding="utf-8")
+          PY
+
+          cargo +1.85.0 update -p lopdf --precise 0.42.0
+          cargo +1.85.0 fetch --locked
+
+          crate_file="$(find "$CARGO_HOME/registry/cache" -type f -name 'lopdf-0.42.0.crate' -print -quit)"
+          source_dir="$(find "$CARGO_HOME/registry/src" -type d -name 'lopdf-0.42.0' -print -quit)"
+          test -n "$crate_file" || { echo "Cargo cache did not contain lopdf-0.42.0.crate" >&2; exit 1; }
+          test -n "$source_dir" || { echo "Cargo registry source did not contain lopdf-0.42.0" >&2; exit 1; }
+
+          actual="$(sha256sum "$crate_file" | awk '{print $1}')"
           expected="$(cat /tmp/lopdf.expected.sha256)"
           test "$actual" = "$expected" || {
             echo "lopdf crate checksum mismatch: expected=$expected actual=$actual" >&2
             exit 1
           }
 
-          tar -xzf /tmp/lopdf-0.42.0.crate -C /tmp/lopdf-0.42.0 --strip-components=1
-          mv /tmp/lopdf-0.42.0 vendor/lopdf-0.42.0
+          cp -a "$source_dir" vendor/lopdf-0.42.0
 
           python - <<'PY'
+          import re
           from pathlib import Path
 
           path = Path("vendor/lopdf-0.42.0/src/object.rs")
           source = path.read_text(encoding="utf-8")
-          old = '''                            if let Ok(base_encoding) = dict.get(b"BaseEncoding")
-                                      && let Ok(name) = base_encoding.as_name()
-                                  {
-                                      base = Some(self.base_encoding(doc, name)?);
-                                  }
-          '''
-          # Cargo source formatting uses 4-space indentation. Keep a tolerant exact fallback
-          # because the crates.io tarball is the checksum-verified authority.
-          if old not in source:
-              old = '''                            if let Ok(base_encoding) = dict.get(b"BaseEncoding")
-                                  && let Ok(name) = base_encoding.as_name()
-                              {
-                                  base = Some(self.base_encoding(doc, name)?);
-                              }
-          '''
-          new = '''                            if let Ok(base_encoding) = dict.get(b"BaseEncoding") {
-                                  if let Ok(name) = base_encoding.as_name() {
-                                      base = Some(self.base_encoding(doc, name)?);
-                                  }
-                              }
-          '''
-          if old not in source:
+          pattern = re.compile(
+              r'(?P<indent>[ \t]*)if let Ok\(base_encoding\) = dict\.get\(b"BaseEncoding"\)\s*'
+              r'&& let Ok\(name\) = base_encoding\.as_name\(\)\s*'
+              r'\{\s*base = Some\(self\.base_encoding\(doc, name\)\?\);\s*\}',
+              re.MULTILINE,
+          )
+          match = pattern.search(source)
+          if not match:
               raise SystemExit("expected lopdf 0.42.0 BaseEncoding let-chain not found")
-          patched = source.replace(old, new, 1)
-          if patched.count("&& let") != source.count("&& let") - 1:
-              raise SystemExit("unexpected let-chain patch count")
+          indent = match.group("indent")
+          replacement = (
+              f'{indent}if let Ok(base_encoding) = dict.get(b"BaseEncoding") {{\n'
+              f'{indent}    if let Ok(name) = base_encoding.as_name() {{\n'
+              f'{indent}        base = Some(self.base_encoding(doc, name)?);\n'
+              f'{indent}    }}\n'
+              f'{indent}}}'
+          )
+          patched, count = pattern.subn(replacement, source, count=1)
+          if count != 1:
+              raise SystemExit(f"expected exactly one BaseEncoding syntax patch, got {count}")
           path.write_text(patched, encoding="utf-8")
 
           manifest = Path("crates/print-ready-poster-preflight-certified-path-runtime/Cargo.toml")
           text = manifest.read_text(encoding="utf-8")
-          old_dep = 'lopdf = { version = "=0.43.0", default-features = false }'
-          new_dep = 'lopdf = { path = "../../vendor/lopdf-0.42.0", default-features = false }'
-          if old_dep not in text:
-              raise SystemExit("expected temporary lopdf 0.43 dependency not found")
-          manifest.write_text(text.replace(old_dep, new_dep, 1), encoding="utf-8")
+          registry_dep = 'lopdf = { version = "=0.42.0", default-features = false }'
+          path_dep = 'lopdf = { path = "../../vendor/lopdf-0.42.0", default-features = false }'
+          if registry_dep not in text:
+              raise SystemExit("expected temporary registry lopdf 0.42 dependency not found")
+          manifest.write_text(text.replace(registry_dep, path_dep, 1), encoding="utf-8")
 
           vendor_manifest = Path("vendor/lopdf-0.42.0/Cargo.toml")
           vendor_text = vendor_manifest.read_text(encoding="utf-8")
           if "\n[workspace]\n" not in vendor_text:
-              vendor_manifest.write_text(vendor_text.rstrip() + "\n\n# Keep this vendored dependency outside the Ergaxiom workspace.\n[workspace]\n", encoding="utf-8")
+              vendor_manifest.write_text(
+                  vendor_text.rstrip()
+                  + "\n\n# Keep this vendored dependency outside the Ergaxiom workspace.\n[workspace]\n",
+                  encoding="utf-8",
+              )
 
-          note = Path("vendor/lopdf-0.42.0/ERGAXIOM_PATCH.md")
-          note.write_text(
+          Path("vendor/lopdf-0.42.0/ERGAXIOM_PATCH.md").write_text(
               "# Ergaxiom lopdf 0.42.0 MSRV patch\n\n"
-              "Source: crates.io `lopdf` 0.42.0, checksum verified against Ergaxiom main's Cargo.lock.\n\n"
-              "Reason: upstream 0.42.0 contains the RUSTSEC-2026-0187 nesting-depth fix and declares Rust 1.85, "
-              "but one BaseEncoding `let`-chain requires Rust 1.88 syntax. Ergaxiom rewrites only that expression "
-              "as equivalent nested `if let` statements. No parser depth/security logic is changed.\n\n"
-              "Default features remain disabled from the Ergaxiom dependency edge so optional `time`/chrono/jiff/rayon "
-              "dependencies are not pulled into the print-preflight runtime.\n",
+              "Source: crates.io `lopdf` 0.42.0 fetched through Cargo and SHA-256 verified against Ergaxiom `main`'s Cargo.lock.\n\n"
+              "Security: this is the 0.42.0 release containing the bounded PDF array/dictionary nesting fix for RUSTSEC-2026-0187. "
+              "The parser depth logic is retained unchanged.\n\n"
+              "Compatibility patch: upstream declares Rust 1.85 but one `BaseEncoding` `let`-chain uses syntax unavailable on Rust 1.85. "
+              "Ergaxiom rewrites exactly that expression to semantically equivalent nested `if let` statements.\n\n"
+              "Dependency surface: Ergaxiom disables lopdf default features, so optional `time`, `chrono`, `jiff`, and `rayon` are not pulled into this runtime.\n",
               encoding="utf-8",
           )
           PY
