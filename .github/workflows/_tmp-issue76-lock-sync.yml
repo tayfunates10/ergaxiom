@@ -53,13 +53,12 @@ jobs:
             exit 1
           fi
 
-      - name: Verify Issue 76 runtimes on Rust 1.85
+      - name: Verify platform-independent Issue 76 runtimes on Rust 1.85
         shell: bash
         run: |
           set -euo pipefail
           cargo +1.85.0 check --locked -p ergaxiom-desktop-user-job-runtime --all-targets
           cargo +1.85.0 check --locked -p ergaxiom-print-ready-poster-preflight-certified-path-runtime --all-targets
-          cargo +1.85.0 check --locked --manifest-path apps/desktop/src-tauri/Cargo.toml --all-targets
 
       - name: Commit synchronized lockfiles
         shell: bash
