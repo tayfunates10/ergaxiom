@@ -1,4 +1,4 @@
-name: Temporary secure lopdf Rust 1.85 lock repair
+name: Temporary secure lopdf Rust 1.85 vendor repair
 
 on:
   pull_request:
@@ -11,28 +11,132 @@ permissions:
   contents: write
 
 jobs:
-  repair-lock:
+  repair-vendor:
     if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v5
         with:
           ref: fix/rust-1-85-lopdf-compat
+          fetch-depth: 1
 
       - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: "1.85.0"
           components: rustfmt, clippy
 
-      - name: Resolve patched minimal lopdf graph
+      - name: Vendor exact security-patched lopdf 0.42.0
         shell: bash
         run: |
           set -euo pipefail
-          cargo +1.85.0 update -p lopdf --precise 0.43.0
-          grep -A3 '^name = "lopdf"$' Cargo.lock
-          if grep -q '^name = "time"$' Cargo.lock; then
-            echo "vulnerable/unneeded time dependency remains in the resolved root graph" >&2
-            cargo +1.85.0 tree -i time || true
+          git fetch origin main --depth=1
+          rm -rf vendor/lopdf-0.42.0 /tmp/lopdf-0.42.0 /tmp/lopdf-0.42.0.crate
+          mkdir -p vendor /tmp/lopdf-0.42.0
+
+          python - <<'PY' > /tmp/lopdf.expected.sha256
+          import re
+          import subprocess
+
+          lock = subprocess.check_output(
+              ["git", "show", "origin/main:Cargo.lock"], text=True
+          )
+          for block in lock.split("[[package]]"):
+              if re.search(r'\nname = "lopdf"\n', "\n" + block) and 'version = "0.42.0"' in block:
+                  match = re.search(r'checksum = "([0-9a-f]{64})"', block)
+                  if not match:
+                      raise SystemExit("main lopdf 0.42.0 lock entry has no checksum")
+                  print(match.group(1))
+                  break
+          else:
+              raise SystemExit("main does not contain the expected lopdf 0.42.0 lock entry")
+          PY
+
+          curl --fail --location --retry 5 \
+            https://crates.io/api/v1/crates/lopdf/0.42.0/download \
+            --output /tmp/lopdf-0.42.0.crate
+          actual="$(sha256sum /tmp/lopdf-0.42.0.crate | awk '{print $1}')"
+          expected="$(cat /tmp/lopdf.expected.sha256)"
+          test "$actual" = "$expected" || {
+            echo "lopdf crate checksum mismatch: expected=$expected actual=$actual" >&2
+            exit 1
+          }
+
+          tar -xzf /tmp/lopdf-0.42.0.crate -C /tmp/lopdf-0.42.0 --strip-components=1
+          mv /tmp/lopdf-0.42.0 vendor/lopdf-0.42.0
+
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path("vendor/lopdf-0.42.0/src/object.rs")
+          source = path.read_text(encoding="utf-8")
+          old = '''                            if let Ok(base_encoding) = dict.get(b"BaseEncoding")
+                                      && let Ok(name) = base_encoding.as_name()
+                                  {
+                                      base = Some(self.base_encoding(doc, name)?);
+                                  }
+          '''
+          # Cargo source formatting uses 4-space indentation. Keep a tolerant exact fallback
+          # because the crates.io tarball is the checksum-verified authority.
+          if old not in source:
+              old = '''                            if let Ok(base_encoding) = dict.get(b"BaseEncoding")
+                                  && let Ok(name) = base_encoding.as_name()
+                              {
+                                  base = Some(self.base_encoding(doc, name)?);
+                              }
+          '''
+          new = '''                            if let Ok(base_encoding) = dict.get(b"BaseEncoding") {
+                                  if let Ok(name) = base_encoding.as_name() {
+                                      base = Some(self.base_encoding(doc, name)?);
+                                  }
+                              }
+          '''
+          if old not in source:
+              raise SystemExit("expected lopdf 0.42.0 BaseEncoding let-chain not found")
+          patched = source.replace(old, new, 1)
+          if patched.count("&& let") != source.count("&& let") - 1:
+              raise SystemExit("unexpected let-chain patch count")
+          path.write_text(patched, encoding="utf-8")
+
+          manifest = Path("crates/print-ready-poster-preflight-certified-path-runtime/Cargo.toml")
+          text = manifest.read_text(encoding="utf-8")
+          old_dep = 'lopdf = { version = "=0.43.0", default-features = false }'
+          new_dep = 'lopdf = { path = "../../vendor/lopdf-0.42.0", default-features = false }'
+          if old_dep not in text:
+              raise SystemExit("expected temporary lopdf 0.43 dependency not found")
+          manifest.write_text(text.replace(old_dep, new_dep, 1), encoding="utf-8")
+
+          vendor_manifest = Path("vendor/lopdf-0.42.0/Cargo.toml")
+          vendor_text = vendor_manifest.read_text(encoding="utf-8")
+          if "\n[workspace]\n" not in vendor_text:
+              vendor_manifest.write_text(vendor_text.rstrip() + "\n\n# Keep this vendored dependency outside the Ergaxiom workspace.\n[workspace]\n", encoding="utf-8")
+
+          note = Path("vendor/lopdf-0.42.0/ERGAXIOM_PATCH.md")
+          note.write_text(
+              "# Ergaxiom lopdf 0.42.0 MSRV patch\n\n"
+              "Source: crates.io `lopdf` 0.42.0, checksum verified against Ergaxiom main's Cargo.lock.\n\n"
+              "Reason: upstream 0.42.0 contains the RUSTSEC-2026-0187 nesting-depth fix and declares Rust 1.85, "
+              "but one BaseEncoding `let`-chain requires Rust 1.88 syntax. Ergaxiom rewrites only that expression "
+              "as equivalent nested `if let` statements. No parser depth/security logic is changed.\n\n"
+              "Default features remain disabled from the Ergaxiom dependency edge so optional `time`/chrono/jiff/rayon "
+              "dependencies are not pulled into the print-preflight runtime.\n",
+              encoding="utf-8",
+          )
+          PY
+
+          grep -q 'MAX_NESTING_DEPTH' vendor/lopdf-0.42.0/src/parser/mod.rs
+          grep -q 'if depth == 0' vendor/lopdf-0.42.0/src/parser/mod.rs
+          grep -q 'rust-version = "1.85"' vendor/lopdf-0.42.0/Cargo.toml
+
+      - name: Resolve minimal patched lock graph
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo +1.85.0 metadata --format-version 1 > /dev/null
+          cargo +1.85.0 tree --locked -p ergaxiom-print-ready-poster-preflight-certified-path-runtime > /tmp/print-tree.txt
+          grep 'lopdf v0.42.0' /tmp/print-tree.txt
+          if grep -Eq '(^|[[:space:]├└│])time v0\.3\.' /tmp/print-tree.txt; then
+            cat /tmp/print-tree.txt
+            echo "optional time dependency leaked into the print-preflight graph" >&2
             exit 1
           fi
 
@@ -45,14 +149,16 @@ jobs:
       - name: Deterministic print-preflight tests on Rust 1.85
         run: cargo +1.85.0 test --locked -p ergaxiom-print-ready-poster-preflight-certified-path-runtime
 
-      - name: Commit verified secure lock
+      - name: Commit verified vendor and lock
         shell: bash
         run: |
           set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add Cargo.lock
+          git add Cargo.lock \
+            crates/print-ready-poster-preflight-certified-path-runtime/Cargo.toml \
+            vendor/lopdf-0.42.0
           git diff --cached --check
-          git diff --cached --quiet && { echo "Cargo.lock did not change"; exit 1; }
-          git commit -m "fix: lock patched Rust 1.85 print PDF graph"
+          git diff --cached --quiet && { echo "verified vendor repair produced no changes"; exit 1; }
+          git commit -m "fix: vendor security-patched lopdf 0.42 for Rust 1.85"
           git push origin HEAD:fix/rust-1-85-lopdf-compat
