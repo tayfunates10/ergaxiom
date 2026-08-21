@@ -1,0 +1,15 @@
+{
+  "bundle": {
+    "targets": ["nsis"],
+    "resources": {
+      "release-resources/ergaxiom-windows-production-signer-service.exe": "bin/ergaxiom-windows-production-signer-service.exe"
+    },
+    "windows": {
+      "allowDowngrades": false,
+      "nsis": {
+        "installMode": "perMachine",
+        "installerHooks": "./windows/ci-test-installer-hooks.nsh"
+      }
+    }
+  }
+}
