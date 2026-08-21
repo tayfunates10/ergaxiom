@@ -61,6 +61,7 @@ members = [
   "crates/windows-sys-registry-shim",
   "crates/windows-uia-client-runtime"
 ]
+exclude = ["vendor/lopdf-0.42.0"]
 resolver = "2"
 
 [workspace.package]
