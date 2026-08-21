@@ -113,14 +113,14 @@ jobs:
               raise SystemExit("expected temporary registry lopdf 0.42 dependency not found")
           manifest.write_text(text.replace(registry_dep, path_dep, 1), encoding="utf-8")
 
-          vendor_manifest = Path("vendor/lopdf-0.42.0/Cargo.toml")
-          vendor_text = vendor_manifest.read_text(encoding="utf-8")
-          if "\n[workspace]\n" not in vendor_text:
-              vendor_manifest.write_text(
-                  vendor_text.rstrip()
-                  + "\n\n# Keep this vendored dependency outside the Ergaxiom workspace.\n[workspace]\n",
-                  encoding="utf-8",
-              )
+          root_manifest = Path("Cargo.toml")
+          root_text = root_manifest.read_text(encoding="utf-8")
+          exclude_line = 'exclude = ["vendor/lopdf-0.42.0"]\n'
+          if exclude_line not in root_text:
+              marker = ']\nresolver = "2"\n'
+              if marker not in root_text:
+                  raise SystemExit("root workspace resolver marker not found")
+              root_manifest.write_text(root_text.replace(marker, ']\n' + exclude_line + 'resolver = "2"\n', 1), encoding="utf-8")
 
           Path("vendor/lopdf-0.42.0/ERGAXIOM_PATCH.md").write_text(
               "# Ergaxiom lopdf 0.42.0 MSRV patch\n\n"
@@ -166,7 +166,7 @@ jobs:
           set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add Cargo.lock \
+          git add Cargo.toml Cargo.lock \
             crates/print-ready-poster-preflight-certified-path-runtime/Cargo.toml \
             vendor/lopdf-0.42.0
           git diff --cached --check
