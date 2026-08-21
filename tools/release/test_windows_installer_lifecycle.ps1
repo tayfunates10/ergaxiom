@@ -14,6 +14,7 @@ $policy = Get-Content (Resolve-Path $PolicyPath) -Raw | ConvertFrom-Json -Depth 
 if ($policy.policy_id -ne 'ergaxiom.windows-production-release' -or $policy.canonical_installer -ne 'nsis') { throw 'POLICY_REJECTED' }
 if (
   $policy.packaging.install_mode -ne 'perMachine' -or
+  $policy.packaging.updater_install_mode -ne 'quiet' -or
   $policy.packaging.allow_downgrades -ne $false -or
   $policy.packaging.install_root -ne '%ProgramFiles%\Ergaxiom' -or
   $policy.packaging.production_state_root -ne '%ProgramData%\Ergaxiom' -or
@@ -47,10 +48,10 @@ function RunInstaller([string]$path, [bool]$expectSuccess, [string[]]$arguments 
   return $exitCode
 }
 function RunUpdater([string]$path, [bool]$expectSuccess) {
-  # Match Tauri's Windows updater contract: passive UI plus explicit update mode.
-  # Do not use /S here; silent install is retained below for clean-install and
-  # downgrade-attack coverage, while /UPDATE exercises the real update path.
-  return RunInstaller $path $expectSuccess @('/P', '/UPDATE')
+  # The release policy pins Tauri's quiet Windows updater contract. Tauri maps
+  # quiet NSIS updates to /S plus /UPDATE, keeping the lifecycle fully unattended
+  # while still exercising the real updater-specific install path.
+  return RunInstaller $path $expectSuccess @('/S', '/UPDATE')
 }
 function Entries {
   $result = @()
@@ -202,6 +203,7 @@ $evidence = [ordered]@{
   previous_installer_name = [IO.Path]::GetFileName($previous)
   previous_installer_sha256 = (Get-FileHash $previous -Algorithm SHA256).Hash.ToLowerInvariant()
   observed_versions = [ordered]@{ previous = '0.0.9'; current = '0.1.0' }
+  updater_install_mode = [string]$policy.packaging.updater_install_mode
   attack_observations = [ordered]@{ downgrade_exit_code = $downgradeExit; interrupted_upgrade_exit_code = $interruptExit }
   phases = [ordered]@{
     clean_install = $clean
