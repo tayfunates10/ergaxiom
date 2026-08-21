@@ -7,6 +7,7 @@
   "packaging": {
     "allow_downgrades": false,
     "install_mode": "perMachine",
+    "updater_install_mode": "quiet",
     "install_root": "%ProgramFiles%\\Ergaxiom",
     "interrupted_upgrade_recovery": "rerun_same_or_newer_signed_installer",
     "production_state_root": "%ProgramData%\\Ergaxiom",
