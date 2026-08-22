@@ -12,10 +12,17 @@
 !macroend
 
 !macro NSIS_HOOK_POSTINSTALL
-  DetailPrint "TEST_ONLY: hosted CI installer completed without production service installation."
+  ; Persist the version that actually reached Tauri's post-install boundary.
+  ; This marker is test-only diagnostic evidence and is removed by the test
+  ; uninstaller hook; production release config never loads this file.
+  FileOpen $R8 "$INSTDIR\ci-installer-version.txt" w
+  FileWrite $R8 "${VERSION}"
+  FileClose $R8
+  DetailPrint "TEST_ONLY: hosted CI installer ${VERSION} reached post-install."
 !macroend
 
 !macro NSIS_HOOK_PREUNINSTALL
+  Delete "$INSTDIR\ci-installer-version.txt"
   DetailPrint "TEST_ONLY: hosted CI uninstall."
 !macroend
 
