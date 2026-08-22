@@ -2,21 +2,49 @@
 ; It never installs or validates the production LocalSystem signer service and
 ; therefore can never be accepted as production lifecycle evidence.
 ;
+; Tauri's perMachine SetContext uses SetShellVarContext all, so $LOCALAPPDATA
+; resolves to the all-users local application-data directory (%ProgramData%).
 ; The process marker binds the lifecycle harness to the NSIS process that
-; actually reaches install/uninstall execution. This matters for elevated NSIS
-; launches where the process that performs the work can outlive or detach from
-; the launcher observed by Start-Process -Wait.
+; actually reaches install/uninstall execution. Marker creation itself is
+; fail-closed so the harness cannot silently fall back to launcher timing.
 
 !macro ERGA_CI_RECORD_INSTALLER_PROCESS OPERATION
-  Push $R7
+  Push $7
   Push $R8
-  CreateDirectory "$COMMONAPPDATA\Ergaxiom"
-  System::Call 'kernel32::GetCurrentProcessId() i .R7'
-  FileOpen $R8 "$COMMONAPPDATA\Ergaxiom\ci-installer-process.txt" w
-  FileWrite $R8 "${OPERATION}|${VERSION}|$R7"
+
+  ClearErrors
+  CreateDirectory "$LOCALAPPDATA\Ergaxiom"
+  IfErrors erga_ci_marker_dir_failed_${OPERATION}
+
+  System::Call 'kernel32::GetCurrentProcessId() i.r7'
+  IntCmp $7 0 erga_ci_marker_pid_failed_${OPERATION} 0 0
+
+  ClearErrors
+  FileOpen $R8 "$LOCALAPPDATA\Ergaxiom\ci-installer-process.txt" w
+  IfErrors erga_ci_marker_file_failed_${OPERATION}
+  FileWrite $R8 "${OPERATION}|${VERSION}|$7"
   FileClose $R8
-  Pop $R8
-  Pop $R7
+  IfErrors erga_ci_marker_file_failed_${OPERATION}
+  Goto erga_ci_marker_done_${OPERATION}
+
+  erga_ci_marker_dir_failed_${OPERATION}:
+    DetailPrint "TEST_ONLY: failed to create installer process marker directory."
+    SetErrorLevel 87
+    Quit
+
+  erga_ci_marker_pid_failed_${OPERATION}:
+    DetailPrint "TEST_ONLY: failed to capture installer process id."
+    SetErrorLevel 88
+    Quit
+
+  erga_ci_marker_file_failed_${OPERATION}:
+    DetailPrint "TEST_ONLY: failed to write installer process marker."
+    SetErrorLevel 89
+    Quit
+
+  erga_ci_marker_done_${OPERATION}:
+    Pop $R8
+    Pop $7
 !macroend
 
 !macro NSIS_HOOK_PREINSTALL
