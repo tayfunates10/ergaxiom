@@ -7,13 +7,12 @@
 ; section; POST hooks record completion for the same invocation/PID.
 ;
 ; Elevated NSIS can reparent work outside the launcher's observable process
-; tree. To make lifecycle phase boundaries deterministic, every hook-owning
-; installer/uninstaller process also owns one machine-global test-only mutex for
-; its full process lifetime. The handle is intentionally never released by the
-; script; Windows releases it only when that NSIS process terminates. The
-; harness requires the mutex to disappear before advancing to the next phase.
-; A second lifecycle process reaching PRE while the mutex already exists fails
-; closed instead of overlapping an older installer.
+; tree. Every hook-owning installer/uninstaller therefore serializes entry to
+; the real lifecycle section through one machine-global test-only mutex. The
+; handle is intentionally kept for the full NSIS process lifetime; Windows
+; releases it when that process terminates. If a delayed older installer still
+; owns the mutex, the next lifecycle process waits for ownership instead of
+; racing registry/files. Timeout/failure remains fail-closed.
 ;
 ; Tauri's perMachine SetContext uses SetShellVarContext all, so $LOCALAPPDATA
 ; resolves to the all-users local application-data directory (%ProgramData%).
@@ -29,15 +28,26 @@ Var ErgaCiLifecycleMutexHandle
   System::Call 'kernel32::CreateMutexW(p 0, i 1, w "Global\Ergaxiom.CI.InstallerLifecycle") p .r5'
   System::Call 'kernel32::GetLastError() i .r6'
   IntCmp $5 0 erga_ci_mutex_create_failed_${INSTANCE} 0 0
-  IntCmp $6 183 0 erga_ci_mutex_overlap_${INSTANCE} erga_ci_mutex_overlap_${INSTANCE}
-  StrCpy $ErgaCiLifecycleMutexHandle $5
-  Goto erga_ci_mutex_done_${INSTANCE}
 
-  erga_ci_mutex_overlap_${INSTANCE}:
+  ; ERROR_ALREADY_EXISTS (183) means another installer lifecycle process owns
+  ; the named mutex. Initial ownership is ignored for an existing mutex, so
+  ; explicitly wait for transfer. WAIT_OBJECT_0 (0) and WAIT_ABANDONED (128)
+  ; both mean this process now owns the mutex. Anything else fails closed.
+  IntCmp $6 183 0 erga_ci_mutex_wait_${INSTANCE} erga_ci_mutex_wait_${INSTANCE}
+  Goto erga_ci_mutex_owned_${INSTANCE}
+
+  erga_ci_mutex_wait_${INSTANCE}:
+    System::Call 'kernel32::WaitForSingleObject(p r5, i 180000) i .r6'
+    IntCmp $6 0 erga_ci_mutex_owned_${INSTANCE} 0 0
+    IntCmp $6 128 erga_ci_mutex_owned_${INSTANCE} 0 0
     System::Call 'kernel32::CloseHandle(p r5)'
-    DetailPrint "TEST_ONLY: overlapping installer lifecycle process rejected."
+    DetailPrint "TEST_ONLY: installer lifecycle mutex wait failed or timed out."
     SetErrorLevel 91
     Quit
+
+  erga_ci_mutex_owned_${INSTANCE}:
+    StrCpy $ErgaCiLifecycleMutexHandle $5
+    Goto erga_ci_mutex_done_${INSTANCE}
 
   erga_ci_mutex_create_failed_${INSTANCE}:
     DetailPrint "TEST_ONLY: failed to create installer lifecycle mutex."
