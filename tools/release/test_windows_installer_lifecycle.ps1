@@ -98,9 +98,10 @@ function RunProcess([string]$path, [string[]]$arguments, [bool]$requireJobMember
   # worker to that job; descendants stay members at the kernel boundary even
   # after reparenting. Job membership is proven from TotalProcesses because a
   # short-lived worker can join and exit between CIM polling snapshots; that
-  # accounting value remains non-zero after exit. We still require
-  # ActiveProcesses == 0 before a lifecycle phase may advance. Parent-PID
-  # tracking remains a secondary diagnostic/fallback for the launcher tree.
+  # accounting value remains non-zero after exit. Once membership is proven,
+  # ActiveProcesses == 0 is the authoritative quiescence gate for hook-backed
+  # lifecycle operations. Parent-PID tracking remains diagnostic there, and is
+  # still the required fallback gate for calls that do not use the NSIS job.
   $jobHandle = [IntPtr]::Zero
   $jobName = $null
   if ($requireJobMembership) {
@@ -156,7 +157,14 @@ function RunProcess([string]$path, [string[]]$arguments, [bool]$requireJobMember
         if ($jobTotal -gt 0) { $jobMembershipObserved = $true }
       }
 
-      if ($null -ne $rootExitCode -and $activeTracked.Count -eq 0 -and $jobMembershipObserved -and $jobActive -eq 0) {
+      $quiescent = $false
+      if ($requireJobMembership) {
+        $quiescent = $null -ne $rootExitCode -and $jobMembershipObserved -and $jobActive -eq 0
+      } else {
+        $quiescent = $null -ne $rootExitCode -and $activeTracked.Count -eq 0
+      }
+
+      if ($quiescent) {
         if ($null -eq $stableSinceMs) { $stableSinceMs = $stopwatch.ElapsedMilliseconds }
         if (($stopwatch.ElapsedMilliseconds - $stableSinceMs) -ge $processTreeStableWindowMs) {
           return $rootExitCode
