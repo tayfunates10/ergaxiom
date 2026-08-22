@@ -3,22 +3,63 @@
 ; therefore can never be accepted as production lifecycle evidence.
 ;
 ; Every lifecycle invocation receives ERGA_CI_INVOCATION_ID from the harness.
-; PRE hooks record the exact NSIS PID that entered the real install/uninstall
-; section; POST hooks record completion for the same invocation/PID.
+; The harness also creates a uniquely named Windows Job Object and passes its
+; name through ERGA_CI_JOB_NAME. The hook-owning NSIS worker joins that job
+; before lifecycle work starts. Windows keeps descendants in the same kernel
+; job even if they are later reparented, so the harness can wait for the whole
+; invocation to become process-empty without relying on ParentProcessId races.
 ;
-; Elevated NSIS can reparent work outside the launcher's observable process
-; tree. Every hook-owning installer/uninstaller therefore serializes entry to
-; the real lifecycle section through one machine-global test-only mutex. The
-; handle is intentionally kept for the full NSIS process lifetime; Windows
-; releases it when that process terminates. If a delayed older installer still
-; owns the mutex, the next lifecycle process waits for ownership instead of
-; racing registry/files. Timeout/failure remains fail-closed.
+; A machine-global test-only mutex remains as an additional serialization
+; layer. Neither mechanism exists in the production installer configuration.
 ;
 ; Tauri's perMachine SetContext uses SetShellVarContext all, so $LOCALAPPDATA
 ; resolves to the all-users local application-data directory (%ProgramData%).
 ; Marker I/O is fail-closed. INSTANCE only namespaces generated NSIS labels.
 
 Var ErgaCiLifecycleMutexHandle
+
+!macro ERGA_CI_JOIN_INVOCATION_JOB INSTANCE
+  Push $6
+  Push $7
+  Push $8
+  Push $9
+
+  ReadEnvStr $9 "ERGA_CI_JOB_NAME"
+  StrLen $6 $9
+  IntCmp $6 1 erga_ci_job_name_failed_${INSTANCE} 0 0
+
+  ; JOB_OBJECT_ASSIGN_PROCESS = 0x0001. The harness owns the named job handle;
+  ; this worker only opens it long enough to join itself. Descendants then stay
+  ; associated with that job at the kernel boundary even after reparenting.
+  System::Call 'kernel32::OpenJobObjectW(i 0x0001, i 0, w r9) p .r8'
+  IntCmp $8 0 erga_ci_job_open_failed_${INSTANCE} 0 0
+  System::Call 'kernel32::GetCurrentProcess() p .r7'
+  System::Call 'kernel32::AssignProcessToJobObject(p r8, p r7) i .r6'
+  System::Call 'kernel32::CloseHandle(p r8)'
+  IntCmp $6 0 erga_ci_job_assign_failed_${INSTANCE} 0 0
+  Goto erga_ci_job_joined_${INSTANCE}
+
+  erga_ci_job_name_failed_${INSTANCE}:
+    DetailPrint "TEST_ONLY: installer invocation job name missing."
+    SetErrorLevel 93
+    Quit
+
+  erga_ci_job_open_failed_${INSTANCE}:
+    DetailPrint "TEST_ONLY: failed to open installer invocation job."
+    SetErrorLevel 94
+    Quit
+
+  erga_ci_job_assign_failed_${INSTANCE}:
+    DetailPrint "TEST_ONLY: failed to assign installer process to invocation job."
+    SetErrorLevel 95
+    Quit
+
+  erga_ci_job_joined_${INSTANCE}:
+    Pop $9
+    Pop $8
+    Pop $7
+    Pop $6
+!macroend
 
 !macro ERGA_CI_ACQUIRE_LIFECYCLE_MUTEX INSTANCE
   Push $5
@@ -112,6 +153,7 @@ Var ErgaCiLifecycleMutexHandle
 !macroend
 
 !macro NSIS_HOOK_PREINSTALL
+  !insertmacro ERGA_CI_JOIN_INVOCATION_JOB install_job
   !insertmacro ERGA_CI_ACQUIRE_LIFECYCLE_MUTEX install
   !insertmacro ERGA_CI_WRITE_PROCESS_MARKER active install install_active
   ReadEnvStr $R9 "ERGA_CI_INTERRUPT"
@@ -134,6 +176,7 @@ Var ErgaCiLifecycleMutexHandle
 !macroend
 
 !macro NSIS_HOOK_PREUNINSTALL
+  !insertmacro ERGA_CI_JOIN_INVOCATION_JOB uninstall_job
   !insertmacro ERGA_CI_ACQUIRE_LIFECYCLE_MUTEX uninstall
   !insertmacro ERGA_CI_WRITE_PROCESS_MARKER active uninstall uninstall_active
   Delete "$INSTDIR\ci-installer-version.txt"
