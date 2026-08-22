@@ -2,25 +2,27 @@
 ; It never installs or validates the production LocalSystem signer service and
 ; therefore can never be accepted as production lifecycle evidence.
 ;
+; Every lifecycle invocation receives ERGA_CI_INVOCATION_ID from the harness.
+; PRE hooks record the exact NSIS PID that entered the real install/uninstall
+; section; POST hooks record completion for the same invocation/PID. The
+; harness requires both records (except the intentional interrupted-upgrade
+; failure) and waits for that exact process to exit before advancing. This
+; prevents a detached/stale installer from a previous phase from being mistaken
+; for completion of the current phase.
+;
 ; Tauri's perMachine SetContext uses SetShellVarContext all, so $LOCALAPPDATA
 ; resolves to the all-users local application-data directory (%ProgramData%).
-; Successful install/uninstall process markers are written only from the POST
-; hooks. This binds the lifecycle harness to the NSIS process that has actually
-; completed the section's file/registry mutations, rather than to an outer or
-; elevated launcher that can exit while an inner NSIS process is still active.
-; The deterministic interrupted-upgrade path is the sole PRE-hook exception:
-; it records the process immediately before the intentional fail-closed Quit.
-; Marker creation itself is fail-closed so the harness cannot silently fall
-; back to launcher timing.
-;
-; INSTANCE is used only to namespace generated NSIS labels. The install marker
-; macro is expanded from both PREINSTALL (interrupt injection) and POSTINSTALL;
-; without a per-call label namespace makensis rejects the generated script for
-; duplicate labels before any lifecycle test can execute.
+; Marker I/O is fail-closed. INSTANCE only namespaces generated NSIS labels.
 
-!macro ERGA_CI_RECORD_INSTALLER_PROCESS OPERATION INSTANCE
+!macro ERGA_CI_WRITE_PROCESS_MARKER PHASE OPERATION INSTANCE
+  Push $6
   Push $7
   Push $R8
+  Push $R9
+
+  ReadEnvStr $R9 "ERGA_CI_INVOCATION_ID"
+  StrLen $6 $R9
+  IntCmp $6 32 0 erga_ci_marker_invocation_failed_${INSTANCE} erga_ci_marker_invocation_failed_${INSTANCE}
 
   ClearErrors
   CreateDirectory "$LOCALAPPDATA\Ergaxiom"
@@ -30,12 +32,17 @@
   IntCmp $7 0 erga_ci_marker_pid_failed_${INSTANCE} 0 0
 
   ClearErrors
-  FileOpen $R8 "$LOCALAPPDATA\Ergaxiom\ci-installer-process.txt" w
+  FileOpen $R8 "$LOCALAPPDATA\Ergaxiom\ci-installer-${PHASE}.txt" w
   IfErrors erga_ci_marker_file_failed_${INSTANCE}
-  FileWrite $R8 "${OPERATION}|${VERSION}|$7"
+  FileWrite $R8 "$R9|${OPERATION}|${VERSION}|$7"
   FileClose $R8
   IfErrors erga_ci_marker_file_failed_${INSTANCE}
   Goto erga_ci_marker_done_${INSTANCE}
+
+  erga_ci_marker_invocation_failed_${INSTANCE}:
+    DetailPrint "TEST_ONLY: installer invocation id missing or malformed."
+    SetErrorLevel 90
+    Quit
 
   erga_ci_marker_dir_failed_${INSTANCE}:
     DetailPrint "TEST_ONLY: failed to create installer process marker directory."
@@ -53,14 +60,16 @@
     Quit
 
   erga_ci_marker_done_${INSTANCE}:
+    Pop $R9
     Pop $R8
     Pop $7
+    Pop $6
 !macroend
 
 !macro NSIS_HOOK_PREINSTALL
+  !insertmacro ERGA_CI_WRITE_PROCESS_MARKER active install install_active
   ReadEnvStr $R9 "ERGA_CI_INTERRUPT"
   StrCmp $R9 "1" 0 erga_ci_continue
-    !insertmacro ERGA_CI_RECORD_INSTALLER_PROCESS install install_interrupt
     DetailPrint "TEST_ONLY: deterministic interrupted-upgrade injection."
     SetErrorLevel 86
     Quit
@@ -75,21 +84,16 @@
   FileWrite $R8 "${VERSION}"
   FileClose $R8
   DetailPrint "TEST_ONLY: hosted CI installer ${VERSION} reached post-install."
-
-  ; Record only after all install-section mutations above have completed. The
-  ; lifecycle harness then waits for this exact finishing NSIS process to exit.
-  !insertmacro ERGA_CI_RECORD_INSTALLER_PROCESS install install_complete
+  !insertmacro ERGA_CI_WRITE_PROCESS_MARKER complete install install_complete
 !macroend
 
 !macro NSIS_HOOK_PREUNINSTALL
+  !insertmacro ERGA_CI_WRITE_PROCESS_MARKER active uninstall uninstall_active
   Delete "$INSTDIR\ci-installer-version.txt"
   DetailPrint "TEST_ONLY: hosted CI uninstall."
 !macroend
 
 !macro NSIS_HOOK_POSTUNINSTALL
   DetailPrint "TEST_ONLY: hosted CI uninstall completed."
-
-  ; As with install, bind the harness to the process that reached the end of the
-  ; real uninstall section instead of an earlier launcher/elevation boundary.
-  !insertmacro ERGA_CI_RECORD_INSTALLER_PROCESS uninstall uninstall_complete
+  !insertmacro ERGA_CI_WRITE_PROCESS_MARKER complete uninstall uninstall_complete
 !macroend
