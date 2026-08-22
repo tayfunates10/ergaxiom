@@ -77,14 +77,18 @@ public static class ErgaCiJobNative
 '@
 }
 
-function GetJobActiveProcesses([IntPtr]$jobHandle) {
+function GetJobAccounting([IntPtr]$jobHandle) {
   $info = [ErgaCiJobNative+JOBOBJECT_BASIC_ACCOUNTING_INFORMATION]::new()
   $size = [uint32][Runtime.InteropServices.Marshal]::SizeOf($info)
   if (-not [ErgaCiJobNative]::QueryInformationJobObject($jobHandle, 1, [ref]$info, $size, [IntPtr]::Zero)) {
     $errorCode = [Runtime.InteropServices.Marshal]::GetLastWin32Error()
     throw "INSTALLER_JOB_QUERY_FAILED: win32=$errorCode"
   }
-  return [int]$info.ActiveProcesses
+  return [ordered]@{
+    total_processes = [int]$info.TotalProcesses
+    active_processes = [int]$info.ActiveProcesses
+    terminated_processes = [int]$info.TotalTerminatedProcesses
+  }
 }
 
 function RunProcess([string]$path, [string[]]$arguments, [bool]$requireJobMembership) {
@@ -92,9 +96,11 @@ function RunProcess([string]$path, [string[]]$arguments, [bool]$requireJobMember
   # before the next WMI snapshot. For hook-backed lifecycle operations create a
   # unique Windows Job Object before launch. The NSIS PRE hook joins the real
   # worker to that job; descendants stay members at the kernel boundary even
-  # after reparenting. We require observed membership and then zero active job
-  # processes before a lifecycle phase may advance. Parent-PID tracking remains
-  # as a secondary diagnostic/fallback for the launcher tree.
+  # after reparenting. Job membership is proven from TotalProcesses because a
+  # short-lived worker can join and exit between CIM polling snapshots; that
+  # accounting value remains non-zero after exit. We still require
+  # ActiveProcesses == 0 before a lifecycle phase may advance. Parent-PID
+  # tracking remains a secondary diagnostic/fallback for the launcher tree.
   $jobHandle = [IntPtr]::Zero
   $jobName = $null
   if ($requireJobMembership) {
@@ -118,6 +124,8 @@ function RunProcess([string]$path, [string[]]$arguments, [bool]$requireJobMember
     $stableSinceMs = $null
     $rootExitCode = $null
     $jobMembershipObserved = -not $requireJobMembership
+    $jobTotal = 0
+    $jobActive = 0
 
     do {
       $snapshot = @(Get-CimInstance Win32_Process -ErrorAction Stop | Select-Object ProcessId, ParentProcessId, Name)
@@ -142,8 +150,10 @@ function RunProcess([string]$path, [string[]]$arguments, [bool]$requireJobMember
       $activeTracked = @($snapshot | Where-Object { $tracked.Contains([int]$_.ProcessId) })
       $jobActive = 0
       if ($requireJobMembership) {
-        $jobActive = GetJobActiveProcesses $jobHandle
-        if ($jobActive -gt 0) { $jobMembershipObserved = $true }
+        $jobAccounting = GetJobAccounting $jobHandle
+        $jobTotal = [int]$jobAccounting.total_processes
+        $jobActive = [int]$jobAccounting.active_processes
+        if ($jobTotal -gt 0) { $jobMembershipObserved = $true }
       }
 
       if ($null -ne $rootExitCode -and $activeTracked.Count -eq 0 -and $jobMembershipObserved -and $jobActive -eq 0) {
@@ -163,8 +173,8 @@ function RunProcess([string]$path, [string[]]$arguments, [bool]$requireJobMember
         Where-Object { $tracked.Contains([int]$_.ProcessId) } |
         ForEach-Object { "$($_.ProcessId):$($_.Name):parent=$($_.ParentProcessId)" }
     )
-    $jobActiveAtTimeout = if ($requireJobMembership) { GetJobActiveProcesses $jobHandle } else { 0 }
-    throw "PROCESS_QUIESCENCE_TIMEOUT: $([IO.Path]::GetFileName($path)) root_pid=$rootPid tracked=$($tracked.Count) remaining=$($remaining -join ',') job_required=$requireJobMembership job_seen=$jobMembershipObserved job_active=$jobActiveAtTimeout"
+    $jobAccountingAtTimeout = if ($requireJobMembership) { GetJobAccounting $jobHandle } else { [ordered]@{ total_processes = 0; active_processes = 0; terminated_processes = 0 } }
+    throw "PROCESS_QUIESCENCE_TIMEOUT: $([IO.Path]::GetFileName($path)) root_pid=$rootPid tracked=$($tracked.Count) remaining=$($remaining -join ',') job_required=$requireJobMembership job_seen=$jobMembershipObserved job_total=$($jobAccountingAtTimeout.total_processes) job_active=$($jobAccountingAtTimeout.active_processes) job_terminated=$($jobAccountingAtTimeout.terminated_processes)"
   } finally {
     Remove-Item Env:ERGA_CI_JOB_NAME -ErrorAction SilentlyContinue
     if ($null -ne $process) { $process.Dispose() }
