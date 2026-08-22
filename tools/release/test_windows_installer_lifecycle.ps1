@@ -34,36 +34,69 @@ $installerActiveMarker = Join-Path $stateRoot 'ci-installer-active.txt'
 $installerCompleteMarker = Join-Path $stateRoot 'ci-installer-complete.txt'
 $marker = [Guid]::NewGuid().ToString('N')
 $processTimeoutMs = 180000
+$processTreeStableWindowMs = 1000
 $stateConvergenceTimeoutMs = 30000
 $stateStableWindowMs = 3000
 
 function RunProcess([string]$path, [string[]]$arguments) {
-  $pipeline = [PowerShell]::Create()
-  $invocation = $null
+  # NSIS may keep a descendant alive after the launcher and the hook-owning
+  # process have exited. Track the complete Windows parent-PID tree from the
+  # process we launch and do not advance the lifecycle until that tree has
+  # been empty for a bounded stable window. This is stricter than relying on
+  # Start-Process -Wait and prevents a delayed older installer from mutating
+  # registry/files after the next lifecycle phase starts.
+  $process = Start-Process -FilePath $path -ArgumentList $arguments -PassThru -ErrorAction Stop
+  $rootPid = [int]$process.Id
+  $tracked = [Collections.Generic.HashSet[int]]::new()
+  [void]$tracked.Add($rootPid)
+  $stopwatch = [Diagnostics.Stopwatch]::StartNew()
+  $stableSinceMs = $null
+  $rootExitCode = $null
   try {
-    [void]$pipeline.AddCommand('Start-Process')
-    [void]$pipeline.AddParameter('FilePath', $path)
-    [void]$pipeline.AddParameter('ArgumentList', $arguments)
-    [void]$pipeline.AddParameter('PassThru')
-    [void]$pipeline.AddParameter('Wait')
-    [void]$pipeline.AddParameter('ErrorAction', 'Stop')
-    $invocation = $pipeline.BeginInvoke()
-    if (-not $invocation.AsyncWaitHandle.WaitOne($processTimeoutMs)) {
-      $pipeline.Stop()
-      throw "PROCESS_TREE_TIMEOUT: $([IO.Path]::GetFileName($path))"
-    }
-    $result = @($pipeline.EndInvoke($invocation))
-    if ($pipeline.HadErrors) {
-      $detail = ($pipeline.Streams.Error | ForEach-Object { $_.ToString() }) -join '; '
-      throw "PROCESS_TREE_FAILED: $([IO.Path]::GetFileName($path)): $detail"
-    }
-    if ($result.Count -ne 1) {
-      throw "PROCESS_TREE_RESULT_CARDINALITY: $([IO.Path]::GetFileName($path)) count=$($result.Count)"
-    }
-    return [int]$result[0].ExitCode
+    do {
+      $snapshot = @(Get-CimInstance Win32_Process -ErrorAction Stop | Select-Object ProcessId, ParentProcessId, Name)
+
+      # Expand transitively so descendants remain tracked even after an
+      # intermediate parent exits. ParentProcessId preserves the creator PID.
+      $changed = $true
+      while ($changed) {
+        $changed = $false
+        foreach ($candidate in $snapshot) {
+          $candidatePid = [int]$candidate.ProcessId
+          $parentPid = [int]$candidate.ParentProcessId
+          if ($candidatePid -gt 0 -and $tracked.Contains($parentPid) -and -not $tracked.Contains($candidatePid)) {
+            [void]$tracked.Add($candidatePid)
+            $changed = $true
+          }
+        }
+      }
+
+      if ($null -eq $rootExitCode -and $process.HasExited) {
+        $process.WaitForExit()
+        $rootExitCode = [int]$process.ExitCode
+      }
+
+      $activeTracked = @($snapshot | Where-Object { $tracked.Contains([int]$_.ProcessId) })
+      if ($null -ne $rootExitCode -and $activeTracked.Count -eq 0) {
+        if ($null -eq $stableSinceMs) { $stableSinceMs = $stopwatch.ElapsedMilliseconds }
+        if (($stopwatch.ElapsedMilliseconds - $stableSinceMs) -ge $processTreeStableWindowMs) {
+          return $rootExitCode
+        }
+      } else {
+        $stableSinceMs = $null
+      }
+
+      Start-Sleep -Milliseconds 100
+    } while ($stopwatch.ElapsedMilliseconds -lt $processTimeoutMs)
+
+    $remaining = @(
+      Get-CimInstance Win32_Process -ErrorAction SilentlyContinue |
+        Where-Object { $tracked.Contains([int]$_.ProcessId) } |
+        ForEach-Object { "$($_.ProcessId):$($_.Name):parent=$($_.ParentProcessId)" }
+    )
+    throw "PROCESS_TREE_TIMEOUT: $([IO.Path]::GetFileName($path)) root_pid=$rootPid tracked=$($tracked.Count) remaining=$($remaining -join ',')"
   } finally {
-    if ($null -ne $invocation) { $invocation.AsyncWaitHandle.Close() }
-    $pipeline.Dispose()
+    $process.Dispose()
   }
 }
 function ClearInstallerInvocationMarkers {
