@@ -4,9 +4,14 @@
 ;
 ; Tauri's perMachine SetContext uses SetShellVarContext all, so $LOCALAPPDATA
 ; resolves to the all-users local application-data directory (%ProgramData%).
-; The process marker binds the lifecycle harness to the NSIS process that
-; actually reaches install/uninstall execution. Marker creation itself is
-; fail-closed so the harness cannot silently fall back to launcher timing.
+; Successful install/uninstall process markers are written only from the POST
+; hooks. This binds the lifecycle harness to the NSIS process that has actually
+; completed the section's file/registry mutations, rather than to an outer or
+; elevated launcher that can exit while an inner NSIS process is still active.
+; The deterministic interrupted-upgrade path is the sole PRE-hook exception:
+; it records the process immediately before the intentional fail-closed Quit.
+; Marker creation itself is fail-closed so the harness cannot silently fall
+; back to launcher timing.
 
 !macro ERGA_CI_RECORD_INSTALLER_PROCESS OPERATION
   Push $7
@@ -48,9 +53,9 @@
 !macroend
 
 !macro NSIS_HOOK_PREINSTALL
-  !insertmacro ERGA_CI_RECORD_INSTALLER_PROCESS install
   ReadEnvStr $R9 "ERGA_CI_INTERRUPT"
   StrCmp $R9 "1" 0 erga_ci_continue
+    !insertmacro ERGA_CI_RECORD_INSTALLER_PROCESS install
     DetailPrint "TEST_ONLY: deterministic interrupted-upgrade injection."
     SetErrorLevel 86
     Quit
@@ -65,14 +70,21 @@
   FileWrite $R8 "${VERSION}"
   FileClose $R8
   DetailPrint "TEST_ONLY: hosted CI installer ${VERSION} reached post-install."
+
+  ; Record only after all install-section mutations above have completed. The
+  ; lifecycle harness then waits for this exact finishing NSIS process to exit.
+  !insertmacro ERGA_CI_RECORD_INSTALLER_PROCESS install
 !macroend
 
 !macro NSIS_HOOK_PREUNINSTALL
-  !insertmacro ERGA_CI_RECORD_INSTALLER_PROCESS uninstall
   Delete "$INSTDIR\ci-installer-version.txt"
   DetailPrint "TEST_ONLY: hosted CI uninstall."
 !macroend
 
 !macro NSIS_HOOK_POSTUNINSTALL
   DetailPrint "TEST_ONLY: hosted CI uninstall completed."
+
+  ; As with install, bind the harness to the process that reached the end of the
+  ; real uninstall section instead of an earlier launcher/elevation boundary.
+  !insertmacro ERGA_CI_RECORD_INSTALLER_PROCESS uninstall
 !macroend
