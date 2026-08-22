@@ -12,42 +12,47 @@
 ; it records the process immediately before the intentional fail-closed Quit.
 ; Marker creation itself is fail-closed so the harness cannot silently fall
 ; back to launcher timing.
+;
+; INSTANCE is used only to namespace generated NSIS labels. The install marker
+; macro is expanded from both PREINSTALL (interrupt injection) and POSTINSTALL;
+; without a per-call label namespace makensis rejects the generated script for
+; duplicate labels before any lifecycle test can execute.
 
-!macro ERGA_CI_RECORD_INSTALLER_PROCESS OPERATION
+!macro ERGA_CI_RECORD_INSTALLER_PROCESS OPERATION INSTANCE
   Push $7
   Push $R8
 
   ClearErrors
   CreateDirectory "$LOCALAPPDATA\Ergaxiom"
-  IfErrors erga_ci_marker_dir_failed_${OPERATION}
+  IfErrors erga_ci_marker_dir_failed_${INSTANCE}
 
   System::Call 'kernel32::GetCurrentProcessId() i.r7'
-  IntCmp $7 0 erga_ci_marker_pid_failed_${OPERATION} 0 0
+  IntCmp $7 0 erga_ci_marker_pid_failed_${INSTANCE} 0 0
 
   ClearErrors
   FileOpen $R8 "$LOCALAPPDATA\Ergaxiom\ci-installer-process.txt" w
-  IfErrors erga_ci_marker_file_failed_${OPERATION}
+  IfErrors erga_ci_marker_file_failed_${INSTANCE}
   FileWrite $R8 "${OPERATION}|${VERSION}|$7"
   FileClose $R8
-  IfErrors erga_ci_marker_file_failed_${OPERATION}
-  Goto erga_ci_marker_done_${OPERATION}
+  IfErrors erga_ci_marker_file_failed_${INSTANCE}
+  Goto erga_ci_marker_done_${INSTANCE}
 
-  erga_ci_marker_dir_failed_${OPERATION}:
+  erga_ci_marker_dir_failed_${INSTANCE}:
     DetailPrint "TEST_ONLY: failed to create installer process marker directory."
     SetErrorLevel 87
     Quit
 
-  erga_ci_marker_pid_failed_${OPERATION}:
+  erga_ci_marker_pid_failed_${INSTANCE}:
     DetailPrint "TEST_ONLY: failed to capture installer process id."
     SetErrorLevel 88
     Quit
 
-  erga_ci_marker_file_failed_${OPERATION}:
+  erga_ci_marker_file_failed_${INSTANCE}:
     DetailPrint "TEST_ONLY: failed to write installer process marker."
     SetErrorLevel 89
     Quit
 
-  erga_ci_marker_done_${OPERATION}:
+  erga_ci_marker_done_${INSTANCE}:
     Pop $R8
     Pop $7
 !macroend
@@ -55,7 +60,7 @@
 !macro NSIS_HOOK_PREINSTALL
   ReadEnvStr $R9 "ERGA_CI_INTERRUPT"
   StrCmp $R9 "1" 0 erga_ci_continue
-    !insertmacro ERGA_CI_RECORD_INSTALLER_PROCESS install
+    !insertmacro ERGA_CI_RECORD_INSTALLER_PROCESS install install_interrupt
     DetailPrint "TEST_ONLY: deterministic interrupted-upgrade injection."
     SetErrorLevel 86
     Quit
@@ -73,7 +78,7 @@
 
   ; Record only after all install-section mutations above have completed. The
   ; lifecycle harness then waits for this exact finishing NSIS process to exit.
-  !insertmacro ERGA_CI_RECORD_INSTALLER_PROCESS install
+  !insertmacro ERGA_CI_RECORD_INSTALLER_PROCESS install install_complete
 !macroend
 
 !macro NSIS_HOOK_PREUNINSTALL
@@ -86,5 +91,5 @@
 
   ; As with install, bind the harness to the process that reached the end of the
   ; real uninstall section instead of an earlier launcher/elevation boundary.
-  !insertmacro ERGA_CI_RECORD_INSTALLER_PROCESS uninstall
+  !insertmacro ERGA_CI_RECORD_INSTALLER_PROCESS uninstall uninstall_complete
 !macroend
