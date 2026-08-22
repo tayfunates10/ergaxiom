@@ -4,15 +4,50 @@
 ;
 ; Every lifecycle invocation receives ERGA_CI_INVOCATION_ID from the harness.
 ; PRE hooks record the exact NSIS PID that entered the real install/uninstall
-; section; POST hooks record completion for the same invocation/PID. The
-; harness requires both records (except the intentional interrupted-upgrade
-; failure) and waits for that exact process to exit before advancing. This
-; prevents a detached/stale installer from a previous phase from being mistaken
-; for completion of the current phase.
+; section; POST hooks record completion for the same invocation/PID.
+;
+; Elevated NSIS can reparent work outside the launcher's observable process
+; tree. To make lifecycle phase boundaries deterministic, every hook-owning
+; installer/uninstaller process also owns one machine-global test-only mutex for
+; its full process lifetime. The handle is intentionally never released by the
+; script; Windows releases it only when that NSIS process terminates. The
+; harness requires the mutex to disappear before advancing to the next phase.
+; A second lifecycle process reaching PRE while the mutex already exists fails
+; closed instead of overlapping an older installer.
 ;
 ; Tauri's perMachine SetContext uses SetShellVarContext all, so $LOCALAPPDATA
 ; resolves to the all-users local application-data directory (%ProgramData%).
 ; Marker I/O is fail-closed. INSTANCE only namespaces generated NSIS labels.
+
+Var ErgaCiLifecycleMutexHandle
+
+!macro ERGA_CI_ACQUIRE_LIFECYCLE_MUTEX INSTANCE
+  Push $5
+  Push $6
+
+  ClearErrors
+  System::Call 'kernel32::CreateMutexW(p 0, i 1, w "Global\Ergaxiom.CI.InstallerLifecycle") p .r5'
+  System::Call 'kernel32::GetLastError() i .r6'
+  IntCmp $5 0 erga_ci_mutex_create_failed_${INSTANCE} 0 0
+  IntCmp $6 183 0 erga_ci_mutex_overlap_${INSTANCE} erga_ci_mutex_overlap_${INSTANCE}
+  StrCpy $ErgaCiLifecycleMutexHandle $5
+  Goto erga_ci_mutex_done_${INSTANCE}
+
+  erga_ci_mutex_overlap_${INSTANCE}:
+    System::Call 'kernel32::CloseHandle(p r5)'
+    DetailPrint "TEST_ONLY: overlapping installer lifecycle process rejected."
+    SetErrorLevel 91
+    Quit
+
+  erga_ci_mutex_create_failed_${INSTANCE}:
+    DetailPrint "TEST_ONLY: failed to create installer lifecycle mutex."
+    SetErrorLevel 92
+    Quit
+
+  erga_ci_mutex_done_${INSTANCE}:
+    Pop $6
+    Pop $5
+!macroend
 
 !macro ERGA_CI_WRITE_PROCESS_MARKER PHASE OPERATION INSTANCE
   Push $6
@@ -67,6 +102,7 @@
 !macroend
 
 !macro NSIS_HOOK_PREINSTALL
+  !insertmacro ERGA_CI_ACQUIRE_LIFECYCLE_MUTEX install
   !insertmacro ERGA_CI_WRITE_PROCESS_MARKER active install install_active
   ReadEnvStr $R9 "ERGA_CI_INTERRUPT"
   StrCmp $R9 "1" 0 erga_ci_continue
@@ -88,6 +124,7 @@
 !macroend
 
 !macro NSIS_HOOK_PREUNINSTALL
+  !insertmacro ERGA_CI_ACQUIRE_LIFECYCLE_MUTEX uninstall
   !insertmacro ERGA_CI_WRITE_PROCESS_MARKER active uninstall uninstall_active
   Delete "$INSTDIR\ci-installer-version.txt"
   DetailPrint "TEST_ONLY: hosted CI uninstall."
