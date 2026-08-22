@@ -30,16 +30,17 @@ $installRoot = Join-Path ([Environment]::GetFolderPath('ProgramFiles')) 'Ergaxio
 $installerVersionMarker = Join-Path $installRoot 'ci-installer-version.txt'
 $stateRoot = Join-Path $env:ProgramData 'Ergaxiom'
 $sentinel = Join-Path $stateRoot 'ci-lifecycle-state.txt'
+$installerProcessMarker = Join-Path $stateRoot 'ci-installer-process.txt'
 $marker = [Guid]::NewGuid().ToString('N')
 $processTimeoutMs = 180000
 $stateConvergenceTimeoutMs = 30000
 $stateStableWindowMs = 3000
 
 function RunProcess([string]$path, [string[]]$arguments) {
-  # NSIS launches an inner installer process. Waiting on only the outer
-  # System.Diagnostics.Process lets a stale installer continue into the next
-  # lifecycle phase. Start-Process -Wait is process-tree aware on Windows.
-  # Run it asynchronously so the existing hard timeout remains fail-closed.
+  # Start-Process -Wait normally waits for descendants, but an elevated NSIS
+  # execution process can detach/reparent across the Windows elevation boundary.
+  # The test-only hook records the process that actually reaches the installer
+  # section; RunInstaller/UninstallCurrent wait for that process separately.
   $pipeline = [PowerShell]::Create()
   $invocation = $null
   try {
@@ -68,16 +69,67 @@ function RunProcess([string]$path, [string[]]$arguments) {
     $pipeline.Dispose()
   }
 }
-function RunInstaller([string]$path, [bool]$expectSuccess, [string[]]$arguments = @('/S')) {
+function ClearInstallerProcessMarker {
+  Remove-Item $installerProcessMarker -Force -ErrorAction SilentlyContinue
+}
+function WaitForInstallerHookProcessExit([string]$operation, [string]$version, [bool]$required) {
+  $recordStopwatch = [Diagnostics.Stopwatch]::StartNew()
+  $recordedProcessId = $null
+  do {
+    if (Test-Path $installerProcessMarker) {
+      $record = (Get-Content $installerProcessMarker -Raw).Trim()
+      if ($record -notmatch '^(install|uninstall)\|([0-9]+\.[0-9]+\.[0-9]+)\|([1-9][0-9]*)$') {
+        throw "INSTALLER_PROCESS_MARKER_MALFORMED: $record"
+      }
+      if ($Matches[1] -ne $operation -or $Matches[2] -ne $version) {
+        throw "INSTALLER_PROCESS_MARKER_MISMATCH: expected=$operation|$version actual=$record"
+      }
+      $recordedProcessId = [int]$Matches[3]
+      break
+    }
+    if (-not $required) { return }
+    Start-Sleep -Milliseconds 100
+  } while ($recordStopwatch.ElapsedMilliseconds -lt $processTimeoutMs)
+
+  if ($null -eq $recordedProcessId) {
+    throw "INSTALLER_PROCESS_MARKER_TIMEOUT: expected=$operation|$version"
+  }
+
+  $processStopwatch = [Diagnostics.Stopwatch]::StartNew()
+  do {
+    try {
+      $observedProcess = [Diagnostics.Process]::GetProcessById($recordedProcessId)
+      try {
+        if ($observedProcess.HasExited) {
+          ClearInstallerProcessMarker
+          return
+        }
+      } finally {
+        $observedProcess.Dispose()
+      }
+    } catch [ArgumentException] {
+      ClearInstallerProcessMarker
+      return
+    } catch {
+      throw "INSTALLER_PROCESS_PROBE_FAILED: operation=$operation version=$version pid=$recordedProcessId detail=$($_.Exception.Message)"
+    }
+    Start-Sleep -Milliseconds 100
+  } while ($processStopwatch.ElapsedMilliseconds -lt $processTimeoutMs)
+
+  throw "INSTALLER_PROCESS_EXIT_TIMEOUT: operation=$operation version=$version pid=$recordedProcessId"
+}
+function RunInstaller([string]$path, [bool]$expectSuccess, [string]$version, [bool]$hookRequired, [string[]]$arguments = @('/S')) {
+  ClearInstallerProcessMarker
   $exitCode = RunProcess $path $arguments
+  WaitForInstallerHookProcessExit 'install' $version $hookRequired
   if ($expectSuccess -and $exitCode -ne 0) { throw "INSTALLER_FAILED: $exitCode" }
   return $exitCode
 }
-function RunUpdater([string]$path, [bool]$expectSuccess) {
+function RunUpdater([string]$path, [bool]$expectSuccess, [bool]$hookRequired = $true) {
   # The release policy pins Tauri's quiet Windows updater contract. Tauri maps
   # quiet NSIS updates to /S plus /UPDATE, keeping the lifecycle fully unattended
   # while still exercising the real updater-specific install path.
-  return RunInstaller $path $expectSuccess @('/S', '/UPDATE')
+  return RunInstaller $path $expectSuccess '0.1.0' $hookRequired @('/S', '/UPDATE')
 }
 function Entries {
   $result = @()
@@ -174,7 +226,9 @@ function UninstallCurrent {
   $rootWithSeparator = [IO.Path]::GetFullPath($installRoot) + [IO.Path]::DirectorySeparatorChar
   if (-not $full.StartsWith($rootWithSeparator, [StringComparison]::OrdinalIgnoreCase)) { throw 'UNINSTALL_PATH_OUTSIDE_INSTALL_ROOT' }
   if (-not (Test-Path $full)) { throw 'UNINSTALLER_MISSING' }
+  ClearInstallerProcessMarker
   $exitCode = RunProcess $full @('/S')
+  WaitForInstallerHookProcessExit 'uninstall' '0.1.0' $true
   if ($exitCode -ne 0) { throw "UNINSTALL_FAILED: $exitCode" }
   WaitForStableUninstalled
   if (Test-Path $installerVersionMarker) { throw 'POSTUNINSTALL_VERSION_MARKER_PRESENT' }
@@ -186,8 +240,9 @@ function AssertSentinel {
 if ((Test-Path $installRoot) -or @(Entries).Count -ne 0) { throw 'RUNNER_NOT_CLEAN' }
 New-Item -ItemType Directory -Force $stateRoot | Out-Null
 Set-Content -Path $sentinel -Value $marker -Encoding ascii -NoNewline
+ClearInstallerProcessMarker
 
-RunInstaller $previous $true | Out-Null
+RunInstaller $previous $true '0.0.9' $true | Out-Null
 WaitForStableVersion '0.0.9'
 AssertInstalled '0.0.9' | Out-Null
 AssertSentinel
@@ -200,7 +255,7 @@ AssertInstalled '0.1.0' | Out-Null
 AssertSentinel
 $upgrade = $true
 
-$downgradeExit = RunInstaller $previous $false
+$downgradeExit = RunInstaller $previous $false '0.0.9' $false
 WaitForStableVersion '0.1.0'
 AssertInstalled '0.1.0' | Out-Null
 AssertSentinel
@@ -208,13 +263,13 @@ $downgradeRejected = $true
 
 UninstallCurrent
 AssertSentinel
-RunInstaller $previous $true | Out-Null
+RunInstaller $previous $true '0.0.9' $true | Out-Null
 WaitForStableVersion '0.0.9'
 AssertInstalled '0.0.9' | Out-Null
 AssertSentinel
 
 $env:ERGA_CI_INTERRUPT = '1'
-try { $interruptExit = RunUpdater $current $false } finally { Remove-Item Env:ERGA_CI_INTERRUPT -ErrorAction SilentlyContinue }
+try { $interruptExit = RunUpdater $current $false $true } finally { Remove-Item Env:ERGA_CI_INTERRUPT -ErrorAction SilentlyContinue }
 if ($interruptExit -eq 0) { throw 'INTERRUPTED_UPGRADE_UNEXPECTED_SUCCESS' }
 WaitForStableVersion '0.0.9'
 AssertInstalled '0.0.9' | Out-Null
