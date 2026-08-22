@@ -27,6 +27,7 @@ $previous = (Resolve-Path $PreviousInstaller).Path
 $current = (Resolve-Path $CurrentInstaller).Path
 if ($previous -eq $current) { throw 'INSTALLER_SUBSTITUTION' }
 $installRoot = Join-Path ([Environment]::GetFolderPath('ProgramFiles')) 'Ergaxiom'
+$installerVersionMarker = Join-Path $installRoot 'ci-installer-version.txt'
 $stateRoot = Join-Path $env:ProgramData 'Ergaxiom'
 $sentinel = Join-Path $stateRoot 'ci-lifecycle-state.txt'
 $marker = [Guid]::NewGuid().ToString('N')
@@ -74,6 +75,14 @@ function ObservedVersions {
   }
   return @($versions)
 }
+function ReadInstallerVersionMarker {
+  if (-not (Test-Path $installerVersionMarker)) { return '<missing>' }
+  return (Get-Content $installerVersionMarker -Raw).Trim()
+}
+function AssertInstallerVersionMarker([string]$version) {
+  $observed = ReadInstallerVersionMarker
+  if ($observed -ne $version) { throw "POSTINSTALL_VERSION_MARKER_MISMATCH: expected=$version actual=$observed" }
+}
 function WaitForStableVersion([string]$version) {
   $stopwatch = [Diagnostics.Stopwatch]::StartNew()
   $stableSinceMs = $null
@@ -93,7 +102,8 @@ function WaitForStableVersion([string]$version) {
     Start-Sleep -Milliseconds 250
   } while ($stopwatch.ElapsedMilliseconds -lt $stateConvergenceTimeoutMs)
   $observed = @(ObservedVersions)
-  throw "VERSION_STABILITY_TIMEOUT: expected=$version observed=$($observed -join ',') entries=$(@(Entries).Count) stable_window_ms=$stateStableWindowMs"
+  $postInstallMarker = ReadInstallerVersionMarker
+  throw "VERSION_STABILITY_TIMEOUT: expected=$version observed=$($observed -join ',') entries=$(@(Entries).Count) postinstall_marker=$postInstallMarker stable_window_ms=$stateStableWindowMs"
 }
 function WaitForStableUninstalled {
   $stopwatch = [Diagnostics.Stopwatch]::StartNew()
@@ -124,6 +134,7 @@ function AssertInstalled([string]$version) {
   $desktop = @(Get-ChildItem $installRoot -Recurse -File -Filter 'ergaxiom-desktop.exe')
   $service = @(Get-ChildItem $installRoot -Recurse -File -Filter 'ergaxiom-windows-production-signer-service.exe')
   if ($desktop.Count -ne 1 -or $service.Count -ne 1) { throw 'INSTALLED_ARTIFACT_INVENTORY_MISMATCH' }
+  AssertInstallerVersionMarker $version
   return $entry
 }
 function UninstallCurrent {
@@ -141,6 +152,7 @@ function UninstallCurrent {
   $exitCode = RunProcess $full @('/S')
   if ($exitCode -ne 0) { throw "UNINSTALL_FAILED: $exitCode" }
   WaitForStableUninstalled
+  if (Test-Path $installerVersionMarker) { throw 'POSTUNINSTALL_VERSION_MARKER_PRESENT' }
 }
 function AssertSentinel {
   if (-not (Test-Path $sentinel) -or (Get-Content $sentinel -Raw).Trim() -ne $marker) { throw 'PRODUCTION_STATE_SENTINEL_LOST' }
@@ -157,6 +169,7 @@ AssertSentinel
 $clean = $true
 
 RunUpdater $current $true | Out-Null
+Write-Host "TEST_ONLY: updater returned; registry=$(@(ObservedVersions) -join ',') postinstall_marker=$(ReadInstallerVersionMarker)"
 WaitForStableVersion '0.1.0'
 AssertInstalled '0.1.0' | Out-Null
 AssertSentinel
@@ -204,6 +217,7 @@ $evidence = [ordered]@{
   previous_installer_sha256 = (Get-FileHash $previous -Algorithm SHA256).Hash.ToLowerInvariant()
   observed_versions = [ordered]@{ previous = '0.0.9'; current = '0.1.0' }
   updater_install_mode = [string]$policy.packaging.updater_install_mode
+  test_only_postinstall_marker = '0.1.0'
   attack_observations = [ordered]@{ downgrade_exit_code = $downgradeExit; interrupted_upgrade_exit_code = $interruptExit }
   phases = [ordered]@{
     clean_install = $clean
