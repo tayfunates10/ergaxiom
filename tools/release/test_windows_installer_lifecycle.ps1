@@ -38,26 +38,89 @@ $processTreeStableWindowMs = 1000
 $stateConvergenceTimeoutMs = 30000
 $stateStableWindowMs = 3000
 
-function RunProcess([string]$path, [string[]]$arguments) {
-  # NSIS may keep a descendant alive after the launcher and the hook-owning
-  # process have exited. Track the complete Windows parent-PID tree from the
-  # process we launch and do not advance the lifecycle until that tree has
-  # been empty for a bounded stable window. This is stricter than relying on
-  # Start-Process -Wait and prevents a delayed older installer from mutating
-  # registry/files after the next lifecycle phase starts.
-  $process = Start-Process -FilePath $path -ArgumentList $arguments -PassThru -ErrorAction Stop
-  $rootPid = [int]$process.Id
-  $tracked = [Collections.Generic.HashSet[int]]::new()
-  [void]$tracked.Add($rootPid)
-  $stopwatch = [Diagnostics.Stopwatch]::StartNew()
-  $stableSinceMs = $null
-  $rootExitCode = $null
+if (-not ('ErgaCiJobNative' -as [type])) {
+  Add-Type -TypeDefinition @'
+using System;
+using System.Runtime.InteropServices;
+
+public static class ErgaCiJobNative
+{
+    [StructLayout(LayoutKind.Sequential)]
+    public struct JOBOBJECT_BASIC_ACCOUNTING_INFORMATION
+    {
+        public long TotalUserTime;
+        public long TotalKernelTime;
+        public long ThisPeriodTotalUserTime;
+        public long ThisPeriodTotalKernelTime;
+        public uint TotalPageFaultCount;
+        public uint TotalProcesses;
+        public uint ActiveProcesses;
+        public uint TotalTerminatedProcesses;
+    }
+
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    public static extern IntPtr CreateJobObjectW(IntPtr lpJobAttributes, string lpName);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static extern bool QueryInformationJobObject(
+        IntPtr hJob,
+        int JobObjectInformationClass,
+        out JOBOBJECT_BASIC_ACCOUNTING_INFORMATION lpJobObjectInfo,
+        uint cbJobObjectInfoLength,
+        IntPtr lpReturnLength);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static extern bool CloseHandle(IntPtr hObject);
+}
+'@
+}
+
+function GetJobActiveProcesses([IntPtr]$jobHandle) {
+  $info = [ErgaCiJobNative+JOBOBJECT_BASIC_ACCOUNTING_INFORMATION]::new()
+  $size = [uint32][Runtime.InteropServices.Marshal]::SizeOf($info)
+  if (-not [ErgaCiJobNative]::QueryInformationJobObject($jobHandle, 1, [ref]$info, $size, [IntPtr]::Zero)) {
+    $errorCode = [Runtime.InteropServices.Marshal]::GetLastWin32Error()
+    throw "INSTALLER_JOB_QUERY_FAILED: win32=$errorCode"
+  }
+  return [int]$info.ActiveProcesses
+}
+
+function RunProcess([string]$path, [string[]]$arguments, [bool]$requireJobMembership) {
+  # ParentProcessId polling alone can miss an elevated child that reparents
+  # before the next WMI snapshot. For hook-backed lifecycle operations create a
+  # unique Windows Job Object before launch. The NSIS PRE hook joins the real
+  # worker to that job; descendants stay members at the kernel boundary even
+  # after reparenting. We require observed membership and then zero active job
+  # processes before a lifecycle phase may advance. Parent-PID tracking remains
+  # as a secondary diagnostic/fallback for the launcher tree.
+  $jobHandle = [IntPtr]::Zero
+  $jobName = $null
+  if ($requireJobMembership) {
+    if ([string]::IsNullOrWhiteSpace($env:ERGA_CI_INVOCATION_ID)) { throw 'INSTALLER_JOB_INVOCATION_MISSING' }
+    $jobName = "Global\Ergaxiom.CI.Invocation.$($env:ERGA_CI_INVOCATION_ID)"
+    $jobHandle = [ErgaCiJobNative]::CreateJobObjectW([IntPtr]::Zero, $jobName)
+    if ($jobHandle -eq [IntPtr]::Zero) {
+      $errorCode = [Runtime.InteropServices.Marshal]::GetLastWin32Error()
+      throw "INSTALLER_JOB_CREATE_FAILED: win32=$errorCode"
+    }
+    $env:ERGA_CI_JOB_NAME = $jobName
+  }
+
+  $process = $null
   try {
+    $process = Start-Process -FilePath $path -ArgumentList $arguments -PassThru -ErrorAction Stop
+    $rootPid = [int]$process.Id
+    $tracked = [Collections.Generic.HashSet[int]]::new()
+    [void]$tracked.Add($rootPid)
+    $stopwatch = [Diagnostics.Stopwatch]::StartNew()
+    $stableSinceMs = $null
+    $rootExitCode = $null
+    $jobMembershipObserved = -not $requireJobMembership
+
     do {
       $snapshot = @(Get-CimInstance Win32_Process -ErrorAction Stop | Select-Object ProcessId, ParentProcessId, Name)
-
-      # Expand transitively so descendants remain tracked even after an
-      # intermediate parent exits. ParentProcessId preserves the creator PID.
       $changed = $true
       while ($changed) {
         $changed = $false
@@ -77,7 +140,13 @@ function RunProcess([string]$path, [string[]]$arguments) {
       }
 
       $activeTracked = @($snapshot | Where-Object { $tracked.Contains([int]$_.ProcessId) })
-      if ($null -ne $rootExitCode -and $activeTracked.Count -eq 0) {
+      $jobActive = 0
+      if ($requireJobMembership) {
+        $jobActive = GetJobActiveProcesses $jobHandle
+        if ($jobActive -gt 0) { $jobMembershipObserved = $true }
+      }
+
+      if ($null -ne $rootExitCode -and $activeTracked.Count -eq 0 -and $jobMembershipObserved -and $jobActive -eq 0) {
         if ($null -eq $stableSinceMs) { $stableSinceMs = $stopwatch.ElapsedMilliseconds }
         if (($stopwatch.ElapsedMilliseconds - $stableSinceMs) -ge $processTreeStableWindowMs) {
           return $rootExitCode
@@ -94,9 +163,12 @@ function RunProcess([string]$path, [string[]]$arguments) {
         Where-Object { $tracked.Contains([int]$_.ProcessId) } |
         ForEach-Object { "$($_.ProcessId):$($_.Name):parent=$($_.ParentProcessId)" }
     )
-    throw "PROCESS_TREE_TIMEOUT: $([IO.Path]::GetFileName($path)) root_pid=$rootPid tracked=$($tracked.Count) remaining=$($remaining -join ',')"
+    $jobActiveAtTimeout = if ($requireJobMembership) { GetJobActiveProcesses $jobHandle } else { 0 }
+    throw "PROCESS_QUIESCENCE_TIMEOUT: $([IO.Path]::GetFileName($path)) root_pid=$rootPid tracked=$($tracked.Count) remaining=$($remaining -join ',') job_required=$requireJobMembership job_seen=$jobMembershipObserved job_active=$jobActiveAtTimeout"
   } finally {
-    $process.Dispose()
+    Remove-Item Env:ERGA_CI_JOB_NAME -ErrorAction SilentlyContinue
+    if ($null -ne $process) { $process.Dispose() }
+    if ($jobHandle -ne [IntPtr]::Zero) { [void][ErgaCiJobNative]::CloseHandle($jobHandle) }
   }
 }
 function ClearInstallerInvocationMarkers {
@@ -157,7 +229,7 @@ function RunInstaller([string]$path, [bool]$expectSuccess, [string]$version, [bo
   $invocationId = [Guid]::NewGuid().ToString('N')
   $env:ERGA_CI_INVOCATION_ID = $invocationId
   try {
-    $exitCode = RunProcess $path $arguments
+    $exitCode = RunProcess $path $arguments $hookRequired
   } finally {
     Remove-Item Env:ERGA_CI_INVOCATION_ID -ErrorAction SilentlyContinue
   }
@@ -276,7 +348,7 @@ function UninstallCurrent {
   $invocationId = [Guid]::NewGuid().ToString('N')
   $env:ERGA_CI_INVOCATION_ID = $invocationId
   try {
-    $exitCode = RunProcess $full @('/S')
+    $exitCode = RunProcess $full @('/S') $true
   } finally {
     Remove-Item Env:ERGA_CI_INVOCATION_ID -ErrorAction SilentlyContinue
   }
