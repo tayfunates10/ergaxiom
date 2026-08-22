@@ -30,17 +30,14 @@ $installRoot = Join-Path ([Environment]::GetFolderPath('ProgramFiles')) 'Ergaxio
 $installerVersionMarker = Join-Path $installRoot 'ci-installer-version.txt'
 $stateRoot = Join-Path $env:ProgramData 'Ergaxiom'
 $sentinel = Join-Path $stateRoot 'ci-lifecycle-state.txt'
-$installerProcessMarker = Join-Path $stateRoot 'ci-installer-process.txt'
+$installerActiveMarker = Join-Path $stateRoot 'ci-installer-active.txt'
+$installerCompleteMarker = Join-Path $stateRoot 'ci-installer-complete.txt'
 $marker = [Guid]::NewGuid().ToString('N')
 $processTimeoutMs = 180000
 $stateConvergenceTimeoutMs = 30000
 $stateStableWindowMs = 3000
 
 function RunProcess([string]$path, [string[]]$arguments) {
-  # Start-Process -Wait normally waits for descendants, but an elevated NSIS
-  # execution process can detach/reparent across the Windows elevation boundary.
-  # The test-only hook records the process that actually reaches the installer
-  # section; RunInstaller/UninstallCurrent wait for that process separately.
   $pipeline = [PowerShell]::Create()
   $invocation = $null
   try {
@@ -69,66 +66,83 @@ function RunProcess([string]$path, [string[]]$arguments) {
     $pipeline.Dispose()
   }
 }
-function ClearInstallerProcessMarker {
-  Remove-Item $installerProcessMarker -Force -ErrorAction SilentlyContinue
+function ClearInstallerInvocationMarkers {
+  Remove-Item $installerActiveMarker -Force -ErrorAction SilentlyContinue
+  Remove-Item $installerCompleteMarker -Force -ErrorAction SilentlyContinue
 }
-function WaitForInstallerHookProcessExit([string]$operation, [string]$version, [bool]$required) {
-  $recordStopwatch = [Diagnostics.Stopwatch]::StartNew()
-  $recordedProcessId = $null
-  do {
-    if (Test-Path $installerProcessMarker) {
-      $record = (Get-Content $installerProcessMarker -Raw).Trim()
-      if ($record -notmatch '^(install|uninstall)\|([0-9]+\.[0-9]+\.[0-9]+)\|([1-9][0-9]*)$') {
-        throw "INSTALLER_PROCESS_MARKER_MALFORMED: $record"
-      }
-      if ($Matches[1] -ne $operation -or $Matches[2] -ne $version) {
-        throw "INSTALLER_PROCESS_MARKER_MISMATCH: expected=$operation|$version actual=$record"
-      }
-      $recordedProcessId = [int]$Matches[3]
-      break
-    }
-    if (-not $required) { return }
-    Start-Sleep -Milliseconds 100
-  } while ($recordStopwatch.ElapsedMilliseconds -lt $processTimeoutMs)
-
-  if ($null -eq $recordedProcessId) {
-    throw "INSTALLER_PROCESS_MARKER_TIMEOUT: expected=$operation|$version"
+function ParseInstallerProcessRecord([string]$path) {
+  $record = (Get-Content $path -Raw).Trim()
+  if ($record -notmatch '^([0-9a-f]{32})\|(install|uninstall)\|([0-9]+\.[0-9]+\.[0-9]+)\|([1-9][0-9]*)$') {
+    throw "INSTALLER_PROCESS_MARKER_MALFORMED: path=$path record=$record"
   }
-
-  $processStopwatch = [Diagnostics.Stopwatch]::StartNew()
+  return [ordered]@{
+    invocation_id = $Matches[1]
+    operation = $Matches[2]
+    version = $Matches[3]
+    process_id = [int]$Matches[4]
+  }
+}
+function WaitForInstallerMarker([string]$path, [string]$phase, [string]$invocationId, [string]$operation, [string]$version, [bool]$required) {
+  $stopwatch = [Diagnostics.Stopwatch]::StartNew()
+  do {
+    if (Test-Path $path) {
+      $record = ParseInstallerProcessRecord $path
+      if ($record.invocation_id -ne $invocationId) {
+        throw "STALE_INSTALLER_PROCESS_MARKER: phase=$phase expected_invocation=$invocationId actual_invocation=$($record.invocation_id) operation=$($record.operation) version=$($record.version) pid=$($record.process_id)"
+      }
+      if ($record.operation -ne $operation -or $record.version -ne $version) {
+        throw "INSTALLER_PROCESS_MARKER_MISMATCH: phase=$phase expected=$operation|$version actual=$($record.operation)|$($record.version)"
+      }
+      return $record
+    }
+    if (-not $required) { return $null }
+    Start-Sleep -Milliseconds 100
+  } while ($stopwatch.ElapsedMilliseconds -lt $processTimeoutMs)
+  throw "INSTALLER_PROCESS_MARKER_TIMEOUT: phase=$phase expected_invocation=$invocationId expected=$operation|$version"
+}
+function WaitForProcessExit([int]$processId, [string]$operation, [string]$version, [string]$invocationId) {
+  $stopwatch = [Diagnostics.Stopwatch]::StartNew()
   do {
     try {
-      $observedProcess = [Diagnostics.Process]::GetProcessById($recordedProcessId)
+      $observedProcess = [Diagnostics.Process]::GetProcessById($processId)
       try {
-        if ($observedProcess.HasExited) {
-          ClearInstallerProcessMarker
-          return
-        }
+        if ($observedProcess.HasExited) { return }
       } finally {
         $observedProcess.Dispose()
       }
     } catch [ArgumentException] {
-      ClearInstallerProcessMarker
       return
     } catch {
-      throw "INSTALLER_PROCESS_PROBE_FAILED: operation=$operation version=$version pid=$recordedProcessId detail=$($_.Exception.Message)"
+      throw "INSTALLER_PROCESS_PROBE_FAILED: invocation=$invocationId operation=$operation version=$version pid=$processId detail=$($_.Exception.Message)"
     }
     Start-Sleep -Milliseconds 100
-  } while ($processStopwatch.ElapsedMilliseconds -lt $processTimeoutMs)
-
-  throw "INSTALLER_PROCESS_EXIT_TIMEOUT: operation=$operation version=$version pid=$recordedProcessId"
+  } while ($stopwatch.ElapsedMilliseconds -lt $processTimeoutMs)
+  throw "INSTALLER_PROCESS_EXIT_TIMEOUT: invocation=$invocationId operation=$operation version=$version pid=$processId"
 }
 function RunInstaller([string]$path, [bool]$expectSuccess, [string]$version, [bool]$hookRequired, [string[]]$arguments = @('/S')) {
-  ClearInstallerProcessMarker
-  $exitCode = RunProcess $path $arguments
-  WaitForInstallerHookProcessExit 'install' $version $hookRequired
+  ClearInstallerInvocationMarkers
+  $invocationId = [Guid]::NewGuid().ToString('N')
+  $env:ERGA_CI_INVOCATION_ID = $invocationId
+  try {
+    $exitCode = RunProcess $path $arguments
+  } finally {
+    Remove-Item Env:ERGA_CI_INVOCATION_ID -ErrorAction SilentlyContinue
+  }
+
+  if ($hookRequired) {
+    $active = WaitForInstallerMarker $installerActiveMarker 'active' $invocationId 'install' $version $true
+    $completeRequired = $expectSuccess
+    $complete = WaitForInstallerMarker $installerCompleteMarker 'complete' $invocationId 'install' $version $completeRequired
+    if ($null -ne $complete -and $complete.process_id -ne $active.process_id) {
+      throw "INSTALLER_PROCESS_ID_MISMATCH: invocation=$invocationId active_pid=$($active.process_id) complete_pid=$($complete.process_id)"
+    }
+    WaitForProcessExit $active.process_id 'install' $version $invocationId
+  }
+
   if ($expectSuccess -and $exitCode -ne 0) { throw "INSTALLER_FAILED: $exitCode" }
   return $exitCode
 }
 function RunUpdater([string]$path, [bool]$expectSuccess, [bool]$hookRequired = $true) {
-  # The release policy pins Tauri's quiet Windows updater contract. Tauri maps
-  # quiet NSIS updates to /S plus /UPDATE, keeping the lifecycle fully unattended
-  # while still exercising the real updater-specific install path.
   return RunInstaller $path $expectSuccess '0.1.0' $hookRequired @('/S', '/UPDATE')
 }
 function Entries {
@@ -137,9 +151,7 @@ function Entries {
     $items = @(Get-ItemProperty $root -ErrorAction SilentlyContinue)
     foreach ($item in $items) {
       $displayNameProperty = $item.PSObject.Properties['DisplayName']
-      if ($null -ne $displayNameProperty -and [string]$displayNameProperty.Value -eq 'Ergaxiom') {
-        $result += $item
-      }
+      if ($null -ne $displayNameProperty -and [string]$displayNameProperty.Value -eq 'Ergaxiom') { $result += $item }
     }
   }
   return @($result)
@@ -226,9 +238,21 @@ function UninstallCurrent {
   $rootWithSeparator = [IO.Path]::GetFullPath($installRoot) + [IO.Path]::DirectorySeparatorChar
   if (-not $full.StartsWith($rootWithSeparator, [StringComparison]::OrdinalIgnoreCase)) { throw 'UNINSTALL_PATH_OUTSIDE_INSTALL_ROOT' }
   if (-not (Test-Path $full)) { throw 'UNINSTALLER_MISSING' }
-  ClearInstallerProcessMarker
-  $exitCode = RunProcess $full @('/S')
-  WaitForInstallerHookProcessExit 'uninstall' '0.1.0' $true
+
+  ClearInstallerInvocationMarkers
+  $invocationId = [Guid]::NewGuid().ToString('N')
+  $env:ERGA_CI_INVOCATION_ID = $invocationId
+  try {
+    $exitCode = RunProcess $full @('/S')
+  } finally {
+    Remove-Item Env:ERGA_CI_INVOCATION_ID -ErrorAction SilentlyContinue
+  }
+  $active = WaitForInstallerMarker $installerActiveMarker 'active' $invocationId 'uninstall' '0.1.0' $true
+  $complete = WaitForInstallerMarker $installerCompleteMarker 'complete' $invocationId 'uninstall' '0.1.0' $true
+  if ($complete.process_id -ne $active.process_id) {
+    throw "UNINSTALL_PROCESS_ID_MISMATCH: invocation=$invocationId active_pid=$($active.process_id) complete_pid=$($complete.process_id)"
+  }
+  WaitForProcessExit $active.process_id 'uninstall' '0.1.0' $invocationId
   if ($exitCode -ne 0) { throw "UNINSTALL_FAILED: $exitCode" }
   WaitForStableUninstalled
   if (Test-Path $installerVersionMarker) { throw 'POSTUNINSTALL_VERSION_MARKER_PRESENT' }
@@ -240,7 +264,7 @@ function AssertSentinel {
 if ((Test-Path $installRoot) -or @(Entries).Count -ne 0) { throw 'RUNNER_NOT_CLEAN' }
 New-Item -ItemType Directory -Force $stateRoot | Out-Null
 Set-Content -Path $sentinel -Value $marker -Encoding ascii -NoNewline
-ClearInstallerProcessMarker
+ClearInstallerInvocationMarkers
 
 RunInstaller $previous $true '0.0.9' $true | Out-Null
 WaitForStableVersion '0.0.9'
