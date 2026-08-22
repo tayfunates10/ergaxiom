@@ -11,7 +11,7 @@
   Push $R7
   Push $R8
   CreateDirectory "$COMMONAPPDATA\Ergaxiom"
-  System::Call 'kernel32::GetCurrentProcessId() i .r7'
+  System::Call 'kernel32::GetCurrentProcessId() i .R7'
   FileOpen $R8 "$COMMONAPPDATA\Ergaxiom\ci-installer-process.txt" w
   FileWrite $R8 "${OPERATION}|${VERSION}|$R7"
   FileClose $R8
