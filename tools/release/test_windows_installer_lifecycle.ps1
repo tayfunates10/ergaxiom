@@ -36,12 +36,37 @@ $stateConvergenceTimeoutMs = 30000
 $stateStableWindowMs = 3000
 
 function RunProcess([string]$path, [string[]]$arguments) {
-  $process = Start-Process -FilePath $path -ArgumentList $arguments -PassThru
-  if (-not $process.WaitForExit($processTimeoutMs)) {
-    try { $process.Kill($true) } catch {}
-    throw "PROCESS_TIMEOUT: $([IO.Path]::GetFileName($path))"
+  # NSIS launches an inner installer process. Waiting on only the outer
+  # System.Diagnostics.Process lets a stale installer continue into the next
+  # lifecycle phase. Start-Process -Wait is process-tree aware on Windows.
+  # Run it asynchronously so the existing hard timeout remains fail-closed.
+  $pipeline = [PowerShell]::Create()
+  $invocation = $null
+  try {
+    [void]$pipeline.AddCommand('Start-Process')
+    [void]$pipeline.AddParameter('FilePath', $path)
+    [void]$pipeline.AddParameter('ArgumentList', $arguments)
+    [void]$pipeline.AddParameter('PassThru')
+    [void]$pipeline.AddParameter('Wait')
+    [void]$pipeline.AddParameter('ErrorAction', 'Stop')
+    $invocation = $pipeline.BeginInvoke()
+    if (-not $invocation.AsyncWaitHandle.WaitOne($processTimeoutMs)) {
+      $pipeline.Stop()
+      throw "PROCESS_TREE_TIMEOUT: $([IO.Path]::GetFileName($path))"
+    }
+    $result = @($pipeline.EndInvoke($invocation))
+    if ($pipeline.HadErrors) {
+      $detail = ($pipeline.Streams.Error | ForEach-Object { $_.ToString() }) -join '; '
+      throw "PROCESS_TREE_FAILED: $([IO.Path]::GetFileName($path)): $detail"
+    }
+    if ($result.Count -ne 1) {
+      throw "PROCESS_TREE_RESULT_CARDINALITY: $([IO.Path]::GetFileName($path)) count=$($result.Count)"
+    }
+    return [int]$result[0].ExitCode
+  } finally {
+    if ($null -ne $invocation) { $invocation.AsyncWaitHandle.Close() }
+    $pipeline.Dispose()
   }
-  return $process.ExitCode
 }
 function RunInstaller([string]$path, [bool]$expectSuccess, [string[]]$arguments = @('/S')) {
   $exitCode = RunProcess $path $arguments
