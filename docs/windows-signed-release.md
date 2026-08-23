@@ -76,6 +76,10 @@ Release eligibility requires a recovered `Certified` production chain and indepe
 
 A signed artifact by itself is not a production release. Final `release_eligible: true` requires every independent gate to be proven for the exact candidate.
 
+## Distribution license decision
+
+The owner selected a proprietary distribution model with all rights reserved. The release policy is `owner_decision_status: APPROVED` with SPDX expression `LicenseRef-Ergaxiom-Proprietary`, and the repository root `LICENSE` contains the corresponding Ergaxiom Proprietary License. Finalization still requires a source-commit-bound `owner-license-decision.json` whose `spdx_expression` exactly matches that approved policy; this is release evidence for the immutable candidate, not an unresolved owner decision.
+
 ## CI and review
 
 `.github/workflows/windows-signed-release.yml` runs release attack tests, the canonical controlled-trust verifier tests, unsigned-candidate rejection and the real hosted NSIS lifecycle matrix. Hosted artifacts are explicitly test-only/not-production. Workflow checkouts are pinned to the exact PR head source commit.
@@ -84,4 +88,4 @@ Before publication an independent controlled Windows reviewer must reproduce the
 
 ## Current blockers
 
-Production remains intentionally blocked. There is no owner-pinned real code-signing certificate, no owner-selected SPDX license, no controlled production installer lifecycle evidence, no real persisted `Certified` production job with fresh deployed signer proof for this signed candidate, and no physical Issue #77 ceremony against this exact signed candidate. Hosted CI cannot replace any of those gates.
+Production remains intentionally blocked. The owner distribution-license decision is resolved. Remaining external gates are an owner-pinned real code-signing certificate with usable private key, controlled production installer lifecycle evidence for the exact signed candidate, a real persisted `Certified` production job with fresh deployed signer proof for that candidate, and the physical Issue #77 TPM/LocalSystem ceremony against the exact signed signer-service bytes. Hosted CI cannot replace any of those gates.
