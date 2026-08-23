@@ -1,8 +1,8 @@
 {
   "canonical_installer": "nsis",
   "license": {
-    "owner_decision_status": "REQUIRED",
-    "spdx_expression": null
+    "owner_decision_status": "APPROVED",
+    "spdx_expression": "LicenseRef-Ergaxiom-Proprietary"
   },
   "packaging": {
     "allow_downgrades": false,
