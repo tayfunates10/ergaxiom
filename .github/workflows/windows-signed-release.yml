@@ -30,7 +30,7 @@ jobs:
         shell: bash
         run: test "$(git rev-parse HEAD)" = "$SOURCE_COMMIT"
       - name: Release evidence attack tests
-        run: python -m unittest tools.release.test_generate_release_evidence tools.release.test_finalize_windows_release_evidence tools.release.test_windows_release_attack_matrix tools.windows.test_controlled_trust_gate
+        run: python -m unittest tools.release.test_generate_release_evidence tools.release.test_generate_owner_license_decision tools.release.test_finalize_windows_release_evidence tools.release.test_windows_release_attack_matrix tools.windows.test_controlled_trust_gate
       - name: Compile canonical production-chain verifier
         run: cargo check --locked -p ergaxiom-production-execution-runtime --bin verify_production_release_chain
       - name: Validate release JSON and locked dependency graph
@@ -195,4 +195,14 @@ jobs:
           $p=Get-Content tools/release/windows_release_policy.json -Raw|ConvertFrom-Json
           if($p.signing.identity_status-ne'OWNER_APPROVED_PINNED' -or [string]::IsNullOrWhiteSpace([string]$p.signing.expected_subject) -or [string]::IsNullOrWhiteSpace([string]$p.signing.expected_certificate_sha256)){throw 'PRODUCTION BLOCKED: real code-signing identity pin is unresolved'}
           if($p.license.owner_decision_status-ne'APPROVED' -or [string]::IsNullOrWhiteSpace([string]$p.license.spdx_expression)){throw 'PRODUCTION BLOCKED: distribution license is unresolved'}
-          Write-Host 'Repository-controlled production-chain verifier is integrated; external signed candidate, lifecycle and physical trust evidence are still required.'
+      - name: Generate exact owner-license evidence and read-only host inventory
+        shell: pwsh
+        run: |
+          python tools/release/generate_owner_license_decision.py --repo-root . --output "$env:RUNNER_TEMP\owner-license-decision.json"
+          if($LASTEXITCODE-ne0){throw 'OWNER_LICENSE_EVIDENCE_FAILED'}
+          $lic=Get-Content "$env:RUNNER_TEMP\owner-license-decision.json" -Raw|ConvertFrom-Json
+          if($lic.source_commit-ne$env:SOURCE_COMMIT -or $lic.owner_approved-ne$true -or $lic.spdx_expression-ne'LicenseRef-Ergaxiom-Proprietary'){throw 'OWNER_LICENSE_EVIDENCE_REJECTED'}
+          ./tools/release/check_production_windows_host.ps1 -PolicyPath tools/release/windows_release_policy.json -OutputPath "$env:RUNNER_TEMP\production-host-preflight.json" | Out-Null
+          $hostReport=Get-Content "$env:RUNNER_TEMP\production-host-preflight.json" -Raw|ConvertFrom-Json
+          if($hostReport.release_eligible-ne$false -or $hostReport.physical_tpm_evidence_proven-ne$false){throw 'PREFLIGHT_MUST_NEVER_CLAIM_PRODUCTION_EVIDENCE'}
+          Write-Host 'Repository-controlled preflight passed. External signed candidate, lifecycle, physical trust evidence and certified production chain are still mandatory.'
