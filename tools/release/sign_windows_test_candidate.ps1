@@ -35,6 +35,7 @@ function Invoke-SignToolBounded {
     [int]$TimeoutSeconds = 60
   )
 
+  Write-Host "SignTool start: $Operation"
   $psi = [Diagnostics.ProcessStartInfo]::new()
   $psi.FileName = $SignTool
   $psi.UseShellExecute = $false
@@ -59,6 +60,7 @@ function Invoke-SignToolBounded {
   if ($stdout) { Write-Host $stdout.TrimEnd() }
   if ($stderr) { Write-Host $stderr.TrimEnd() }
   if ($process.ExitCode -ne 0) { throw "SIGNTOOL_FAILED: $Operation (exit=$($process.ExitCode))" }
+  Write-Host "SignTool success: $Operation"
 }
 
 $policyResolved = (Resolve-Path $PolicyPath).Path
@@ -79,14 +81,18 @@ foreach ($path in $Artifact) {
 }
 if ($resolved.Count -eq 0) { throw 'NO_ARTIFACTS' }
 
+Write-Host 'Creating ephemeral self-signed test code-signing certificate.'
 $cert = New-SelfSignedCertificate `
-  -Type CodeSigningCert `
+  -Type Custom `
   -Subject $Subject `
   -CertStoreLocation 'Cert:\CurrentUser\My' `
+  -KeyUsage DigitalSignature `
+  -KeySpec Signature `
   -KeyAlgorithm RSA `
-  -KeyLength 3072 `
+  -KeyLength 2048 `
   -HashAlgorithm SHA256 `
   -KeyExportPolicy NonExportable `
+  -TextExtension @('2.5.29.37={text}1.3.6.1.5.5.7.3.3','2.5.29.19={text}') `
   -NotAfter (Get-Date).AddDays(7)
 
 if (-not $cert -or -not $cert.HasPrivateKey) { throw 'TEST_CERTIFICATE_CREATION_FAILED' }
@@ -95,12 +101,22 @@ $eku = @($cert.Extensions | Where-Object { $_.Oid.Value -eq '2.5.29.37' } | ForE
   ([Security.Cryptography.X509Certificates.X509EnhancedKeyUsageExtension]$_).EnhancedKeyUsages | ForEach-Object { $_.Value }
 })
 if ([string]$policy.signing.code_signing_eku_oid -notin $eku) { throw 'TEST_CODE_SIGNING_EKU_MISSING' }
+Write-Host "Created test certificate thumbprint=$($cert.Thumbprint)"
 
 $cerPath = Join-Path $env:TEMP ("ergaxiom-test-signing-{0}.cer" -f $cert.Thumbprint)
+Write-Host "Exporting public test certificate to $cerPath"
 Export-Certificate -Cert $cert -FilePath $cerPath -Force | Out-Null
-Import-Certificate -FilePath $cerPath -CertStoreLocation 'Cert:\CurrentUser\Root' | Out-Null
+
+# Trust the test leaf in TrustedPeople rather than elevating it to a trusted root.
+# This avoids root-store trust UI on non-interactive hosted runners and keeps the
+# trust scope explicitly test-only. Production never uses this certificate path.
+$trustedPeopleStore = 'Cert:\CurrentUser\TrustedPeople'
+Write-Host "Importing public test certificate into $trustedPeopleStore"
+Import-Certificate -FilePath $cerPath -CertStoreLocation $trustedPeopleStore | Out-Null
+Write-Host 'Test certificate trust import completed.'
 
 $signTool = Find-SignTool
+Write-Host "Using SignTool: $signTool"
 foreach ($full in $resolved) {
   $name = [IO.Path]::GetFileName($full)
   # Test-only identities deliberately do not contact an external TSA. Production
@@ -125,11 +141,11 @@ $evidence = [ordered]@{
   private_key_exported = $false
   certificate_store_location = 'CurrentUser'
   certificate_store_name = 'My'
-  trusted_test_root_store = 'CurrentUser\\Root'
+  trusted_test_store = 'CurrentUser\\TrustedPeople'
   not_before = $cert.NotBefore.ToUniversalTime().ToString('o')
   not_after = $cert.NotAfter.ToUniversalTime().ToString('o')
   artifact_names = @($resolved | ForEach-Object { [IO.Path]::GetFileName($_) } | Sort-Object)
-  note = 'Ephemeral self-signed test identity only; bounded SignTool subprocesses; no external timestamp. Never valid production release evidence.'
+  note = 'Ephemeral self-signed test identity only; TrustedPeople test trust; bounded SignTool subprocesses; no external timestamp. Never valid production release evidence.'
 }
 $out = [IO.Path]::GetFullPath($IdentityEvidenceOut)
 New-Item -ItemType Directory -Force (Split-Path $out) | Out-Null
