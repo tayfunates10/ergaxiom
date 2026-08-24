@@ -90,12 +90,14 @@ function Test-SignToolSignature {
   )
 
   try {
-    $process = Start-Process \
-      -FilePath $SignTool \
-      -ArgumentList @('verify', '/pa', '/all', '/v', $Path) \
-      -Wait \
-      -PassThru \
-      -WindowStyle Hidden
+    $startProcessArgs = @{
+      FilePath = $SignTool
+      ArgumentList = @('verify', '/pa', '/all', '/v', $Path)
+      Wait = $true
+      PassThru = $true
+      WindowStyle = 'Hidden'
+    }
+    $process = Start-Process @startProcessArgs
     return $process.ExitCode -eq 0
   } catch {
     return $false
