@@ -68,7 +68,9 @@ Import-Certificate -FilePath $cerPath -CertStoreLocation 'Cert:\CurrentUser\Root
 
 $signTool = Find-SignTool
 foreach ($full in $resolved) {
-  & $signTool sign /fd SHA256 /td SHA256 /tr ([string]$policy.signing.timestamp_url) /s My /sha1 $cert.Thumbprint $full
+  # Test-only identities deliberately do not contact an external TSA. Production
+  # signing remains timestamp-mandatory in sign_windows_release.ps1/finalizer.
+  & $signTool sign /fd SHA256 /s My /sha1 $cert.Thumbprint $full
   if ($LASTEXITCODE -ne 0) { throw "TEST_AUTHENTICODE_SIGN_FAILED: $([IO.Path]::GetFileName($full))" }
   & $signTool verify /pa /all /v $full
   if ($LASTEXITCODE -ne 0) { throw "TEST_AUTHENTICODE_VERIFY_FAILED: $([IO.Path]::GetFileName($full))" }
@@ -80,6 +82,7 @@ $evidence = [ordered]@{
   test_identity = $true
   self_signed = $true
   production_eligible = $false
+  timestamp_requested = $false
   subject = [string]$cert.Subject
   issuer = [string]$cert.Issuer
   der_sha256 = Get-DerSha256 $cert
@@ -92,9 +95,9 @@ $evidence = [ordered]@{
   not_before = $cert.NotBefore.ToUniversalTime().ToString('o')
   not_after = $cert.NotAfter.ToUniversalTime().ToString('o')
   artifact_names = @($resolved | ForEach-Object { [IO.Path]::GetFileName($_) } | Sort-Object)
-  note = 'Ephemeral self-signed test identity only. Never valid production release evidence.'
+  note = 'Ephemeral self-signed test identity only; no external timestamp. Never valid production release evidence.'
 }
 $out = [IO.Path]::GetFullPath($IdentityEvidenceOut)
 New-Item -ItemType Directory -Force (Split-Path $out) | Out-Null
 [IO.File]::WriteAllText($out, (($evidence | ConvertTo-Json -Depth 8) + [Environment]::NewLine), [Text.UTF8Encoding]::new($false))
-Write-Host "Self-signed and verified $($resolved.Count) test artifact(s). Identity evidence: $out"
+Write-Host "Self-signed and verified $($resolved.Count) test artifact(s) without external timestamp. Identity evidence: $out"
