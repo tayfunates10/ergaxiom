@@ -37,6 +37,24 @@ function Resolve-SignTool {
     Select-Object -First 1
 }
 
+function New-UnavailableProviderReport([bool]$IsWindowsHost) {
+  # Fail-closed placeholder used when the detector cannot run at all. A provider
+  # is never assumed present; only a real probe may set `present`.
+  return [ordered]@{
+    schema_version = '0.1.0'
+    provider_name = 'Microsoft Platform Crypto Provider'
+    platform_windows = [bool]$IsWindowsHost
+    present = $false
+    detection_method = $null
+    registered = $false
+    registration_method = $null
+    native_open = [ordered]@{ attempted = $false; opened = $false; status = $null; error = 'PROVIDER_DETECTION_UNAVAILABLE' }
+    native_enumeration = [ordered]@{ attempted = $false; found = $false; provider_count = 0; status = $null; error = 'PROVIDER_DETECTION_UNAVAILABLE' }
+    certutil_csplist = [ordered]@{ attempted = $false; matched = $false; exit_code = $null; error = 'PROVIDER_DETECTION_UNAVAILABLE' }
+    note = 'Read-only provider inventory. Not TPM ceremony evidence and never release evidence.'
+  }
+}
+
 function Get-ToolRecord([string]$Name, [string]$Executable) {
   if ([string]::IsNullOrWhiteSpace($Executable)) {
     return [ordered]@{ present = $false; path = $null }
@@ -50,7 +68,7 @@ if (-not (Test-Path $policyResolved -PathType Leaf)) { throw "POLICY_MISSING: $p
 $policy = Get-Content $policyResolved -Raw | ConvertFrom-Json -Depth 32
 if ($policy.schema_version -ne '0.1.0' -or $policy.policy_id -ne 'ergaxiom.windows-production-release') { throw 'POLICY_REJECTED' }
 
-$isWindows = $env:OS -eq 'Windows_NT'
+$windowsHost = $env:OS -eq 'Windows_NT'
 $sourceCommit = $null
 $trackedClean = $false
 $gitPath = Resolve-Executable 'git.exe'
@@ -64,7 +82,7 @@ if ($gitPath) {
 }
 
 $elevated = $false
-if ($isWindows) {
+if ($windowsHost) {
   try {
     $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
     $principal = [Security.Principal.WindowsPrincipal]::new($identity)
@@ -79,7 +97,7 @@ $tpm = [ordered]@{
   enabled = $false
   activated = $false
 }
-if ($isWindows -and (Get-Command Get-Tpm -ErrorAction SilentlyContinue)) {
+if ($windowsHost -and (Get-Command Get-Tpm -ErrorAction SilentlyContinue)) {
   $tpm.command_available = $true
   try {
     $observed = Get-Tpm
@@ -90,16 +108,22 @@ if ($isWindows -and (Get-Command Get-Tpm -ErrorAction SilentlyContinue)) {
   } catch { }
 }
 
-$platformProviderPresent = $false
 $certutilPath = Resolve-Executable 'certutil.exe'
-if ($isWindows -and $certutilPath) {
+$platformProvider = New-UnavailableProviderReport $windowsHost
+$detectorPath = Join-Path $PSScriptRoot 'detect_platform_crypto_provider.ps1'
+if (Test-Path $detectorPath -PathType Leaf) {
   try {
-    $providers = & $certutilPath -csplist 2>$null | Out-String
-    $platformProviderPresent = $LASTEXITCODE -eq 0 -and $providers.Contains('Microsoft Platform Crypto Provider')
-  } catch { $platformProviderPresent = $false }
+    $detected = & $detectorPath
+    if ($detected) { $platformProvider = $detected }
+  } catch {
+    $platformProvider = New-UnavailableProviderReport $windowsHost
+    $platformProvider.native_open.error = [string]$_.Exception.Message
+    $platformProvider.native_enumeration.error = [string]$_.Exception.Message
+  }
 }
+$platformProviderPresent = [bool]$platformProvider.present
 
-$signToolPath = if ($isWindows) { Resolve-SignTool } else { $null }
+$signToolPath = if ($windowsHost) { Resolve-SignTool } else { $null }
 $cargoPath = Resolve-Executable 'cargo.exe'; if (-not $cargoPath) { $cargoPath = Resolve-Executable 'cargo' }
 $rustcPath = Resolve-Executable 'rustc.exe'; if (-not $rustcPath) { $rustcPath = Resolve-Executable 'rustc' }
 $nodePath = Resolve-Executable 'node.exe'; if (-not $nodePath) { $nodePath = Resolve-Executable 'node' }
@@ -109,7 +133,7 @@ $pythonPath = Resolve-Executable 'python.exe'; if (-not $pythonPath) { $pythonPa
 $signing = $policy.signing
 $storePath = "Cert:\$($signing.certificate_store_location)\$($signing.certificate_store_name)"
 $candidates = @()
-if ($isWindows -and (Test-Path $storePath)) {
+if ($windowsHost -and (Test-Path $storePath)) {
   $now = Get-Date
   foreach ($certificate in @(Get-ChildItem $storePath -ErrorAction SilentlyContinue)) {
     $ekus = @(Get-CodeSigningEkus $certificate)
@@ -145,16 +169,16 @@ if ($pinnedResolved) {
 $toolchainReady = [bool]($gitPath -and $cargoPath -and $rustcPath -and $nodePath -and $npmPath -and $pythonPath -and $signToolPath)
 $physicalTpmReady = [bool]($tpm.present -and $tpm.ready -and $tpm.enabled -and $tpm.activated -and $platformProviderPresent)
 $prepareReady = [bool](
-  $isWindows -and $trackedClean -and $toolchainReady -and $pinnedResolved -and
+  $windowsHost -and $trackedClean -and $toolchainReady -and $pinnedResolved -and
   $pinnedMatches.Count -eq 1 -and $pinnedMatches[0].acceptable_for_pinning
 )
-$controlledHardwareReady = [bool]($isWindows -and $elevated -and $physicalTpmReady)
+$controlledHardwareReady = [bool]($windowsHost -and $elevated -and $physicalTpmReady)
 
 $report = [ordered]@{
   schema_version = '0.1.0'
   source_commit = $sourceCommit
   tracked_worktree_clean = [bool]$trackedClean
-  platform_windows = [bool]$isWindows
+  platform_windows = [bool]$windowsHost
   elevated_administrator = [bool]$elevated
   tools = [ordered]@{
     git = Get-ToolRecord 'git' $gitPath
@@ -168,6 +192,7 @@ $report = [ordered]@{
   }
   tpm = $tpm
   microsoft_platform_crypto_provider_present = [bool]$platformProviderPresent
+  microsoft_platform_crypto_provider = $platformProvider
   signing_policy = [ordered]@{
     identity_status = [string]$signing.identity_status
     certificate_store_location = [string]$signing.certificate_store_location
@@ -184,6 +209,11 @@ $report = [ordered]@{
   release_eligible = $false
   note = 'Read-only preflight only. This report is not Authenticode, physical TPM, lifecycle, or production-chain evidence.'
 }
+
+# Informational native probes inside this read-only inventory (certutil) may leave
+# their own non-zero exit code behind. This script signals failure by throwing, so
+# a successful inventory must not hand a stale failure code to its caller.
+$global:LASTEXITCODE = 0
 
 $json = $report | ConvertTo-Json -Depth 16
 if ($OutputPath) {

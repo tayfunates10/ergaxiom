@@ -181,6 +181,76 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
+  host-preflight-selftest:
+    runs-on: windows-2025
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.SOURCE_COMMIT }}
+          persist-credentials: false
+      - name: Reject source identity substitution
+        shell: pwsh
+        run: |
+          $actual=(git rev-parse HEAD).Trim()
+          if($actual-ne$env:SOURCE_COMMIT){throw "Checked out $actual but expected $env:SOURCE_COMMIT"}
+      - name: Native CNG probes must run and registration alone must never be presence
+        shell: pwsh
+        run: |
+          $detector='./tools/release/detect_platform_crypto_provider.ps1'
+          $platform=& $detector -AsJson|ConvertFrom-Json
+          if((Test-Path variable:\LASTEXITCODE) -and $LASTEXITCODE-ne0){throw "DETECTOR_LEFT_A_FAILING_EXIT_CODE: $LASTEXITCODE"}
+          if($platform.platform_windows-ne$true){throw 'DETECTOR_DID_NOT_SEE_WINDOWS'}
+          if($platform.native_open.attempted-ne$true -or $platform.native_enumeration.attempted-ne$true){throw 'NATIVE_CNG_PROBE_DID_NOT_RUN'}
+          if($platform.native_open.error){throw "NATIVE_OPEN_PROBE_ERROR: $($platform.native_open.error)"}
+          if($platform.native_enumeration.error){throw "NATIVE_ENUM_PROBE_ERROR: $($platform.native_enumeration.error)"}
+          if($platform.native_enumeration.status-ne'0x00000000'){throw "NCryptEnumStorageProviders failed: $($platform.native_enumeration.status)"}
+          if([int]$platform.native_enumeration.provider_count-lt1){throw 'NCryptEnumStorageProviders returned no providers'}
+          if($platform.registered-ne$true){throw 'NATIVE_ENUMERATION_DID_NOT_FIND_THE_REGISTERED_PLATFORM_KSP'}
+          if($platform.present-ne$platform.native_open.opened){throw 'PRESENCE_IS_NOT_BOUND_TO_NCryptOpenStorageProvider'}
+          if($platform.present-eq$true -and $platform.detection_method-ne'ncrypt_open_storage_provider'){throw "Unexpected detection method $($platform.detection_method)"}
+          if($platform.present-ne$true -and $platform.detection_method-ne$null){throw 'DETECTOR_REPORTED_METHOD_WITHOUT_PRESENCE'}
+          if($platform.registered-eq$true -and $platform.native_open.opened-ne$true -and $platform.present-ne$false){throw 'REGISTRATION_WAS_TREATED_AS_PRESENCE'}
+          Write-Host "Platform Crypto Provider present=$($platform.present) registered=$($platform.registered) via=$($platform.registration_method) open=$($platform.native_open.status) certutil_exit=$($platform.certutil_csplist.exit_code)"
+      - name: Native probe must open a usable provider and reject a fabricated one
+        shell: pwsh
+        run: |
+          $detector='./tools/release/detect_platform_crypto_provider.ps1'
+          $known=& $detector -ProviderName 'Microsoft Software Key Storage Provider' -AsJson|ConvertFrom-Json
+          if($known.present-ne$true){throw 'NATIVE_PROBE_CANNOT_OPEN_A_USABLE_PROVIDER'}
+          if($known.native_open.opened-ne$true -or $known.native_open.status-ne'0x00000000'){throw 'NCryptOpenStorageProvider did not open a usable provider'}
+          if($known.detection_method-ne'ncrypt_open_storage_provider'){throw "Unexpected detection method $($known.detection_method)"}
+          $absent=& $detector -ProviderName 'Ergaxiom Nonexistent Storage Provider 6f1f0f5e' -AsJson|ConvertFrom-Json
+          if($absent.present-ne$false -or $absent.registered-ne$false){throw 'DETECTOR_INVENTED_A_PROVIDER'}
+          if($absent.detection_method-ne$null -or $absent.registration_method-ne$null){throw 'DETECTOR_REPORTED_A_METHOD_FOR_AN_ABSENT_PROVIDER'}
+          if($absent.native_open.opened-ne$false -or $absent.native_open.status-eq'0x00000000'){throw 'NCryptOpenStorageProvider opened a provider that does not exist'}
+          if($absent.native_enumeration.found-ne$false -or $absent.certutil_csplist.matched-ne$false){throw 'ABSENT_PROVIDER_MATCHED_A_PROBE'}
+      - name: Read-only preflight must run under pwsh and stay fail-closed
+        shell: pwsh
+        run: |
+          ./tools/release/check_production_windows_host.ps1 -PolicyPath tools/release/windows_release_policy.json -OutputPath "$env:RUNNER_TEMP\host-preflight-selftest.json" | Out-Null
+          if((Test-Path variable:\LASTEXITCODE) -and $LASTEXITCODE-ne0){throw "PREFLIGHT_LEFT_A_FAILING_EXIT_CODE: $LASTEXITCODE"}
+          $r=Get-Content "$env:RUNNER_TEMP\host-preflight-selftest.json" -Raw|ConvertFrom-Json
+          if($r.platform_windows-ne$true){throw 'PREFLIGHT_DID_NOT_SEE_WINDOWS'}
+          if($r.source_commit-ne$env:SOURCE_COMMIT){throw 'PREFLIGHT_SOURCE_COMMIT_MISMATCH'}
+          if($r.microsoft_platform_crypto_provider_present-ne$r.microsoft_platform_crypto_provider.present){throw 'PROVIDER_SUMMARY_DISAGREES_WITH_DETECTION_DETAIL'}
+          if($r.microsoft_platform_crypto_provider.native_open.attempted-ne$true){throw 'PREFLIGHT_DID_NOT_RUN_THE_NATIVE_PROBE'}
+          if($r.microsoft_platform_crypto_provider.present-ne$r.microsoft_platform_crypto_provider.native_open.opened){throw 'PREFLIGHT_PRESENCE_IS_NOT_BOUND_TO_NCryptOpenStorageProvider'}
+          if($r.physical_tpm_evidence_proven-ne$false -or $r.release_eligible-ne$false){throw 'PREFLIGHT_MUST_NEVER_CLAIM_PRODUCTION_EVIDENCE'}
+          if($r.ready_for_signed_candidate_prepare-ne$false){throw 'HOSTED_RUNNER_MUST_NEVER_BE_PREPARE_READY'}
+          if($r.signing_policy.policy_pin_resolved-ne$false){throw 'CERTIFICATE_PIN_UNEXPECTEDLY_RESOLVED'}
+          try {
+            ./tools/release/check_production_windows_host.ps1 -PolicyPath tools/release/windows_release_policy.json -RequireReady | Out-Null
+            throw 'PREFLIGHT_REQUIREREADY_DID_NOT_FAIL_CLOSED'
+          } catch {
+            if($_.Exception.Message -notmatch 'PRODUCTION_WINDOWS_HOST_NOT_READY'){throw}
+          }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-host-preflight-selftest-NOT-PRODUCTION
+          path: ${{ runner.temp }}/host-preflight-selftest.json
+          if-no-files-found: error
+          retention-days: 14
+
   production-preflight:
     if: github.event_name == 'workflow_dispatch'
     runs-on: windows-2025

@@ -20,7 +20,24 @@ Before changing the signing policy or running a ceremony, use the read-only host
   -OutputPath C:\evidence\production-host-preflight.json
 ```
 
-The report checks the clean source commit, Administrator context, Git/Rust/Node/Python/SignTool availability, TPM present/ready/enabled/activated state, `Microsoft Platform Crypto Provider`, and all code-signing certificate candidates in the configured Windows certificate store. Certificate output is public metadata only: subject, DER SHA-256, thumbprint, validity and whether a private key is available. It never exports a private key, PIN or token secret and it always records `physical_tpm_evidence_proven: false` and `release_eligible: false` because preflight is not ceremony evidence.
+The report checks the clean source commit, Administrator context, Git/Rust/Node/Python/SignTool availability, TPM present/ready/enabled/activated state, `Microsoft Platform Crypto Provider`, and all code-signing certificate candidates in the configured Windows certificate store.
+
+### Locale-independent CNG provider detection
+
+`Microsoft Platform Crypto Provider` presence is resolved by `tools/release/detect_platform_crypto_provider.ps1`, which the preflight invokes and embeds under `microsoft_platform_crypto_provider` next to the `microsoft_platform_crypto_provider_present` summary flag.
+
+The report separates two different facts that the old `certutil` string match conflated:
+
+- **`present`** — `NCryptOpenStorageProvider` actually opened the provider. This is the only probe that proves the provider is *usable*, so it is the only probe that may set `present`, and `detection_method` is therefore always `ncrypt_open_storage_provider`.
+- **`registered`** — the provider name is registered, established by `NCryptEnumStorageProviders` or, failing that, by `certutil -csplist`. Corroborating only. The Platform KSP is registered on every Windows install including hosts with no usable TPM device, so registration can never raise `present`.
+
+Hosted Windows CI demonstrates exactly that split: the Platform KSP enumerates, but opening it returns `NTE_DEVICE_NOT_READY` (`0x80090030`) because the runner has no usable TPM, so `present` stays `false`.
+
+Both native probes are locale independent. `certutil -csplist` renders localized labels on non-English Windows and exits non-zero when any unrelated provider fails to enumerate, so the previous exit-code-plus-string match could report a false negative on a localized host with a working TPM KSP. It is now a corroborating registration probe only and can no longer veto a native probe. Its exit code is recorded as probe data and is explicitly cleared from `$LASTEXITCODE`, because it is not the script's own result and would otherwise fail an otherwise successful caller.
+
+Detection is fail closed in both directions. A failed, errored or unavailable probe never becomes `true`: the NTSTATUS and error text are kept, `present` stays `false` and `detection_method` stays `null`. Opening the provider proves the KSP is loadable against a ready device, not that a TPM key exists, so `ready_for_controlled_hardware_ceremony` still additionally requires elevation and TPM present/ready/enabled/activated, and `physical_tpm_evidence_proven` remains permanently `false` in this report.
+
+`host-preflight-selftest` in the `Windows release evidence` workflow is the repository-controlled regression test for this. On hosted Windows it asserts that both native probes really ran, that the registered Platform KSP is found by `NCryptEnumStorageProviders`, that `present` is bound to `NCryptOpenStorageProvider` alone so registration is never treated as presence, that a genuinely usable provider (`Microsoft Software Key Storage Provider`) does open, that a fabricated provider name is rejected by every probe, that neither script leaves a failing `$LASTEXITCODE` behind, that the summary flag matches the detail record, and that `-RequireReady` still fails closed. Hosted CI is never physical TPM evidence. Certificate output is public metadata only: subject, DER SHA-256, thumbprint, validity and whether a private key is available. It never exports a private key, PIN or token secret and it always records `physical_tpm_evidence_proven: false` and `release_eligible: false` because preflight is not ceremony evidence.
 
 Before Stage A, the owner-approved certificate must be pinned in `windows_release_policy.json`. Re-run the same preflight with `-RequireReady`; it fails unless the exact pinned certificate is uniquely available and the controlled hardware prerequisites are ready.
 
