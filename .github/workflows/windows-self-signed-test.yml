@@ -1,0 +1,152 @@
+name: Windows self-signed test candidate
+
+on:
+  pull_request:
+    paths:
+      - "apps/desktop/**"
+      - "apps/windows-production-signer-service/**"
+      - "Cargo.lock"
+      - "crates/**"
+      - "tools/release/**"
+      - ".github/workflows/windows-self-signed-test.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  SOURCE_COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
+
+concurrency:
+  group: windows-self-signed-test-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  self-signed-candidate-remains-blocked:
+    runs-on: windows-2025
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.SOURCE_COMMIT }}
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: apps/desktop/package-lock.json
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Reject source identity substitution
+        shell: pwsh
+        run: |
+          $actual=(git rev-parse HEAD).Trim()
+          if($actual-ne$env:SOURCE_COMMIT){throw "Checked out $actual but expected $env:SOURCE_COMMIT"}
+      - name: Generate approved proprietary license evidence from clean exact source
+        shell: pwsh
+        run: |
+          python tools/release/generate_owner_license_decision.py --repo-root . --output "$env:RUNNER_TEMP\owner-license-decision.json"
+          if($LASTEXITCODE-ne0){throw 'OWNER_LICENSE_EVIDENCE_FAILED'}
+      - name: Parse self-signed test signer
+        shell: pwsh
+        run: |
+          $tokens=$null;$errors=$null
+          [System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path 'tools/release/sign_windows_test_candidate.ps1').Path,[ref]$tokens,[ref]$errors)|Out-Null
+          if($errors.Count){throw "PowerShell parse failure: $($errors[0].Message)"}
+      - name: Build exact desktop, signer service and NSIS installer
+        shell: pwsh
+        run: |
+          npm --prefix apps/desktop ci
+          if($LASTEXITCODE-ne0){throw 'NPM_CI_FAILED'}
+          npm --prefix apps/desktop run tauri -- build --no-bundle
+          if($LASTEXITCODE-ne0){throw 'DESKTOP_BUILD_FAILED'}
+          cargo build --release --locked -p ergaxiom-windows-production-signer-service
+          if($LASTEXITCODE-ne0){throw 'SIGNER_SERVICE_BUILD_FAILED'}
+          New-Item -ItemType Directory -Force apps/desktop/src-tauri/release-resources | Out-Null
+          Copy-Item target/release/ergaxiom-windows-production-signer-service.exe apps/desktop/src-tauri/release-resources/ergaxiom-windows-production-signer-service.exe
+          npm --prefix apps/desktop run tauri -- bundle --config src-tauri/tauri.ci-installer.conf.json
+          if($LASTEXITCODE-ne0){throw 'NSIS_BUNDLE_FAILED'}
+      - name: Prepare exact test candidate copies
+        shell: pwsh
+        run: |
+          $installer=@(Get-ChildItem apps/desktop/src-tauri/target/release/bundle/nsis -Filter '*-setup.exe')
+          if($installer.Count-ne1){throw "Expected exactly one NSIS installer, got $($installer.Count)"}
+          $candidate=Join-Path $env:RUNNER_TEMP 'self-signed-candidate'
+          New-Item -ItemType Directory -Force $candidate | Out-Null
+          [IO.File]::Copy((Resolve-Path 'apps/desktop/src-tauri/target/release/ergaxiom-desktop.exe').Path,(Join-Path $candidate 'ergaxiom-desktop.exe'),$false)
+          [IO.File]::Copy((Resolve-Path 'apps/desktop/src-tauri/release-resources/ergaxiom-windows-production-signer-service.exe').Path,(Join-Path $candidate 'ergaxiom-windows-production-signer-service.exe'),$false)
+          [IO.File]::Copy($installer[0].FullName,(Join-Path $candidate $installer[0].Name),$false)
+      - name: Self-sign exact test candidate
+        timeout-minutes: 5
+        shell: pwsh
+        run: |
+          $candidate=Join-Path $env:RUNNER_TEMP 'self-signed-candidate'
+          $artifacts=@(Get-ChildItem $candidate -File)
+          if($artifacts.Count-ne3){throw "Expected exactly three candidate artifacts, got $($artifacts.Count)"}
+          ./tools/release/sign_windows_test_candidate.ps1 `
+            -PolicyPath tools/release/windows_release_policy.json `
+            -Artifact @($artifacts.FullName) `
+            -IdentityEvidenceOut "$env:RUNNER_TEMP\self-signed-identity.json"
+          if(-not $?){throw 'SELF_SIGNED_TEST_SIGNING_FAILED'}
+      - name: Validate self-signed identity boundary
+        shell: pwsh
+        run: |
+          $identity=Get-Content "$env:RUNNER_TEMP\self-signed-identity.json" -Raw|ConvertFrom-Json
+          if($identity.mode-ne'test' -or $identity.test_identity-ne$true -or $identity.self_signed-ne$true -or $identity.production_eligible-ne$false -or $identity.private_key_exported-ne$false -or $identity.timestamp_requested-ne$false){throw 'SELF_SIGNED_IDENTITY_BOUNDARY_REJECTED'}
+          if([int]$identity.subprocess_timeout_seconds-ne60){throw 'SELF_SIGNED_SUBPROCESS_TIMEOUT_NOT_BOUND'}
+          if($identity.trust_store_modified-ne$false -or $identity.windows_trust_expected-ne$false){throw 'SELF_SIGNED_TRUST_BOUNDARY_REJECTED'}
+      - name: Generate base evidence for signed test candidate
+        shell: pwsh
+        run: |
+          $candidate=Join-Path $env:RUNNER_TEMP 'self-signed-candidate'
+          $desktop=Join-Path $candidate 'ergaxiom-desktop.exe'
+          $service=Join-Path $candidate 'ergaxiom-windows-production-signer-service.exe'
+          $installer=@(Get-ChildItem $candidate -Filter '*-setup.exe')
+          if($installer.Count-ne1){throw 'SELF_SIGNED_INSTALLER_CARDINALITY_REJECTED'}
+          $rustc=(rustc --version).Trim();$node=(node --version).Trim();$npm=(npm --version).Trim()
+          python tools/release/generate_release_evidence.py --repo-root . --artifact $desktop --artifact $service --artifact $installer[0].FullName --source-commit $env:SOURCE_COMMIT --rustc-version $rustc --node-version $node --npm-version $npm --output-dir "$env:RUNNER_TEMP\self-signed-base"
+          if($LASTEXITCODE-ne0){throw 'SELF_SIGNED_BASE_EVIDENCE_FAILED'}
+      - name: Verify self-signed Authenticode as intentionally untrusted test identity
+        timeout-minutes: 5
+        shell: pwsh
+        run: |
+          $candidate=Join-Path $env:RUNNER_TEMP 'self-signed-candidate'
+          $artifacts=@(Get-ChildItem $candidate -File)
+          ./tools/release/verify_windows_signatures.ps1 -Mode test -PolicyPath tools/release/windows_release_policy.json -Artifact @($artifacts.FullName) -EvidenceOut "$env:RUNNER_TEMP\self-signed-signatures.json"
+          if(-not $?){throw 'SELF_SIGNED_SIGNATURE_EVIDENCE_FAILED'}
+      - name: Validate intentionally untrusted test signature evidence
+        shell: pwsh
+        run: |
+          $identity=Get-Content "$env:RUNNER_TEMP\self-signed-identity.json" -Raw|ConvertFrom-Json
+          $sig=Get-Content "$env:RUNNER_TEMP\self-signed-signatures.json" -Raw|ConvertFrom-Json
+          if($sig.mode-ne'test' -or $sig.test_identity-ne$true -or $sig.signtool_available-ne$true){throw 'TEST_SIGNATURE_MODE_REJECTED'}
+          foreach($record in @($sig.artifacts)){
+            if($record.self_signed-ne$true -or $record.code_signing_eku_present-ne$true -or $record.timestamp_present-ne$false){throw "SELF_SIGNED_ARTIFACT_STRUCTURE_REJECTED: $($record.name)"}
+            if($record.signer_subject-ne$identity.subject -or $record.signer_certificate_sha256-ne$identity.der_sha256){throw "SELF_SIGNED_IDENTITY_BINDING_REJECTED: $($record.name)"}
+            if($record.authenticode_valid-ne$false -or $record.signtool_verify_ok-ne$false -or $record.certificate_chain_valid-ne$false){throw "SELF_SIGNED_UNTRUSTED_BOUNDARY_REJECTED: $($record.name)"}
+          }
+      - name: Prove finalizer rejects self-signed candidate
+        shell: pwsh
+        run: |
+          python tools/release/finalize_windows_release_evidence.py `
+            --base-manifest "$env:RUNNER_TEMP\self-signed-base\ergaxiom-release-manifest.json" `
+            --policy tools/release/windows_release_policy.json `
+            --signature-evidence "$env:RUNNER_TEMP\self-signed-signatures.json" `
+            --license-decision "$env:RUNNER_TEMP\owner-license-decision.json" `
+            --output "$env:RUNNER_TEMP\self-signed-final.json"
+          if($LASTEXITCODE-ne0){throw 'SELF_SIGNED_FINALIZER_FAILED'}
+          $final=Get-Content "$env:RUNNER_TEMP\self-signed-final.json" -Raw|ConvertFrom-Json
+          if($final.release_eligible-ne$false){throw 'SELF_SIGNED_CANDIDATE_BECAME_PRODUCTION_ELIGIBLE'}
+          foreach($blocker in @('SIGNING_IDENTITY_POLICY_UNRESOLVED','AUTHENTICODE_NOT_VERIFIED','TRUSTED_TIMESTAMP_NOT_VERIFIED','SIGNING_IDENTITY_NOT_VERIFIED')){
+            if($blocker-notin @($final.blocking_reasons)){throw "Missing required self-signed blocker: $blocker"}
+          }
+          if('DISTRIBUTION_LICENSE_NOT_APPROVED'-in @($final.blocking_reasons)){throw 'APPROVED_PROPRIETARY_LICENSE_WAS_NOT_ACCEPTED'}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-self-signed-test-evidence-NOT-PRODUCTION
+          path: |
+            ${{ runner.temp }}/self-signed-identity.json
+            ${{ runner.temp }}/self-signed-signatures.json
+            ${{ runner.temp }}/self-signed-final.json
+            ${{ runner.temp }}/owner-license-decision.json
+          if-no-files-found: error
+          retention-days: 14
