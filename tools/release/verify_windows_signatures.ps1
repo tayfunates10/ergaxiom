@@ -1,16 +1,187 @@
 [CmdletBinding()]
-param([Parameter(Mandatory)][ValidateSet('test','production')][string]$Mode,[Parameter(Mandatory)][string]$PolicyPath,[Parameter(Mandatory)][string[]]$Artifact,[Parameter(Mandatory)][string]$EvidenceOut)
-$ErrorActionPreference='Stop';Set-StrictMode -Version Latest
-$p=(Resolve-Path $PolicyPath).Path;$policy=Get-Content $p -Raw|ConvertFrom-Json -Depth 32
-if($policy.policy_id-ne'ergaxiom.windows-production-release' -or $policy.signing.digest_algorithm-ne'SHA256' -or $policy.signing.timestamp_protocol-ne'RFC3161'){throw 'POLICY_REJECTED'}
-function H($c){([Convert]::ToHexString([Security.Cryptography.SHA256]::HashData($c.RawData))).ToLowerInvariant()}
-function Chain($c,[bool]$online){$x=[Security.Cryptography.X509Certificates.X509Chain]::new();try{$x.ChainPolicy.RevocationMode=if($online){[Security.Cryptography.X509Certificates.X509RevocationMode]::Online}else{[Security.Cryptography.X509Certificates.X509RevocationMode]::NoCheck};$x.ChainPolicy.RevocationFlag=[Security.Cryptography.X509Certificates.X509RevocationFlag]::EntireChain;$x.ChainPolicy.UrlRetrievalTimeout=[TimeSpan]::FromSeconds(20);[bool]$x.Build($c)}finally{$x.Dispose()}}
-function SignToolPath{$c=Get-Command signtool.exe -ErrorAction SilentlyContinue;if($c){return $c.Source};$root=Join-Path ${env:ProgramFiles(x86)} 'Windows Kits\10\bin';if(Test-Path $root){return (Get-ChildItem $root -Directory|Sort-Object Name -Descending|ForEach-Object{Join-Path $_.FullName 'x64\signtool.exe'}|Where-Object{Test-Path $_}|Select-Object -First 1)};return $null}
-function SignToolVerify([string]$tool,[string]$path){if(-not $tool){return $false};try{$process=Start-Process -FilePath $tool -ArgumentList @('verify','/pa','/all','/v',$path) -Wait -PassThru -WindowStyle Hidden;return $process.ExitCode-eq0}catch{return $false}}
-$ph=& python -c "import hashlib,json,sys;v=json.load(open(sys.argv[1],encoding='utf-8'));print(hashlib.sha256(json.dumps(v,sort_keys=True,separators=(',',':')).encode()).hexdigest())" $p;if($LASTEXITCODE){throw 'POLICY_HASH_FAILED'}
-$signTool=SignToolPath
-$records=@();$seen=@{};foreach($a in $Artifact){$x=(Resolve-Path $a).Path;$n=[IO.Path]::GetFileName($x);if($seen[$n]){throw 'DUPLICATE_ARTIFACT'};$seen[$n]=1;$s=Get-AuthenticodeSignature $x;$sc=$s.SignerCertificate;$tc=$s.TimeStamperCertificate
- $eku=if($sc){@($sc.Extensions|Where-Object{$_.Oid.Value-eq'2.5.29.37'}|ForEach-Object{([Security.Cryptography.X509Certificates.X509EnhancedKeyUsageExtension]$_).EnhancedKeyUsages|ForEach-Object{$_.Value}})}else{@()}
- $records += [ordered]@{name=$n;sha256=(Get-FileHash $x -Algorithm SHA256).Hash.ToLowerInvariant();authenticode_valid=($s.Status-eq[Management.Automation.SignatureStatus]::Valid);signtool_verify_ok=(SignToolVerify $signTool $x);signer_subject=if($sc){$sc.Subject}else{$null};signer_certificate_sha256=if($sc){H $sc}else{$null};code_signing_eku_present=([string]$policy.signing.code_signing_eku_oid-in$eku);certificate_chain_valid=if($sc){Chain $sc ($Mode-eq'production')}else{$false};revocation_checked_online=($Mode-eq'production');timestamp_present=($null-ne$tc);timestamp_chain_valid=if($tc){Chain $tc $true}else{$false};timestamp_url=[string]$policy.signing.timestamp_url;self_signed=if($sc){$sc.Subject-eq$sc.Issuer}else{$false}}
+param(
+  [Parameter(Mandatory)]
+  [ValidateSet('test', 'production')]
+  [string]$Mode,
+
+  [Parameter(Mandatory)]
+  [string]$PolicyPath,
+
+  [Parameter(Mandatory)]
+  [string[]]$Artifact,
+
+  [Parameter(Mandatory)]
+  [string]$EvidenceOut
+)
+
+$ErrorActionPreference = 'Stop'
+Set-StrictMode -Version Latest
+
+$policyPathResolved = (Resolve-Path $PolicyPath).Path
+$policy = Get-Content $policyPathResolved -Raw | ConvertFrom-Json -Depth 32
+if (
+  $policy.policy_id -ne 'ergaxiom.windows-production-release' -or
+  $policy.signing.digest_algorithm -ne 'SHA256' -or
+  $policy.signing.timestamp_protocol -ne 'RFC3161'
+) {
+  throw 'POLICY_REJECTED'
 }
-$e=[ordered]@{schema_version='0.1.0';mode=$Mode;test_identity=($Mode-ne'production');policy_sha256=$ph.Trim();signtool_available=($null-ne$signTool);artifacts=@($records|sort name)};$o=[IO.Path]::GetFullPath($EvidenceOut);New-Item -ItemType Directory -Force (Split-Path $o)|Out-Null;$e|ConvertTo-Json -Depth 8|Set-Content $o -Encoding utf8NoBOM
+
+function Get-CertificateDerSha256 {
+  param(
+    [Parameter(Mandatory)]
+    [Security.Cryptography.X509Certificates.X509Certificate2]$Certificate
+  )
+
+  return ([Convert]::ToHexString(
+      [Security.Cryptography.SHA256]::HashData($Certificate.RawData)
+    )).ToLowerInvariant()
+}
+
+function Test-CertificateChain {
+  param(
+    [Parameter(Mandatory)]
+    [Security.Cryptography.X509Certificates.X509Certificate2]$Certificate,
+
+    [Parameter(Mandatory)]
+    [bool]$Online
+  )
+
+  $certificateChain = [Security.Cryptography.X509Certificates.X509Chain]::new()
+  try {
+    $certificateChain.ChainPolicy.RevocationMode = if ($Online) {
+      [Security.Cryptography.X509Certificates.X509RevocationMode]::Online
+    } else {
+      [Security.Cryptography.X509Certificates.X509RevocationMode]::NoCheck
+    }
+    $certificateChain.ChainPolicy.RevocationFlag = [Security.Cryptography.X509Certificates.X509RevocationFlag]::EntireChain
+    $certificateChain.ChainPolicy.UrlRetrievalTimeout = [TimeSpan]::FromSeconds(20)
+    return [bool]$certificateChain.Build($Certificate)
+  } finally {
+    $certificateChain.Dispose()
+  }
+}
+
+function Get-SignToolPath {
+  $command = Get-Command signtool.exe -ErrorAction SilentlyContinue
+  if ($command) {
+    return $command.Source
+  }
+
+  $kitsRoot = Join-Path ${env:ProgramFiles(x86)} 'Windows Kits\10\bin'
+  if (-not (Test-Path $kitsRoot -PathType Container)) {
+    return $null
+  }
+
+  return Get-ChildItem $kitsRoot -Directory |
+    Sort-Object Name -Descending |
+    ForEach-Object { Join-Path $_.FullName 'x64\signtool.exe' } |
+    Where-Object { Test-Path $_ -PathType Leaf } |
+    Select-Object -First 1
+}
+
+function Test-SignToolSignature {
+  param(
+    [Parameter(Mandatory)]
+    [string]$SignTool,
+
+    [Parameter(Mandatory)]
+    [string]$Path
+  )
+
+  try {
+    $process = Start-Process \
+      -FilePath $SignTool \
+      -ArgumentList @('verify', '/pa', '/all', '/v', $Path) \
+      -Wait \
+      -PassThru \
+      -WindowStyle Hidden
+    return $process.ExitCode -eq 0
+  } catch {
+    return $false
+  }
+}
+
+$policyHash = & python -c "import hashlib,json,sys;v=json.load(open(sys.argv[1],encoding='utf-8'));print(hashlib.sha256(json.dumps(v,sort_keys=True,separators=(',',':')).encode()).hexdigest())" $policyPathResolved
+if ($LASTEXITCODE -ne 0) {
+  throw 'POLICY_HASH_FAILED'
+}
+
+$signTool = Get-SignToolPath
+$records = @()
+$seen = @{}
+
+foreach ($artifactPath in $Artifact) {
+  $resolvedArtifact = (Resolve-Path $artifactPath).Path
+  $name = [IO.Path]::GetFileName($resolvedArtifact)
+  if ($seen.ContainsKey($name)) {
+    throw 'DUPLICATE_ARTIFACT'
+  }
+  $seen[$name] = $true
+
+  $signature = Get-AuthenticodeSignature $resolvedArtifact
+  $signerCertificate = $signature.SignerCertificate
+  $timestampCertificate = $signature.TimeStamperCertificate
+
+  $eku = if ($signerCertificate) {
+    @(
+      $signerCertificate.Extensions |
+        Where-Object { $_.Oid.Value -eq '2.5.29.37' } |
+        ForEach-Object {
+          ([Security.Cryptography.X509Certificates.X509EnhancedKeyUsageExtension]$_).EnhancedKeyUsages |
+            ForEach-Object { $_.Value }
+        }
+    )
+  } else {
+    @()
+  }
+
+  $records += [ordered]@{
+    name = $name
+    sha256 = (Get-FileHash $resolvedArtifact -Algorithm SHA256).Hash.ToLowerInvariant()
+    authenticode_valid = ($signature.Status -eq [Management.Automation.SignatureStatus]::Valid)
+    signtool_verify_ok = if ($signTool) {
+      Test-SignToolSignature -SignTool $signTool -Path $resolvedArtifact
+    } else {
+      $false
+    }
+    signer_subject = if ($signerCertificate) { $signerCertificate.Subject } else { $null }
+    signer_certificate_sha256 = if ($signerCertificate) {
+      Get-CertificateDerSha256 -Certificate $signerCertificate
+    } else {
+      $null
+    }
+    code_signing_eku_present = ([string]$policy.signing.code_signing_eku_oid -in $eku)
+    certificate_chain_valid = if ($signerCertificate) {
+      Test-CertificateChain -Certificate $signerCertificate -Online ($Mode -eq 'production')
+    } else {
+      $false
+    }
+    revocation_checked_online = ($Mode -eq 'production')
+    timestamp_present = ($null -ne $timestampCertificate)
+    timestamp_chain_valid = if ($timestampCertificate) {
+      Test-CertificateChain -Certificate $timestampCertificate -Online $true
+    } else {
+      $false
+    }
+    timestamp_url = [string]$policy.signing.timestamp_url
+    self_signed = if ($signerCertificate) {
+      $signerCertificate.Subject -eq $signerCertificate.Issuer
+    } else {
+      $false
+    }
+  }
+}
+
+$evidence = [ordered]@{
+  schema_version = '0.1.0'
+  mode = $Mode
+  test_identity = ($Mode -ne 'production')
+  policy_sha256 = $policyHash.Trim()
+  signtool_available = ($null -ne $signTool)
+  artifacts = @($records | Sort-Object name)
+}
+
+$outputPath = [IO.Path]::GetFullPath($EvidenceOut)
+New-Item -ItemType Directory -Force (Split-Path $outputPath) | Out-Null
+$evidence | ConvertTo-Json -Depth 8 | Set-Content $outputPath -Encoding utf8NoBOM
