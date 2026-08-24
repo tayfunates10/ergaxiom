@@ -46,6 +46,8 @@ function New-UnavailableProviderReport([bool]$IsWindowsHost) {
     platform_windows = [bool]$IsWindowsHost
     present = $false
     detection_method = $null
+    registered = $false
+    registration_method = $null
     native_open = [ordered]@{ attempted = $false; opened = $false; status = $null; error = 'PROVIDER_DETECTION_UNAVAILABLE' }
     native_enumeration = [ordered]@{ attempted = $false; found = $false; provider_count = 0; status = $null; error = 'PROVIDER_DETECTION_UNAVAILABLE' }
     certutil_csplist = [ordered]@{ attempted = $false; matched = $false; exit_code = $null; error = 'PROVIDER_DETECTION_UNAVAILABLE' }
@@ -207,6 +209,11 @@ $report = [ordered]@{
   release_eligible = $false
   note = 'Read-only preflight only. This report is not Authenticode, physical TPM, lifecycle, or production-chain evidence.'
 }
+
+# Informational native probes inside this read-only inventory (certutil) may leave
+# their own non-zero exit code behind. This script signals failure by throwing, so
+# a successful inventory must not hand a stale failure code to its caller.
+$global:LASTEXITCODE = 0
 
 $json = $report | ConvertTo-Json -Depth 16
 if ($OutputPath) {

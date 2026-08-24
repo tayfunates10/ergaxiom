@@ -13,8 +13,11 @@ param(
 # provider fails to enumerate, so it is only a tertiary corroborating probe. The
 # authoritative probes are the native CNG entry points, which are locale
 # independent:
-#   * NCryptOpenStorageProvider - the provider is registered and loadable.
-#   * NCryptEnumStorageProviders - the provider name appears in the live registration list.
+#   * NCryptOpenStorageProvider - the provider actually opens. Only this proves
+#     the provider is usable, so only this may set `present`.
+#   * NCryptEnumStorageProviders - the provider name is registered. Corroborating
+#     only: the TPM KSP is registered on every Windows install, including hosts
+#     with no usable TPM device, so registration alone is not presence.
 #
 # This report is host inventory only. It is not TPM ceremony evidence, not
 # Authenticode evidence and can never make a release eligible.
@@ -102,6 +105,8 @@ $report = [ordered]@{
   platform_windows = [bool]$isWindowsHost
   present = $false
   detection_method = $null
+  registered = $false
+  registration_method = $null
   native_open = [ordered]@{ attempted = $false; opened = $false; status = $null; error = $null }
   native_enumeration = [ordered]@{ attempted = $false; found = $false; provider_count = 0; status = $null; error = $null }
   certutil_csplist = [ordered]@{ attempted = $false; matched = $false; exit_code = $null; error = $null }
@@ -146,21 +151,31 @@ if ($isWindowsHost) {
       # labels and the non-zero exit code of an unrelated provider are. Match the
       # identifier alone so a localized host is not a false negative.
       $report.certutil_csplist.matched = [bool]($providers.Contains($ProviderName))
+      # certutil exits non-zero when any unrelated provider fails to enumerate.
+      # That is recorded above as probe data; it is not this script's own result,
+      # and leaving it in $LASTEXITCODE would fail an otherwise successful caller.
+      $global:LASTEXITCODE = 0
     } catch {
       $report.certutil_csplist.error = [string]$_.Exception.Message
     }
   }
 }
 
+# Presence means usable, not merely registered. `NCryptOpenStorageProvider` is
+# the only probe that distinguishes the two: on a host with no usable TPM the
+# Platform KSP is still enumerated and still listed by certutil, but opening it
+# fails with NTE_DEVICE_NOT_READY. Registration is therefore recorded separately
+# and can never raise `present`.
 if ($report.native_open.opened) {
   $report.present = $true
   $report.detection_method = 'ncrypt_open_storage_provider'
-} elseif ($report.native_enumeration.found) {
-  $report.present = $true
-  $report.detection_method = 'ncrypt_enum_storage_providers'
+}
+if ($report.native_enumeration.found) {
+  $report.registered = $true
+  $report.registration_method = 'ncrypt_enum_storage_providers'
 } elseif ($report.certutil_csplist.matched) {
-  $report.present = $true
-  $report.detection_method = 'certutil_csplist'
+  $report.registered = $true
+  $report.registration_method = 'certutil_csplist'
 }
 
 if ($OutputPath) {
