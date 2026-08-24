@@ -81,7 +81,7 @@ jobs:
             -PolicyPath tools/release/windows_release_policy.json `
             -Artifact @($artifacts.FullName) `
             -IdentityEvidenceOut "$env:RUNNER_TEMP\self-signed-identity.json"
-          if($LASTEXITCODE-ne0){throw 'SELF_SIGNED_TEST_SIGNING_FAILED'}
+          if(-not $?){throw 'SELF_SIGNED_TEST_SIGNING_FAILED'}
       - name: Validate self-signed identity boundary
         shell: pwsh
         run: |
@@ -107,7 +107,7 @@ jobs:
           $candidate=Join-Path $env:RUNNER_TEMP 'self-signed-candidate'
           $artifacts=@(Get-ChildItem $candidate -File)
           ./tools/release/verify_windows_signatures.ps1 -Mode test -PolicyPath tools/release/windows_release_policy.json -Artifact @($artifacts.FullName) -EvidenceOut "$env:RUNNER_TEMP\self-signed-signatures.json"
-          if($LASTEXITCODE-ne0){throw 'SELF_SIGNED_SIGNATURE_EVIDENCE_FAILED'}
+          if(-not $?){throw 'SELF_SIGNED_SIGNATURE_EVIDENCE_FAILED'}
       - name: Validate intentionally untrusted test signature evidence
         shell: pwsh
         run: |
