@@ -27,6 +27,40 @@ function Find-SignTool {
   return $candidate
 }
 
+function Invoke-SignToolBounded {
+  param(
+    [Parameter(Mandatory)][string]$SignTool,
+    [Parameter(Mandatory)][string[]]$Arguments,
+    [Parameter(Mandatory)][string]$Operation,
+    [int]$TimeoutSeconds = 60
+  )
+
+  $psi = [Diagnostics.ProcessStartInfo]::new()
+  $psi.FileName = $SignTool
+  $psi.UseShellExecute = $false
+  $psi.CreateNoWindow = $true
+  $psi.RedirectStandardOutput = $true
+  $psi.RedirectStandardError = $true
+  foreach ($argument in $Arguments) { [void]$psi.ArgumentList.Add([string]$argument) }
+
+  $process = [Diagnostics.Process]::new()
+  $process.StartInfo = $psi
+  if (-not $process.Start()) { throw "SIGNTOOL_START_FAILED: $Operation" }
+  $stdoutTask = $process.StandardOutput.ReadToEndAsync()
+  $stderrTask = $process.StandardError.ReadToEndAsync()
+
+  if (-not $process.WaitForExit($TimeoutSeconds * 1000)) {
+    try { $process.Kill($true) } catch { }
+    throw "SIGNTOOL_TIMEOUT: $Operation"
+  }
+
+  $stdout = $stdoutTask.GetAwaiter().GetResult()
+  $stderr = $stderrTask.GetAwaiter().GetResult()
+  if ($stdout) { Write-Host $stdout.TrimEnd() }
+  if ($stderr) { Write-Host $stderr.TrimEnd() }
+  if ($process.ExitCode -ne 0) { throw "SIGNTOOL_FAILED: $Operation (exit=$($process.ExitCode))" }
+}
+
 $policyResolved = (Resolve-Path $PolicyPath).Path
 $policy = Get-Content $policyResolved -Raw | ConvertFrom-Json -Depth 32
 if ($policy.policy_id -ne 'ergaxiom.windows-production-release' -or $policy.schema_version -ne '0.1.0') { throw 'POLICY_REJECTED' }
@@ -68,12 +102,11 @@ Import-Certificate -FilePath $cerPath -CertStoreLocation 'Cert:\CurrentUser\Root
 
 $signTool = Find-SignTool
 foreach ($full in $resolved) {
+  $name = [IO.Path]::GetFileName($full)
   # Test-only identities deliberately do not contact an external TSA. Production
   # signing remains timestamp-mandatory in sign_windows_release.ps1/finalizer.
-  & $signTool sign /fd SHA256 /s My /sha1 $cert.Thumbprint $full
-  if ($LASTEXITCODE -ne 0) { throw "TEST_AUTHENTICODE_SIGN_FAILED: $([IO.Path]::GetFileName($full))" }
-  & $signTool verify /pa /all /v $full
-  if ($LASTEXITCODE -ne 0) { throw "TEST_AUTHENTICODE_VERIFY_FAILED: $([IO.Path]::GetFileName($full))" }
+  Invoke-SignToolBounded -SignTool $signTool -Arguments @('sign','/fd','SHA256','/s','My','/sha1',$cert.Thumbprint,$full) -Operation "sign:$name"
+  Invoke-SignToolBounded -SignTool $signTool -Arguments @('verify','/pa','/all','/v',$full) -Operation "verify:$name"
 }
 
 $evidence = [ordered]@{
@@ -83,6 +116,7 @@ $evidence = [ordered]@{
   self_signed = $true
   production_eligible = $false
   timestamp_requested = $false
+  subprocess_timeout_seconds = 60
   subject = [string]$cert.Subject
   issuer = [string]$cert.Issuer
   der_sha256 = Get-DerSha256 $cert
@@ -95,7 +129,7 @@ $evidence = [ordered]@{
   not_before = $cert.NotBefore.ToUniversalTime().ToString('o')
   not_after = $cert.NotAfter.ToUniversalTime().ToString('o')
   artifact_names = @($resolved | ForEach-Object { [IO.Path]::GetFileName($_) } | Sort-Object)
-  note = 'Ephemeral self-signed test identity only; no external timestamp. Never valid production release evidence.'
+  note = 'Ephemeral self-signed test identity only; bounded SignTool subprocesses; no external timestamp. Never valid production release evidence.'
 }
 $out = [IO.Path]::GetFullPath($IdentityEvidenceOut)
 New-Item -ItemType Directory -Force (Split-Path $out) | Out-Null
