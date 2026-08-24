@@ -103,18 +103,10 @@ $eku = @($cert.Extensions | Where-Object { $_.Oid.Value -eq '2.5.29.37' } | ForE
 if ([string]$policy.signing.code_signing_eku_oid -notin $eku) { throw 'TEST_CODE_SIGNING_EKU_MISSING' }
 Write-Host "Created test certificate thumbprint=$($cert.Thumbprint)"
 
-$cerPath = Join-Path $env:TEMP ("ergaxiom-test-signing-{0}.cer" -f $cert.Thumbprint)
-Write-Host "Exporting public test certificate to $cerPath"
-Export-Certificate -Cert $cert -FilePath $cerPath -Force | Out-Null
-
-# Trust the test leaf in TrustedPeople rather than elevating it to a trusted root.
-# This avoids root-store trust UI on non-interactive hosted runners and keeps the
-# trust scope explicitly test-only. Production never uses this certificate path.
-$trustedPeopleStore = 'Cert:\CurrentUser\TrustedPeople'
-Write-Host "Importing public test certificate into $trustedPeopleStore"
-Import-Certificate -FilePath $cerPath -CertStoreLocation $trustedPeopleStore | Out-Null
-Write-Host 'Test certificate trust import completed.'
-
+# Deliberately do not add this self-signed identity to Root or TrustedPeople.
+# The CI test proves two separate facts: SignTool can embed an Authenticode
+# signature with the ephemeral private key, and Windows/final release policy
+# still refuses to treat that untrusted self-signed identity as production.
 $signTool = Find-SignTool
 Write-Host "Using SignTool: $signTool"
 foreach ($full in $resolved) {
@@ -122,7 +114,6 @@ foreach ($full in $resolved) {
   # Test-only identities deliberately do not contact an external TSA. Production
   # signing remains timestamp-mandatory in sign_windows_release.ps1/finalizer.
   Invoke-SignToolBounded -SignTool $signTool -Arguments @('sign','/fd','SHA256','/s','My','/sha1',$cert.Thumbprint,$full) -Operation "sign:$name"
-  Invoke-SignToolBounded -SignTool $signTool -Arguments @('verify','/pa','/all','/v',$full) -Operation "verify:$name"
 }
 
 $evidence = [ordered]@{
@@ -141,13 +132,14 @@ $evidence = [ordered]@{
   private_key_exported = $false
   certificate_store_location = 'CurrentUser'
   certificate_store_name = 'My'
-  trusted_test_store = 'CurrentUser\\TrustedPeople'
+  trust_store_modified = $false
+  windows_trust_expected = $false
   not_before = $cert.NotBefore.ToUniversalTime().ToString('o')
   not_after = $cert.NotAfter.ToUniversalTime().ToString('o')
   artifact_names = @($resolved | ForEach-Object { [IO.Path]::GetFileName($_) } | Sort-Object)
-  note = 'Ephemeral self-signed test identity only; TrustedPeople test trust; bounded SignTool subprocesses; no external timestamp. Never valid production release evidence.'
+  note = 'Ephemeral self-signed test identity only; intentionally untrusted; bounded SignTool signing; no external timestamp. Never valid production release evidence.'
 }
 $out = [IO.Path]::GetFullPath($IdentityEvidenceOut)
 New-Item -ItemType Directory -Force (Split-Path $out) | Out-Null
 [IO.File]::WriteAllText($out, (($evidence | ConvertTo-Json -Depth 8) + [Environment]::NewLine), [Text.UTF8Encoding]::new($false))
-Write-Host "Self-signed and verified $($resolved.Count) test artifact(s) without external timestamp. Identity evidence: $out"
+Write-Host "Self-signed $($resolved.Count) test artifact(s) without modifying Windows trust stores. Identity evidence: $out"
