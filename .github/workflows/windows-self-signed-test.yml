@@ -41,6 +41,11 @@ jobs:
         run: |
           $actual=(git rev-parse HEAD).Trim()
           if($actual-ne$env:SOURCE_COMMIT){throw "Checked out $actual but expected $env:SOURCE_COMMIT"}
+      - name: Generate approved proprietary license evidence from clean exact source
+        shell: pwsh
+        run: |
+          python tools/release/generate_owner_license_decision.py --repo-root . --output "$env:RUNNER_TEMP\owner-license-decision.json"
+          if($LASTEXITCODE-ne0){throw 'OWNER_LICENSE_EVIDENCE_FAILED'}
       - name: Parse self-signed test signer
         shell: pwsh
         run: |
@@ -119,11 +124,6 @@ jobs:
             if($record.signer_subject-ne$identity.subject -or $record.signer_certificate_sha256-ne$identity.der_sha256){throw "SELF_SIGNED_IDENTITY_BINDING_REJECTED: $($record.name)"}
             if($record.authenticode_valid-ne$false -or $record.signtool_verify_ok-ne$false -or $record.certificate_chain_valid-ne$false){throw "SELF_SIGNED_UNTRUSTED_BOUNDARY_REJECTED: $($record.name)"}
           }
-      - name: Generate approved proprietary license evidence
-        shell: pwsh
-        run: |
-          python tools/release/generate_owner_license_decision.py --repo-root . --output "$env:RUNNER_TEMP\owner-license-decision.json"
-          if($LASTEXITCODE-ne0){throw 'OWNER_LICENSE_EVIDENCE_FAILED'}
       - name: Prove finalizer rejects self-signed candidate
         shell: pwsh
         run: |
