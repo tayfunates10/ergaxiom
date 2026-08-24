@@ -80,7 +80,7 @@ jobs:
           if($LASTEXITCODE-ne0){throw 'SELF_SIGNED_TEST_SIGNING_FAILED'}
 
           $identity=Get-Content "$env:RUNNER_TEMP\self-signed-identity.json" -Raw|ConvertFrom-Json
-          if($identity.mode-ne'test' -or $identity.test_identity-ne$true -or $identity.self_signed-ne$true -or $identity.production_eligible-ne$false -or $identity.private_key_exported-ne$false){throw 'SELF_SIGNED_IDENTITY_BOUNDARY_REJECTED'}
+          if($identity.mode-ne'test' -or $identity.test_identity-ne$true -or $identity.self_signed-ne$true -or $identity.production_eligible-ne$false -or $identity.private_key_exported-ne$false -or $identity.timestamp_requested-ne$false){throw 'SELF_SIGNED_IDENTITY_BOUNDARY_REJECTED'}
 
           $rustc=(rustc --version).Trim();$node=(node --version).Trim();$npm=(npm --version).Trim()
           python tools/release/generate_release_evidence.py --repo-root . --artifact $desktopCopy --artifact $serviceCopy --artifact $installerCopy --source-commit $env:SOURCE_COMMIT --rustc-version $rustc --node-version $node --npm-version $npm --output-dir "$env:RUNNER_TEMP\self-signed-base"
@@ -91,7 +91,7 @@ jobs:
           $sig=Get-Content "$env:RUNNER_TEMP\self-signed-signatures.json" -Raw|ConvertFrom-Json
           if($sig.mode-ne'test' -or $sig.test_identity-ne$true -or $sig.signtool_available-ne$true){throw 'TEST_SIGNATURE_MODE_REJECTED'}
           foreach($record in @($sig.artifacts)){
-            if($record.self_signed-ne$true -or $record.authenticode_valid-ne$true -or $record.signtool_verify_ok-ne$true -or $record.code_signing_eku_present-ne$true -or $record.timestamp_present-ne$true){throw "SELF_SIGNED_ARTIFACT_VERIFY_REJECTED: $($record.name)"}
+            if($record.self_signed-ne$true -or $record.authenticode_valid-ne$true -or $record.signtool_verify_ok-ne$true -or $record.code_signing_eku_present-ne$true -or $record.timestamp_present-ne$false){throw "SELF_SIGNED_ARTIFACT_VERIFY_REJECTED: $($record.name)"}
           }
 
           python tools/release/generate_owner_license_decision.py --repo-root . --output "$env:RUNNER_TEMP\owner-license-decision.json"
@@ -106,7 +106,7 @@ jobs:
           if($LASTEXITCODE-ne0){throw 'SELF_SIGNED_FINALIZER_FAILED'}
           $final=Get-Content "$env:RUNNER_TEMP\self-signed-final.json" -Raw|ConvertFrom-Json
           if($final.release_eligible-ne$false){throw 'SELF_SIGNED_CANDIDATE_BECAME_PRODUCTION_ELIGIBLE'}
-          foreach($blocker in @('SIGNING_IDENTITY_POLICY_UNRESOLVED','AUTHENTICODE_NOT_VERIFIED','SIGNING_IDENTITY_NOT_VERIFIED')){
+          foreach($blocker in @('SIGNING_IDENTITY_POLICY_UNRESOLVED','AUTHENTICODE_NOT_VERIFIED','TRUSTED_TIMESTAMP_NOT_VERIFIED','SIGNING_IDENTITY_NOT_VERIFIED')){
             if($blocker-notin @($final.blocking_reasons)){throw "Missing required self-signed blocker: $blocker"}
           }
           if('DISTRIBUTION_LICENSE_NOT_APPROVED'-in @($final.blocking_reasons)){throw 'APPROVED_PROPRIETARY_LICENSE_WAS_NOT_ACCEPTED'}
