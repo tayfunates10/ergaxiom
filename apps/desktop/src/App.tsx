@@ -122,6 +122,12 @@ export default function App() {
     setSelectedId(next.record.job_id);
   }
 
+  function selectJob(jobId: string): void {
+    setSelectedId(jobId);
+    setError(null);
+    setNotice(null);
+  }
+
   async function reloadJobs(message: string): Promise<void> {
     const loaded = await listProductJobs();
     setJobs(loaded);
@@ -238,7 +244,7 @@ export default function App() {
               className="job-list-item"
               data-active={job.record.job_id === selectedId}
               key={job.record.job_id}
-              onClick={() => setSelectedId(job.record.job_id)}
+              onClick={() => selectJob(job.record.job_id)}
               type="button"
             >
               <strong>{JOB_LABELS[job.record.job_kind]}</strong>
