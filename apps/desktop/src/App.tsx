@@ -221,189 +221,192 @@ export default function App() {
   }
 
   return (
-    <div className="product-shell">
-      <a className="skip-link" href="#main-content">Ana içeriğe geç</a>
-      <aside className="job-sidebar" aria-label="Persistent iş geçmişi">
-        <header>
-          <p className="eyebrow">ERGAXIOM Product Alpha</p>
-          <h1>Graphic Designer</h1>
-          <p className="muted">Dört certified path, tek backend-owned lifecycle.</p>
-        </header>
+    <>
+      {busy ? <div className="message" role="status" aria-live="polite">İşlem sürüyor…</div> : null}
+      <div className="product-shell" aria-busy={busy}>
+        <a className="skip-link" href="#main-content">Ana içeriğe geç</a>
+        <aside className="job-sidebar" aria-label="Persistent iş geçmişi">
+          <header>
+            <p className="eyebrow">ERGAXIOM Product Alpha</p>
+            <h1>Graphic Designer</h1>
+            <p className="muted">Dört certified path, tek backend-owned lifecycle.</p>
+          </header>
 
-        <nav className="job-list" aria-label="Kullanıcı işleri">
-          {loadState === 'loading' ? <p className="muted" role="status">Backend işleri yükleniyor…</p> : null}
-          {loadState === 'error' ? (
-            <div className="empty-state">
-              <p>Backend kayıtları yüklenemedi.</p>
-              <button disabled={busy} onClick={() => void refreshFromBackend()} type="button">Yeniden dene</button>
+          <nav className="job-list" aria-label="Kullanıcı işleri">
+            {loadState === 'loading' ? <p className="muted" role="status">Backend işleri yükleniyor…</p> : null}
+            {loadState === 'error' ? (
+              <div className="empty-state">
+                <p>Backend kayıtları yüklenemedi.</p>
+                <button disabled={busy} onClick={() => void refreshFromBackend()} type="button">{busy ? 'Yeniden okunuyor…' : 'Yeniden dene'}</button>
+              </div>
+            ) : null}
+            {loadState === 'ready' && jobs.length === 0 ? <p className="muted">Henüz persistent iş yok.</p> : null}
+            {jobs.map((job) => (
+              <button
+                className="job-list-item"
+                data-active={job.record.job_id === selectedId}
+                key={job.record.job_id}
+                onClick={() => selectJob(job.record.job_id)}
+                type="button"
+              >
+                <strong>{JOB_LABELS[job.record.job_kind]}</strong>
+                <span>{job.record.job_id}</span>
+                <small data-tone={phaseTone(job.record.phase)}>{PHASE_LABELS[job.record.phase]}</small>
+              </button>
+            ))}
+          </nav>
+        </aside>
+
+        <main id="main-content" aria-busy={busy}>
+          <section className="hero-panel" aria-labelledby="create-heading">
+            <div>
+              <p className="eyebrow">Gerçek kullanıcı girdileri</p>
+              <h2 id="create-heading">Yeni iş oluştur</h2>
+              <p>Dosya yolları trusted execution sınırına geçmez. Seçilen dosyanın byte içeriği backend'e aktarılır; SHA-256 kimliği ve immutable blob backend tarafından üretilir.</p>
             </div>
-          ) : null}
-          {loadState === 'ready' && jobs.length === 0 ? <p className="muted">Henüz persistent iş yok.</p> : null}
-          {jobs.map((job) => (
-            <button
-              className="job-list-item"
-              data-active={job.record.job_id === selectedId}
-              key={job.record.job_id}
-              onClick={() => selectJob(job.record.job_id)}
-              type="button"
-            >
-              <strong>{JOB_LABELS[job.record.job_kind]}</strong>
-              <span>{job.record.job_id}</span>
-              <small data-tone={phaseTone(job.record.phase)}>{PHASE_LABELS[job.record.phase]}</small>
-            </button>
-          ))}
-        </nav>
-      </aside>
+            <form className="create-form" aria-busy={busy} onSubmit={(event) => void submitNewJob(event)}>
+              <label>
+                Certified job
+                <select value={jobKind} onChange={(event) => setJobKind(event.target.value as GraphicDesignerJobKind)}>
+                  {JOB_KINDS.map((kind) => <option key={kind} value={kind}>{JOB_LABELS[kind]}</option>)}
+                </select>
+              </label>
+              <label>
+                Kullanıcı isteği
+                <textarea
+                  maxLength={16_384}
+                  onChange={(event) => setRequestText(event.target.value)}
+                  placeholder="Yapılacak gerçek işi açıklayın…"
+                  rows={4}
+                  value={requestText}
+                />
+              </label>
+              <button disabled={busy || loadState !== 'ready' || requestText.trim().length === 0} type="submit">{busy ? 'İşlem sürüyor…' : 'Persistent iş oluştur'}</button>
+            </form>
+          </section>
 
-      <main id="main-content">
-        <section className="hero-panel" aria-labelledby="create-heading">
-          <div>
-            <p className="eyebrow">Gerçek kullanıcı girdileri</p>
-            <h2 id="create-heading">Yeni iş oluştur</h2>
-            <p>Dosya yolları trusted execution sınırına geçmez. Seçilen dosyanın byte içeriği backend'e aktarılır; SHA-256 kimliği ve immutable blob backend tarafından üretilir.</p>
-          </div>
-          <form className="create-form" onSubmit={(event) => void submitNewJob(event)}>
-            <label>
-              Certified job
-              <select value={jobKind} onChange={(event) => setJobKind(event.target.value as GraphicDesignerJobKind)}>
-                {JOB_KINDS.map((kind) => <option key={kind} value={kind}>{JOB_LABELS[kind]}</option>)}
-              </select>
-            </label>
-            <label>
-              Kullanıcı isteği
-              <textarea
-                maxLength={16_384}
-                onChange={(event) => setRequestText(event.target.value)}
-                placeholder="Yapılacak gerçek işi açıklayın…"
-                rows={4}
-                value={requestText}
-              />
-            </label>
-            <button disabled={busy || loadState !== 'ready' || requestText.trim().length === 0} type="submit">Persistent iş oluştur</button>
-          </form>
-        </section>
+          {error ? <div className="message error-message" role="alert">{error}</div> : null}
+          {notice ? <div className="message" role="status">{notice}</div> : null}
 
-        {error ? <div className="message error-message" role="alert">{error}</div> : null}
-        {notice ? <div className="message" role="status">{notice}</div> : null}
+          {loadState === 'loading' ? (
+            <section className="empty-state"><h2>Backend işleri yükleniyor.</h2></section>
+          ) : loadState === 'error' ? (
+            <section className="empty-state"><h2>Backend kayıtları kullanılamıyor. Yeniden deneyin.</h2></section>
+          ) : !selected ? (
+            <section className="empty-state"><h2>Bir iş oluşturun veya geçmişten seçin.</h2></section>
+          ) : (
+            <>
+              <section className="job-header">
+                <div>
+                  <p className="eyebrow">{selected.record.job_id}</p>
+                  <h2>{JOB_LABELS[selected.record.job_kind]}</h2>
+                  <p>{selected.record.original_text}</p>
+                </div>
+                <div className="phase-card" data-tone={phaseTone(selected.record.phase)}>
+                  <span>Backend phase</span>
+                  <strong>{PHASE_LABELS[selected.record.phase]}</strong>
+                  <small>{selected.record.status_detail ?? 'State digest ile mühürlü.'}</small>
+                </div>
+              </section>
 
-        {loadState === 'loading' ? (
-          <section className="empty-state"><h2>Backend işleri yükleniyor.</h2></section>
-        ) : loadState === 'error' ? (
-          <section className="empty-state"><h2>Backend kayıtları kullanılamıyor. Yeniden deneyin.</h2></section>
-        ) : !selected ? (
-          <section className="empty-state"><h2>Bir iş oluşturun veya geçmişten seçin.</h2></section>
-        ) : (
-          <>
-            <section className="job-header">
-              <div>
-                <p className="eyebrow">{selected.record.job_id}</p>
-                <h2>{JOB_LABELS[selected.record.job_kind]}</h2>
-                <p>{selected.record.original_text}</p>
-              </div>
-              <div className="phase-card" data-tone={phaseTone(selected.record.phase)}>
-                <span>Backend phase</span>
-                <strong>{PHASE_LABELS[selected.record.phase]}</strong>
-                <small>{selected.record.status_detail ?? 'State digest ile mühürlü.'}</small>
-              </div>
-            </section>
+              <section className="digest-strip" aria-label="Authoritative identity digests">
+                <div><span>State</span><Digest value={selected.record.state_digest} /></div>
+                <div><span>Contract</span><Digest value={selected.record.contract_digest} /></div>
+                <div><span>Plan</span><Digest value={selected.record.plan_digest} /></div>
+                <div><span>Permission</span><Digest value={selected.record.permission_digest} /></div>
+                <div><span>Production</span><Digest value={selected.record.production?.chain_state_digest} /></div>
+              </section>
 
-            <section className="digest-strip" aria-label="Authoritative identity digests">
-              <div><span>State</span><Digest value={selected.record.state_digest} /></div>
-              <div><span>Contract</span><Digest value={selected.record.contract_digest} /></div>
-              <div><span>Plan</span><Digest value={selected.record.plan_digest} /></div>
-              <div><span>Permission</span><Digest value={selected.record.permission_digest} /></div>
-              <div><span>Production</span><Digest value={selected.record.production?.chain_state_digest} /></div>
-            </section>
+              <section className="section-card" aria-labelledby="inputs-heading" aria-busy={busy}>
+                <div className="section-heading">
+                  <div><p className="eyebrow">01 / Immutable inputs</p><h2 id="inputs-heading">Kullanıcı dosyaları</h2></div>
+                  <span>{Object.keys(selected.record.inputs).length}/{selected.required_input_roles.length}</span>
+                </div>
+                <div className="input-grid">
+                  {selected.required_input_roles.map((role) => {
+                    const input = selected.record.inputs[role];
+                    return (
+                      <article className="input-card" key={role}>
+                        <div>
+                          <strong>{ROLE_LABELS[role] ?? role}</strong>
+                          <p>{input ? input.file_name : 'Dosya seçilmedi'}</p>
+                          <small>{input ? `${input.media_type} · ${input.size_bytes} byte` : 'Backend SHA-256 staging bekleniyor'}</small>
+                        </div>
+                        <Digest value={input?.sha256} />
+                        <label className="file-button">
+                          {input ? 'Değiştir' : 'Dosya seç'}
+                          <input
+                            disabled={busy || !['draft', 'unresolved_intent'].includes(selected.record.phase)}
+                            onChange={(event) => void importFile(role, event)}
+                            type="file"
+                          />
+                        </label>
+                      </article>
+                    );
+                  })}
+                </div>
+              </section>
 
-            <section className="section-card" aria-labelledby="inputs-heading">
-              <div className="section-heading">
-                <div><p className="eyebrow">01 / Immutable inputs</p><h2 id="inputs-heading">Kullanıcı dosyaları</h2></div>
-                <span>{Object.keys(selected.record.inputs).length}/{selected.required_input_roles.length}</span>
-              </div>
-              <div className="input-grid">
-                {selected.required_input_roles.map((role) => {
-                  const input = selected.record.inputs[role];
-                  return (
-                    <article className="input-card" key={role}>
-                      <div>
-                        <strong>{ROLE_LABELS[role] ?? role}</strong>
-                        <p>{input ? input.file_name : 'Dosya seçilmedi'}</p>
-                        <small>{input ? `${input.media_type} · ${input.size_bytes} byte` : 'Backend SHA-256 staging bekleniyor'}</small>
-                      </div>
-                      <Digest value={input?.sha256} />
-                      <label className="file-button">
-                        {input ? 'Değiştir' : 'Dosya seç'}
-                        <input
-                          disabled={busy || !['draft', 'unresolved_intent'].includes(selected.record.phase)}
-                          onChange={(event) => void importFile(role, event)}
-                          type="file"
-                        />
-                      </label>
-                    </article>
-                  );
-                })}
-              </div>
-            </section>
+              <section className="action-bar" aria-label="Backend lifecycle eylemleri" aria-busy={busy}>
+                <button disabled={busy || !canPrepare(selected)} onClick={() => void runMutation(() => prepareProductJob(selected), 'Compiler ve planner çıktıları backend history içine mühürlendi.')} type="button">{busy ? 'İşleniyor…' : 'Compile + plan'}</button>
+                <button disabled={busy || !canApprove(selected)} onClick={() => void runMutation(() => approveProductJob(selected), 'Exact contract/plan/permission tuple onaylandı.')} type="button">{busy ? 'İşleniyor…' : 'Onayla'}</button>
+                <button disabled={busy || !canExecute(selected)} onClick={() => void runMutation(() => startProductJobExecution(selected), 'Production lifecycle başlatma talebi authoritative backend zincirine gönderildi.')} type="button">{busy ? 'İşleniyor…' : 'Production execution'}</button>
+                <button disabled={busy} onClick={() => void refreshFromBackend()} type="button">{busy ? 'Yeniden okunuyor…' : 'Yeniden oku'}</button>
+                <button disabled={busy || selected.record.production === null} onClick={() => void runMutation(() => syncProductJobFromProduction(selected), 'Production chain yeniden okundu; evidence/certificate yalnız authoritative kayıttan eşitlendi.')} type="button">{busy ? 'İşleniyor…' : 'Production’dan yenile'}</button>
+                <button className="secondary" disabled={busy || !canCancel(selected)} onClick={() => void runMutation(() => cancelProductJob(selected), 'Execution öncesi iş iptal edildi.')} type="button">{busy ? 'İşleniyor…' : 'İptal'}</button>
+              </section>
 
-            <section className="action-bar" aria-label="Backend lifecycle eylemleri">
-              <button disabled={busy || !canPrepare(selected)} onClick={() => void runMutation(() => prepareProductJob(selected), 'Compiler ve planner çıktıları backend history içine mühürlendi.')} type="button">Compile + plan</button>
-              <button disabled={busy || !canApprove(selected)} onClick={() => void runMutation(() => approveProductJob(selected), 'Exact contract/plan/permission tuple onaylandı.')} type="button">Onayla</button>
-              <button disabled={busy || !canExecute(selected)} onClick={() => void runMutation(() => startProductJobExecution(selected), 'Production lifecycle başlatma talebi authoritative backend zincirine gönderildi.')} type="button">Production execution</button>
-              <button disabled={busy} onClick={() => void refreshFromBackend()} type="button">Yeniden oku</button>
-              <button disabled={busy || selected.record.production === null} onClick={() => void runMutation(() => syncProductJobFromProduction(selected), 'Production chain yeniden okundu; evidence/certificate yalnız authoritative kayıttan eşitlendi.')} type="button">Production’dan yenile</button>
-              <button className="secondary" disabled={busy || !canCancel(selected)} onClick={() => void runMutation(() => cancelProductJob(selected), 'Execution öncesi iş iptal edildi.')} type="button">İptal</button>
-            </section>
+              <section className="section-card" aria-labelledby="contract-heading">
+                <div className="section-heading"><div><p className="eyebrow">02 / Sealed intent</p><h2 id="contract-heading">Contract ve Operator Plan</h2></div></div>
+                <div className="json-grid">
+                  <JsonPanel title="Resolved intent" value={selected.record.resolved_intent} />
+                  <JsonPanel title="Work Contract" value={selected.record.work_contract} />
+                  <JsonPanel title="Operator Plan" value={selected.record.operator_plan} />
+                  <JsonPanel title="Approval binding" value={selected.record.approval} />
+                </div>
+              </section>
 
-            <section className="section-card" aria-labelledby="contract-heading">
-              <div className="section-heading"><div><p className="eyebrow">02 / Sealed intent</p><h2 id="contract-heading">Contract ve Operator Plan</h2></div></div>
-              <div className="json-grid">
-                <JsonPanel title="Resolved intent" value={selected.record.resolved_intent} />
-                <JsonPanel title="Work Contract" value={selected.record.work_contract} />
-                <JsonPanel title="Operator Plan" value={selected.record.operator_plan} />
-                <JsonPanel title="Approval binding" value={selected.record.approval} />
-              </div>
-            </section>
+              <section className="section-card" aria-labelledby="evidence-heading">
+                <div className="section-heading">
+                  <div><p className="eyebrow">03 / Production proof</p><h2 id="evidence-heading">Evidence, replay ve certificate</h2></div>
+                  <span className="acceptance-badge" data-accepted={backendAcceptanceVerified(selected)}>
+                    {backendAcceptanceVerified(selected) ? 'Verified Accepted' : 'Accepted değil'}
+                  </span>
+                </div>
+                <div className="json-grid">
+                  <JsonPanel title="Production binding" value={selected.record.production} />
+                  <JsonPanel title="Evidence Bundle" value={selected.record.evidence?.evidence_bundle ?? null} />
+                  <JsonPanel title="Replay Manifest" value={selected.record.evidence?.replay_manifest ?? null} />
+                  <JsonPanel title="Validator results" value={selected.record.evidence?.validator_results ?? null} />
+                  <JsonPanel title="Failure map" value={selected.record.evidence?.failure_map ?? null} />
+                  <JsonPanel title="Acceptance Certificate" value={selected.record.certificate?.acceptance_certificate ?? null} />
+                </div>
+              </section>
 
-            <section className="section-card" aria-labelledby="evidence-heading">
-              <div className="section-heading">
-                <div><p className="eyebrow">03 / Production proof</p><h2 id="evidence-heading">Evidence, replay ve certificate</h2></div>
-                <span className="acceptance-badge" data-accepted={backendAcceptanceVerified(selected)}>
-                  {backendAcceptanceVerified(selected) ? 'Verified Accepted' : 'Accepted değil'}
-                </span>
-              </div>
-              <div className="json-grid">
-                <JsonPanel title="Production binding" value={selected.record.production} />
-                <JsonPanel title="Evidence Bundle" value={selected.record.evidence?.evidence_bundle ?? null} />
-                <JsonPanel title="Replay Manifest" value={selected.record.evidence?.replay_manifest ?? null} />
-                <JsonPanel title="Validator results" value={selected.record.evidence?.validator_results ?? null} />
-                <JsonPanel title="Failure map" value={selected.record.evidence?.failure_map ?? null} />
-                <JsonPanel title="Acceptance Certificate" value={selected.record.certificate?.acceptance_certificate ?? null} />
-              </div>
-            </section>
-
-            <section className="section-card" aria-labelledby="history-heading">
-              <div className="section-heading"><div><p className="eyebrow">04 / Restart-safe history</p><h2 id="history-heading">Previous-state-bound job history</h2></div><span>{selected.history.length} revision</span></div>
-              <div className="table-scroll">
-                <table>
-                  <caption>Backend tarafından doğrulanan persistent state zinciri</caption>
-                  <thead><tr><th>Rev</th><th>Phase</th><th>Previous</th><th>State digest</th></tr></thead>
-                  <tbody>
-                    {selected.history.map((entry) => (
-                      <tr key={entry.state_digest}>
-                        <td>{entry.revision}</td>
-                        <td>{PHASE_LABELS[entry.phase]}</td>
-                        <td><Digest value={entry.previous_state_digest} /></td>
-                        <td><Digest value={entry.state_digest} /></td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </section>
-          </>
-        )}
-      </main>
-    </div>
+              <section className="section-card" aria-labelledby="history-heading">
+                <div className="section-heading"><div><p className="eyebrow">04 / Restart-safe history</p><h2 id="history-heading">Previous-state-bound job history</h2></div><span>{selected.history.length} revision</span></div>
+                <div className="table-scroll">
+                  <table>
+                    <caption>Backend tarafından doğrulanan persistent state zinciri</caption>
+                    <thead><tr><th>Rev</th><th>Phase</th><th>Previous</th><th>State digest</th></tr></thead>
+                    <tbody>
+                      {selected.history.map((entry) => (
+                        <tr key={entry.state_digest}>
+                          <td>{entry.revision}</td>
+                          <td>{PHASE_LABELS[entry.phase]}</td>
+                          <td><Digest value={entry.previous_state_digest} /></td>
+                          <td><Digest value={entry.state_digest} /></td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </section>
+            </>
+          )}
+        </main>
+      </div>
+    </>
   );
 }
 

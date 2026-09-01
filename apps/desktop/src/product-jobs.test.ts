@@ -119,7 +119,7 @@ describe('Product Alpha renderer trust boundary', () => {
     expect(appSource).toContain("includes('STATE_DIGEST_MISMATCH')");
     expect(appSource).toContain("reloadJobs('Kayıt backend’den güncellendi; işlemi yeniden deneyin.')");
     expect(appSource).toContain('disabled={busy} onClick={() => void refreshFromBackend()}');
-    expect(appSource).toContain('>Yeniden oku</button>');
+    expect(appSource).toContain("'Yeniden oku'");
   });
 
   it('distinguishes backend loading and failure from an authoritative empty job list', () => {
@@ -127,13 +127,24 @@ describe('Product Alpha renderer trust boundary', () => {
     expect(appSource).toContain("setLoadState('error')");
     expect(appSource).toContain("loadState === 'ready' && jobs.length === 0");
     expect(appSource).toContain("loadState !== 'ready'");
-    expect(appSource).toContain('>Yeniden dene</button>');
+    expect(appSource).toContain("'Yeniden dene'");
   });
 
   it('clears job-scoped feedback on selection without hiding a backend load failure', () => {
     expect(appSource).toContain('function selectJob(jobId: string): void');
     expect(appSource).toContain("if (loadState !== 'error') setError(null)");
     expect(appSource).toContain('setNotice(null)');
+  });
+
+  it('announces renderer busy state outside busy regions and changes action labels while work is active', () => {
+    const liveStatus = 'role="status" aria-live="polite">İşlem sürüyor…';
+    const busyShell = 'className="product-shell" aria-busy={busy}';
+    expect(appSource).toContain(busyShell);
+    expect(appSource).toContain('className="create-form" aria-busy={busy}');
+    expect(appSource).toContain(liveStatus);
+    expect(appSource.indexOf(liveStatus)).toBeLessThan(appSource.indexOf(busyShell));
+    expect(appSource).toContain("busy ? 'İşlem sürüyor…' : 'Persistent iş oluştur'");
+    expect(appSource).toContain("busy ? 'Yeniden okunuyor…' : 'Yeniden oku'");
   });
 
   it('keeps keyboard, responsive and reduced-motion regressions explicit', () => {
