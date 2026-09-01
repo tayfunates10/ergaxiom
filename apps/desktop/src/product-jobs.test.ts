@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 
 import appSource from './App.tsx?raw';
 import {
+  MAX_RENDERER_IMPORT_BYTES,
   backendAcceptanceVerified,
   fileImportRequest,
   type GraphicDesignerJobKind,
@@ -59,6 +60,7 @@ describe('Product Alpha renderer trust boundary', () => {
     const file = {
       name: 'poster.svg',
       type: 'image/svg+xml',
+      size: 6,
       arrayBuffer: async () => new TextEncoder().encode('<svg/>').buffer,
     } as File;
     const request = await fileImportRequest(selected, 'source_svg', file);
@@ -67,6 +69,23 @@ describe('Product Alpha renderer trust boundary', () => {
     expect(request).not.toHaveProperty('path');
     expect(request).not.toHaveProperty('file_path');
     expect(JSON.stringify(request)).not.toContain('C:\\');
+  });
+
+  it('rejects oversized renderer imports before reading or expanding file bytes', async () => {
+    const selected = job('static_social_post');
+    let readAttempted = false;
+    const file = {
+      name: 'oversized.psd',
+      type: 'application/octet-stream',
+      size: MAX_RENDERER_IMPORT_BYTES + 1,
+      arrayBuffer: async () => {
+        readAttempted = true;
+        return new ArrayBuffer(0);
+      },
+    } as File;
+
+    await expect(fileImportRequest(selected, 'source_raster', file)).rejects.toThrow('8 MiB');
+    expect(readAttempted).toBe(false);
   });
 
   it('does not render Accepted from phase text alone', () => {
