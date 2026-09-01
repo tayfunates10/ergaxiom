@@ -270,7 +270,7 @@ export default function App() {
           </nav>
         </aside>
 
-        <main id="main-content" aria-busy={busy}>
+        <main id="main-content" tabIndex={-1} aria-busy={busy}>
           <section className="hero-panel" aria-labelledby="create-heading">
             <div>
               <p className="eyebrow">Gerçek kullanıcı girdileri</p>
