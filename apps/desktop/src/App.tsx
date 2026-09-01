@@ -48,6 +48,18 @@ const ROLE_LABELS: Record<string, string> = {
   print_specification: 'Print specification',
 };
 
+const ROLE_ACCEPT: Record<string, string> = {
+  intent_manifest: 'application/json,.json',
+  approved_logo: 'image/png,image/jpeg,image/webp,image/svg+xml,.svg',
+  brand_profile: 'application/json,.json',
+  approved_copy: 'text/plain,text/markdown,.txt,.md',
+  source_raster: 'image/png,image/jpeg,image/webp',
+  approved_cleanup_mask: 'image/png,image/jpeg,image/webp',
+  source_svg: 'image/svg+xml,.svg',
+  brand_manifest: 'application/json,.json',
+  print_specification: 'application/pdf,application/json,.pdf,.json',
+};
+
 function phaseTone(phase: UserJobPhase): 'neutral' | 'warning' | 'danger' | 'positive' {
   if (phase === 'accepted') return 'positive';
   if (['execution_failed', 'evidence_rejected'].includes(phase)) return 'danger';
@@ -349,6 +361,7 @@ export default function App() {
                         <label className="file-button">
                           {input ? 'Değiştir' : 'Dosya seç'}
                           <input
+                            accept={ROLE_ACCEPT[role]}
                             disabled={busy || !['draft', 'unresolved_intent'].includes(selected.record.phase)}
                             onChange={(event) => void importFile(role, event)}
                             type="file"
