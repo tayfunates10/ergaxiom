@@ -124,7 +124,7 @@ export default function App() {
 
   function selectJob(jobId: string): void {
     setSelectedId(jobId);
-    setError(null);
+    if (loadState !== 'error') setError(null);
     setNotice(null);
   }
 
