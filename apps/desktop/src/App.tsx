@@ -89,6 +89,7 @@ export default function App() {
   const [loadState, setLoadState] = useState<LoadState>('loading');
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [pendingCreatedJobFocusId, setPendingCreatedJobFocusId] = useState<string | null>(null);
 
   const selected = useMemo(
     () => jobs.find((job) => job.record.job_id === selectedId) ?? null,
@@ -113,6 +114,15 @@ export default function App() {
       active = false;
     };
   }, []);
+
+  useEffect(() => {
+    if (!pendingCreatedJobFocusId || busy || loadState !== 'ready') return;
+    if (selected?.record.job_id !== pendingCreatedJobFocusId) return;
+    const heading = document.getElementById('selected-job-heading');
+    if (!heading) return;
+    heading.focus();
+    setPendingCreatedJobFocusId(null);
+  }, [busy, loadState, pendingCreatedJobFocusId, selected]);
 
   function replaceJob(next: ProductJobView): void {
     setJobs((current) => {
@@ -169,7 +179,7 @@ export default function App() {
   async function runMutation(
     operation: () => Promise<ProductJobView>,
     message: string,
-  ): Promise<boolean> {
+  ): Promise<ProductJobView | null> {
     setBusy(true);
     setError(null);
     setNotice(null);
@@ -177,11 +187,11 @@ export default function App() {
       const next = await operation();
       replaceJob(next);
       setNotice(message);
-      return true;
+      return next;
     } catch (reason) {
-      if (await recoverStaleDigest(reason)) return false;
+      if (await recoverStaleDigest(reason)) return null;
       setError(errorMessage(reason));
-      return false;
+      return null;
     } finally {
       setBusy(false);
     }
@@ -198,7 +208,10 @@ export default function App() {
       () => createProductJob({ job_kind: jobKind, original_text: trimmed }),
       'Persistent kullanıcı işi backend tarafından oluşturuldu.',
     );
-    if (created) setRequestText('');
+    if (created) {
+      setRequestText('');
+      setPendingCreatedJobFocusId(created.record.job_id);
+    }
   }
 
   async function importFile(role: string, event: ChangeEvent<HTMLInputElement>): Promise<void> {
@@ -299,7 +312,7 @@ export default function App() {
               <section className="job-header">
                 <div>
                   <p className="eyebrow">{selected.record.job_id}</p>
-                  <h2>{JOB_LABELS[selected.record.job_kind]}</h2>
+                  <h2 id="selected-job-heading" tabIndex={-1}>{JOB_LABELS[selected.record.job_kind]}</h2>
                   <p>{selected.record.original_text}</p>
                 </div>
                 <div className="phase-card" data-tone={phaseTone(selected.record.phase)}>
