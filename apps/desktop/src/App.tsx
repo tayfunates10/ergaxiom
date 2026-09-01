@@ -221,7 +221,7 @@ export default function App() {
   }
 
   return (
-    <div className="product-shell">
+    <div className="product-shell" aria-busy={busy}>
       <a className="skip-link" href="#main-content">Ana içeriğe geç</a>
       <aside className="job-sidebar" aria-label="Persistent iş geçmişi">
         <header>
@@ -235,7 +235,7 @@ export default function App() {
           {loadState === 'error' ? (
             <div className="empty-state">
               <p>Backend kayıtları yüklenemedi.</p>
-              <button disabled={busy} onClick={() => void refreshFromBackend()} type="button">Yeniden dene</button>
+              <button disabled={busy} onClick={() => void refreshFromBackend()} type="button">{busy ? 'Yeniden okunuyor…' : 'Yeniden dene'}</button>
             </div>
           ) : null}
           {loadState === 'ready' && jobs.length === 0 ? <p className="muted">Henüz persistent iş yok.</p> : null}
@@ -255,14 +255,14 @@ export default function App() {
         </nav>
       </aside>
 
-      <main id="main-content">
+      <main id="main-content" aria-busy={busy}>
         <section className="hero-panel" aria-labelledby="create-heading">
           <div>
             <p className="eyebrow">Gerçek kullanıcı girdileri</p>
             <h2 id="create-heading">Yeni iş oluştur</h2>
             <p>Dosya yolları trusted execution sınırına geçmez. Seçilen dosyanın byte içeriği backend'e aktarılır; SHA-256 kimliği ve immutable blob backend tarafından üretilir.</p>
           </div>
-          <form className="create-form" onSubmit={(event) => void submitNewJob(event)}>
+          <form className="create-form" aria-busy={busy} onSubmit={(event) => void submitNewJob(event)}>
             <label>
               Certified job
               <select value={jobKind} onChange={(event) => setJobKind(event.target.value as GraphicDesignerJobKind)}>
@@ -279,10 +279,11 @@ export default function App() {
                 value={requestText}
               />
             </label>
-            <button disabled={busy || loadState !== 'ready' || requestText.trim().length === 0} type="submit">Persistent iş oluştur</button>
+            <button disabled={busy || loadState !== 'ready' || requestText.trim().length === 0} type="submit">{busy ? 'İşlem sürüyor…' : 'Persistent iş oluştur'}</button>
           </form>
         </section>
 
+        {busy ? <div className="message" role="status" aria-live="polite">İşlem sürüyor…</div> : null}
         {error ? <div className="message error-message" role="alert">{error}</div> : null}
         {notice ? <div className="message" role="status">{notice}</div> : null}
 
@@ -315,7 +316,7 @@ export default function App() {
               <div><span>Production</span><Digest value={selected.record.production?.chain_state_digest} /></div>
             </section>
 
-            <section className="section-card" aria-labelledby="inputs-heading">
+            <section className="section-card" aria-labelledby="inputs-heading" aria-busy={busy}>
               <div className="section-heading">
                 <div><p className="eyebrow">01 / Immutable inputs</p><h2 id="inputs-heading">Kullanıcı dosyaları</h2></div>
                 <span>{Object.keys(selected.record.inputs).length}/{selected.required_input_roles.length}</span>
@@ -345,13 +346,13 @@ export default function App() {
               </div>
             </section>
 
-            <section className="action-bar" aria-label="Backend lifecycle eylemleri">
-              <button disabled={busy || !canPrepare(selected)} onClick={() => void runMutation(() => prepareProductJob(selected), 'Compiler ve planner çıktıları backend history içine mühürlendi.')} type="button">Compile + plan</button>
-              <button disabled={busy || !canApprove(selected)} onClick={() => void runMutation(() => approveProductJob(selected), 'Exact contract/plan/permission tuple onaylandı.')} type="button">Onayla</button>
-              <button disabled={busy || !canExecute(selected)} onClick={() => void runMutation(() => startProductJobExecution(selected), 'Production lifecycle başlatma talebi authoritative backend zincirine gönderildi.')} type="button">Production execution</button>
-              <button disabled={busy} onClick={() => void refreshFromBackend()} type="button">Yeniden oku</button>
-              <button disabled={busy || selected.record.production === null} onClick={() => void runMutation(() => syncProductJobFromProduction(selected), 'Production chain yeniden okundu; evidence/certificate yalnız authoritative kayıttan eşitlendi.')} type="button">Production’dan yenile</button>
-              <button className="secondary" disabled={busy || !canCancel(selected)} onClick={() => void runMutation(() => cancelProductJob(selected), 'Execution öncesi iş iptal edildi.')} type="button">İptal</button>
+            <section className="action-bar" aria-label="Backend lifecycle eylemleri" aria-busy={busy}>
+              <button disabled={busy || !canPrepare(selected)} onClick={() => void runMutation(() => prepareProductJob(selected), 'Compiler ve planner çıktıları backend history içine mühürlendi.')} type="button">{busy ? 'İşleniyor…' : 'Compile + plan'}</button>
+              <button disabled={busy || !canApprove(selected)} onClick={() => void runMutation(() => approveProductJob(selected), 'Exact contract/plan/permission tuple onaylandı.')} type="button">{busy ? 'İşleniyor…' : 'Onayla'}</button>
+              <button disabled={busy || !canExecute(selected)} onClick={() => void runMutation(() => startProductJobExecution(selected), 'Production lifecycle başlatma talebi authoritative backend zincirine gönderildi.')} type="button">{busy ? 'İşleniyor…' : 'Production execution'}</button>
+              <button disabled={busy} onClick={() => void refreshFromBackend()} type="button">{busy ? 'Yeniden okunuyor…' : 'Yeniden oku'}</button>
+              <button disabled={busy || selected.record.production === null} onClick={() => void runMutation(() => syncProductJobFromProduction(selected), 'Production chain yeniden okundu; evidence/certificate yalnız authoritative kayıttan eşitlendi.')} type="button">{busy ? 'İşleniyor…' : 'Production’dan yenile'}</button>
+              <button className="secondary" disabled={busy || !canCancel(selected)} onClick={() => void runMutation(() => cancelProductJob(selected), 'Execution öncesi iş iptal edildi.')} type="button">{busy ? 'İşleniyor…' : 'İptal'}</button>
             </section>
 
             <section className="section-card" aria-labelledby="contract-heading">
