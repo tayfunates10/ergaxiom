@@ -34,6 +34,8 @@ import './product-jobs.css';
 
 const JOB_KINDS = Object.keys(JOB_LABELS) as GraphicDesignerJobKind[];
 
+type LoadState = 'loading' | 'ready' | 'error';
+
 const ROLE_LABELS: Record<string, string> = {
   intent_manifest: 'Intent manifest (JSON)',
   approved_logo: 'Onaylı logo',
@@ -84,6 +86,7 @@ export default function App() {
   const [jobKind, setJobKind] = useState<GraphicDesignerJobKind>('static_social_post');
   const [requestText, setRequestText] = useState('');
   const [busy, setBusy] = useState(false);
+  const [loadState, setLoadState] = useState<LoadState>('loading');
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
@@ -99,9 +102,12 @@ export default function App() {
         if (!active) return;
         setJobs(loaded);
         setSelectedId((current) => current ?? loaded.at(-1)?.record.job_id ?? null);
+        setLoadState('ready');
       })
       .catch((reason: unknown) => {
-        if (active) setError(errorMessage(reason));
+        if (!active) return;
+        setLoadState('error');
+        setError(errorMessage(reason));
       });
     return () => {
       active = false;
@@ -123,6 +129,7 @@ export default function App() {
       if (current && loaded.some((job) => job.record.job_id === current)) return current;
       return loaded.at(-1)?.record.job_id ?? null;
     });
+    setLoadState('ready');
     setNotice(message);
   }
 
@@ -132,6 +139,7 @@ export default function App() {
       await reloadJobs('Kayıt backend’den güncellendi; işlemi yeniden deneyin.');
       setError(null);
     } catch (reloadReason) {
+      setLoadState('error');
       setError(`${errorMessage(reason)}; yeniden okuma başarısız: ${errorMessage(reloadReason)}`);
     }
     return true;
@@ -139,11 +147,13 @@ export default function App() {
 
   async function refreshFromBackend(): Promise<void> {
     setBusy(true);
+    setLoadState('loading');
     setError(null);
     setNotice(null);
     try {
       await reloadJobs('Backend kayıtları yeniden okundu.');
     } catch (reason) {
+      setLoadState('error');
       setError(errorMessage(reason));
     } finally {
       setBusy(false);
@@ -215,7 +225,14 @@ export default function App() {
         </header>
 
         <nav className="job-list" aria-label="Kullanıcı işleri">
-          {jobs.length === 0 ? <p className="muted">Henüz persistent iş yok.</p> : null}
+          {loadState === 'loading' ? <p className="muted" role="status">Backend işleri yükleniyor…</p> : null}
+          {loadState === 'error' ? (
+            <div className="empty-state">
+              <p>Backend kayıtları yüklenemedi.</p>
+              <button disabled={busy} onClick={() => void refreshFromBackend()} type="button">Yeniden dene</button>
+            </div>
+          ) : null}
+          {loadState === 'ready' && jobs.length === 0 ? <p className="muted">Henüz persistent iş yok.</p> : null}
           {jobs.map((job) => (
             <button
               className="job-list-item"
@@ -256,14 +273,18 @@ export default function App() {
                 value={requestText}
               />
             </label>
-            <button disabled={busy || requestText.trim().length === 0} type="submit">Persistent iş oluştur</button>
+            <button disabled={busy || loadState !== 'ready' || requestText.trim().length === 0} type="submit">Persistent iş oluştur</button>
           </form>
         </section>
 
         {error ? <div className="message error-message" role="alert">{error}</div> : null}
         {notice ? <div className="message" role="status">{notice}</div> : null}
 
-        {!selected ? (
+        {loadState === 'loading' ? (
+          <section className="empty-state"><h2>Backend işleri yükleniyor.</h2></section>
+        ) : loadState === 'error' ? (
+          <section className="empty-state"><h2>Backend kayıtları kullanılamıyor. Yeniden deneyin.</h2></section>
+        ) : !selected ? (
           <section className="empty-state"><h2>Bir iş oluşturun veya geçmişten seçin.</h2></section>
         ) : (
           <>
