@@ -96,6 +96,13 @@ describe('Product Alpha renderer trust boundary', () => {
     expect(backendAcceptanceVerified(selected)).toBe(true);
   });
 
+  it('keeps an unconditional authoritative reload path for stale state digests', () => {
+    expect(appSource).toContain("includes('STATE_DIGEST_MISMATCH')");
+    expect(appSource).toContain("reloadJobs('Kayıt backend’den güncellendi; işlemi yeniden deneyin.')");
+    expect(appSource).toContain('disabled={busy} onClick={() => void refreshFromBackend()}');
+    expect(appSource).toContain('>Yeniden oku</button>');
+  });
+
   it('keeps keyboard, responsive and reduced-motion regressions explicit', () => {
     expect(appSource).toContain('skip-link');
     expect(appSource).toContain('aria-label');
