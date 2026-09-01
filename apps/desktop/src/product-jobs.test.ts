@@ -111,6 +111,12 @@ describe('Product Alpha renderer trust boundary', () => {
     expect(appSource).toContain('>Yeniden dene</button>');
   });
 
+  it('clears job-scoped feedback on selection without hiding a backend load failure', () => {
+    expect(appSource).toContain('function selectJob(jobId: string): void');
+    expect(appSource).toContain("if (loadState !== 'error') setError(null)");
+    expect(appSource).toContain('setNotice(null)');
+  });
+
   it('keeps keyboard, responsive and reduced-motion regressions explicit', () => {
     expect(appSource).toContain('skip-link');
     expect(appSource).toContain('aria-label');
