@@ -119,7 +119,7 @@ export default function App() {
   async function runMutation(
     operation: () => Promise<ProductJobView>,
     message: string,
-  ): Promise<void> {
+  ): Promise<boolean> {
     setBusy(true);
     setError(null);
     setNotice(null);
@@ -127,8 +127,10 @@ export default function App() {
       const next = await operation();
       replaceJob(next);
       setNotice(message);
+      return true;
     } catch (reason) {
       setError(errorMessage(reason));
+      return false;
     } finally {
       setBusy(false);
     }
@@ -141,11 +143,11 @@ export default function App() {
       setError('İş açıklaması boş bırakılamaz.');
       return;
     }
-    await runMutation(
+    const created = await runMutation(
       () => createProductJob({ job_kind: jobKind, original_text: trimmed }),
       'Persistent kullanıcı işi backend tarafından oluşturuldu.',
     );
-    setRequestText('');
+    if (created) setRequestText('');
   }
 
   async function importFile(role: string, event: ChangeEvent<HTMLInputElement>): Promise<void> {
