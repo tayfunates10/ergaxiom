@@ -136,10 +136,13 @@ describe('Product Alpha renderer trust boundary', () => {
     expect(appSource).toContain('setNotice(null)');
   });
 
-  it('announces renderer busy state and changes action labels while work is active', () => {
-    expect(appSource).toContain('className="product-shell" aria-busy={busy}');
+  it('announces renderer busy state outside busy regions and changes action labels while work is active', () => {
+    const liveStatus = 'role="status" aria-live="polite">İşlem sürüyor…';
+    const busyShell = 'className="product-shell" aria-busy={busy}';
+    expect(appSource).toContain(busyShell);
     expect(appSource).toContain('className="create-form" aria-busy={busy}');
-    expect(appSource).toContain('role="status" aria-live="polite">İşlem sürüyor…');
+    expect(appSource).toContain(liveStatus);
+    expect(appSource.indexOf(liveStatus)).toBeLessThan(appSource.indexOf(busyShell));
     expect(appSource).toContain("busy ? 'İşlem sürüyor…' : 'Persistent iş oluştur'");
     expect(appSource).toContain("busy ? 'Yeniden okunuyor…' : 'Yeniden oku'");
   });
