@@ -103,6 +103,14 @@ describe('Product Alpha renderer trust boundary', () => {
     expect(appSource).toContain('>Yeniden oku</button>');
   });
 
+  it('distinguishes backend loading and failure from an authoritative empty job list', () => {
+    expect(appSource).toContain("type LoadState = 'loading' | 'ready' | 'error'");
+    expect(appSource).toContain("setLoadState('error')");
+    expect(appSource).toContain("loadState === 'ready' && jobs.length === 0");
+    expect(appSource).toContain("loadState !== 'ready'");
+    expect(appSource).toContain('>Yeniden dene</button>');
+  });
+
   it('keeps keyboard, responsive and reduced-motion regressions explicit', () => {
     expect(appSource).toContain('skip-link');
     expect(appSource).toContain('aria-label');
