@@ -116,6 +116,40 @@ export default function App() {
     setSelectedId(next.record.job_id);
   }
 
+  async function reloadJobs(message: string): Promise<void> {
+    const loaded = await listProductJobs();
+    setJobs(loaded);
+    setSelectedId((current) => {
+      if (current && loaded.some((job) => job.record.job_id === current)) return current;
+      return loaded.at(-1)?.record.job_id ?? null;
+    });
+    setNotice(message);
+  }
+
+  async function recoverStaleDigest(reason: unknown): Promise<boolean> {
+    if (!isStateDigestMismatch(reason)) return false;
+    try {
+      await reloadJobs('Kayıt backend’den güncellendi; işlemi yeniden deneyin.');
+      setError(null);
+    } catch (reloadReason) {
+      setError(`${errorMessage(reason)}; yeniden okuma başarısız: ${errorMessage(reloadReason)}`);
+    }
+    return true;
+  }
+
+  async function refreshFromBackend(): Promise<void> {
+    setBusy(true);
+    setError(null);
+    setNotice(null);
+    try {
+      await reloadJobs('Backend kayıtları yeniden okundu.');
+    } catch (reason) {
+      setError(errorMessage(reason));
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function runMutation(
     operation: () => Promise<ProductJobView>,
     message: string,
@@ -129,6 +163,7 @@ export default function App() {
       setNotice(message);
       return true;
     } catch (reason) {
+      if (await recoverStaleDigest(reason)) return false;
       setError(errorMessage(reason));
       return false;
     } finally {
@@ -162,7 +197,7 @@ export default function App() {
       replaceJob(next);
       setNotice(`${ROLE_LABELS[role] ?? role} immutable SHA-256 girdisi olarak kaydedildi.`);
     } catch (reason) {
-      setError(errorMessage(reason));
+      if (!(await recoverStaleDigest(reason))) setError(errorMessage(reason));
     } finally {
       event.target.value = '';
       setBusy(false);
@@ -287,6 +322,7 @@ export default function App() {
               <button disabled={busy || !canPrepare(selected)} onClick={() => void runMutation(() => prepareProductJob(selected), 'Compiler ve planner çıktıları backend history içine mühürlendi.')} type="button">Compile + plan</button>
               <button disabled={busy || !canApprove(selected)} onClick={() => void runMutation(() => approveProductJob(selected), 'Exact contract/plan/permission tuple onaylandı.')} type="button">Onayla</button>
               <button disabled={busy || !canExecute(selected)} onClick={() => void runMutation(() => startProductJobExecution(selected), 'Production lifecycle başlatma talebi authoritative backend zincirine gönderildi.')} type="button">Production execution</button>
+              <button disabled={busy} onClick={() => void refreshFromBackend()} type="button">Yeniden oku</button>
               <button disabled={busy || selected.record.production === null} onClick={() => void runMutation(() => syncProductJobFromProduction(selected), 'Production chain yeniden okundu; evidence/certificate yalnız authoritative kayıttan eşitlendi.')} type="button">Production’dan yenile</button>
               <button className="secondary" disabled={busy || !canCancel(selected)} onClick={() => void runMutation(() => cancelProductJob(selected), 'Execution öncesi iş iptal edildi.')} type="button">İptal</button>
             </section>
@@ -352,4 +388,8 @@ function errorMessage(reason: unknown): string {
   } catch {
     return 'Backend işlemi başarısız oldu.';
   }
+}
+
+function isStateDigestMismatch(reason: unknown): boolean {
+  return errorMessage(reason).includes('STATE_DIGEST_MISMATCH');
 }
