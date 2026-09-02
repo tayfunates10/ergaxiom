@@ -282,6 +282,7 @@ export default function App() {
             {loadState === 'ready' && jobs.length === 0 ? <p className="muted">Henüz persistent iş yok.</p> : null}
             {jobs.map((job) => (
               <button
+                aria-current={job.record.job_id === selectedId ? 'page' : undefined}
                 className="job-list-item"
                 data-active={job.record.job_id === selectedId}
                 key={job.record.job_id}
