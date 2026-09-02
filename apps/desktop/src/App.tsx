@@ -60,6 +60,20 @@ const ROLE_ACCEPT: Record<string, string> = {
   print_specification: 'application/pdf,application/json,.pdf,.json',
 };
 
+function acceptForInput(jobKind: GraphicDesignerJobKind, role: string): string | undefined {
+  if (
+    jobKind === 'image_background_cleanup'
+    && ['source_raster', 'approved_cleanup_mask'].includes(role)
+  ) return 'image/png,.png';
+  if (jobKind === 'brand_compliant_image_export' && role === 'approved_logo') {
+    return 'image/png,.png';
+  }
+  if (jobKind === 'print_ready_poster_preflight' && role === 'print_specification') {
+    return 'application/json,.json';
+  }
+  return ROLE_ACCEPT[role];
+}
+
 function phaseTone(phase: UserJobPhase): 'neutral' | 'warning' | 'danger' | 'positive' {
   if (phase === 'accepted') return 'positive';
   if (['execution_failed', 'evidence_rejected'].includes(phase)) return 'danger';
@@ -361,7 +375,7 @@ export default function App() {
                         <label className="file-button">
                           {input ? 'Değiştir' : 'Dosya seç'}
                           <input
-                            accept={ROLE_ACCEPT[role]}
+                            accept={acceptForInput(selected.record.job_kind, role)}
                             disabled={busy || !['draft', 'unresolved_intent'].includes(selected.record.phase)}
                             onChange={(event) => void importFile(role, event)}
                             type="file"
