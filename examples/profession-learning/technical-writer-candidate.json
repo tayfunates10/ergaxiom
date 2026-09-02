@@ -1,0 +1,61 @@
+{
+  "schema_version": "0.1.0",
+  "candidate_id": "candidate.technical-writer.001",
+  "capsule_id": "ergaxiom.profession.technical-writer",
+  "job_type": "plain_text_revision",
+  "proposal_only": true,
+  "source_demonstration_digests": [
+    "0cff0eaae14a6379f6481196e892d7d515bca782287d61e5ae30c5610c287644"
+  ],
+  "operator": {
+    "operator_id": "candidate.technical-writer.001.operator",
+    "version": "0.1.0-candidate",
+    "capability_scope": [
+      "text.read",
+      "text.replace"
+    ],
+    "preconditions": [
+      "document_open",
+      "replacement_approved",
+      "selection_known",
+      "source_text_observed"
+    ],
+    "postconditions": [
+      "document_still_open",
+      "selection_replaced",
+      "source_text_observed"
+    ],
+    "actions": [
+      {
+        "capability": "text.read",
+        "operation": "read_selection",
+        "parameter_names": []
+      },
+      {
+        "capability": "text.replace",
+        "operation": "replace_selection",
+        "parameter_names": [
+          "replacement"
+        ]
+      }
+    ],
+    "unsupported_observation_policy": "UNKNOWN"
+  },
+  "execution_boundary": {
+    "allowed_environments": [
+      "isolated_test",
+      "occupational_twin"
+    ],
+    "live_user_work_allowed": false
+  },
+  "signing": {
+    "role": "candidate-operator",
+    "production_key_access": false,
+    "production_signing_role": "production-capsule"
+  },
+  "promotion": {
+    "automatic_production_allowed": false,
+    "manual_release_required": true
+  },
+  "candidate_digest": "5ed01635e975ac06d158af5384d5be20b67b6a7c5ba47f63b5237af86a852d41"
+}

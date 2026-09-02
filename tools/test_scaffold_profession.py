@@ -44,6 +44,7 @@ class ProfessionScaffoldTests(unittest.TestCase):
             entry = catalog["entries"][0]
             job = capsule["job_types"][0]
             policies = capsule["policies"]
+            training = capsule["training"]
             self.assertEqual(entry["capsule_id"], "ergaxiom.profession.video-editor")
             self.assertEqual(entry["capsule_digest"], canonical_json_sha256(capsule))
             self.assertEqual(entry["certification_level"], "draft")
@@ -57,7 +58,19 @@ class ProfessionScaffoldTests(unittest.TestCase):
             self.assertEqual(policies["default_network"], "denied")
             self.assertFalse(policies["self_verification_allowed"])
             self.assertTrue(policies["irreversible_actions_require_approval"])
-            self.assertFalse(capsule["training"]["live_learning_allowed"])
+            self.assertFalse(training["live_learning_allowed"])
+            self.assertEqual(training["certification_suite"], "profession-learning-lab/v1")
+            self.assertEqual(training["minimum_pass_rate"], 1.0)
+            self.assertEqual(
+                set(training["required_zero_failure_tests"]),
+                {
+                    "adversarial",
+                    "isolation",
+                    "property_fuzz",
+                    "regression",
+                    "revocation_rollback",
+                },
+            )
 
     def test_existing_profession_is_never_overwritten(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

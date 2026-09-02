@@ -1,7 +1,7 @@
 {
   "schema_version": "0.1.0",
   "catalog_id": "ergaxiom.profession-catalog",
-  "catalog_version": "0.1.0",
+  "catalog_version": "0.1.1",
   "entries": [
     {
       "capsule_id": "ergaxiom.profession.graphic-designer",
@@ -26,6 +26,20 @@
         {
           "id": "social_media_static_post",
           "status": "certified_path"
+        }
+      ]
+    },
+    {
+      "capsule_id": "ergaxiom.profession.technical-writer",
+      "capsule_version": "0.1.0",
+      "capsule_path": "technical-writer/profession.json",
+      "capsule_digest": "bca7f8402600f316a2bcd34206003900d6b52973c60b680cd011907a3004f873",
+      "certification_level": "draft",
+      "production_enabled": false,
+      "job_types": [
+        {
+          "id": "plain_text_revision",
+          "status": "planned"
         }
       ]
     }
