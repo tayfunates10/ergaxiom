@@ -138,10 +138,10 @@ impl GatewayConfig {
             return Err(NvidiaAssistError::UnsafeGatewayUrl);
         }
 
-        if let Some(token) = token.as_deref()
-            && (token.contains('\r') || token.contains('\n'))
-        {
-            return Err(NvidiaAssistError::InvalidGatewayToken);
+        if let Some(token_value) = token.as_deref() {
+            if token_value.contains('\r') || token_value.contains('\n') {
+                return Err(NvidiaAssistError::InvalidGatewayToken);
+            }
         }
 
         let host_header = if port == 80 {
@@ -182,7 +182,8 @@ fn draft_with_config(
         "max_tokens": 512,
         "stream": false
     });
-    let request_digest = canonical_json_sha256(&request_body).map_err(|_| NvidiaAssistError::Hashing)?;
+    let request_digest =
+        canonical_json_sha256(&request_body).map_err(|_| NvidiaAssistError::Hashing)?;
     let gateway_response = post_chat_completion(config, &request_body)?;
     let response_digest =
         canonical_json_sha256(&gateway_response).map_err(|_| NvidiaAssistError::Hashing)?;
@@ -262,10 +263,10 @@ fn validate_advisory_text(
     value: Option<&str>,
     max_bytes: usize,
 ) -> Result<(), NvidiaAssistError> {
-    if let Some(value) = value
-        && (value.trim().is_empty() || value.len() > max_bytes || value.contains('\0'))
-    {
-        return Err(NvidiaAssistError::InvalidSuggestion(field));
+    if let Some(text) = value {
+        if text.trim().is_empty() || text.len() > max_bytes || text.contains('\0') {
+            return Err(NvidiaAssistError::InvalidSuggestion(field));
+        }
     }
     Ok(())
 }
@@ -275,7 +276,6 @@ fn post_chat_completion(
     body: &Value,
 ) -> Result<Value, NvidiaAssistError> {
     let encoded = serde_json::to_vec(body).map_err(NvidiaAssistError::InvalidGatewayJson)?;
-    let mut last_status = None;
 
     for attempt in 0..MAX_ATTEMPTS {
         match post_once(config, &encoded) {
@@ -284,7 +284,6 @@ fn post_chat_completion(
                     .map_err(NvidiaAssistError::InvalidGatewayJson);
             }
             Ok(response) if is_transient_status(response.status) && attempt + 1 < MAX_ATTEMPTS => {
-                last_status = Some(response.status);
                 thread::sleep(Duration::from_millis(250 * (1_u64 << attempt)));
             }
             Ok(response) => return Err(NvidiaAssistError::GatewayStatus(response.status)),
@@ -292,7 +291,7 @@ fn post_chat_completion(
         }
     }
 
-    Err(NvidiaAssistError::GatewayStatus(last_status.unwrap_or(503)))
+    Err(NvidiaAssistError::GatewayStatus(503))
 }
 
 struct HttpResponse {
@@ -351,15 +350,18 @@ fn parse_http_response(raw: &[u8]) -> Result<HttpResponse, NvidiaAssistError> {
             .unwrap_or(false)
     });
 
-    let body = if chunked {
+    let decoded_body = if chunked {
         decode_chunked(body)?
     } else {
         body.to_vec()
     };
-    if body.len() > MAX_RESPONSE_BYTES {
+    if decoded_body.len() > MAX_RESPONSE_BYTES {
         return Err(NvidiaAssistError::ResponseTooLarge);
     }
-    Ok(HttpResponse { status, body })
+    Ok(HttpResponse {
+        status,
+        body: decoded_body,
+    })
 }
 
 fn decode_chunked(mut input: &[u8]) -> Result<Vec<u8>, NvidiaAssistError> {
@@ -368,7 +370,10 @@ fn decode_chunked(mut input: &[u8]) -> Result<Vec<u8>, NvidiaAssistError> {
         let line_end = find_bytes(input, b"\r\n").ok_or(NvidiaAssistError::MalformedHttp)?;
         let size_text = std::str::from_utf8(&input[..line_end])
             .map_err(|_| NvidiaAssistError::MalformedHttp)?;
-        let size_text = size_text.split(';').next().ok_or(NvidiaAssistError::MalformedHttp)?;
+        let size_text = size_text
+            .split(';')
+            .next()
+            .ok_or(NvidiaAssistError::MalformedHttp)?;
         let size = usize::from_str_radix(size_text.trim(), 16)
             .map_err(|_| NvidiaAssistError::MalformedHttp)?;
         input = &input[line_end + 2..];
@@ -388,7 +393,9 @@ fn decode_chunked(mut input: &[u8]) -> Result<Vec<u8>, NvidiaAssistError> {
 }
 
 fn find_bytes(haystack: &[u8], needle: &[u8]) -> Option<usize> {
-    haystack.windows(needle.len()).position(|window| window == needle)
+    haystack
+        .windows(needle.len())
+        .position(|window| window == needle)
 }
 
 fn is_transient_status(status: u16) -> bool {
@@ -421,7 +428,8 @@ mod tests {
 
     #[test]
     fn chunked_http_body_is_decoded() {
-        let response = b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n4\r\ntest\r\n0\r\n\r\n";
+        let response =
+            b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n4\r\ntest\r\n0\r\n\r\n";
         let parsed = parse_http_response(response).expect("chunked response should parse");
         assert_eq!(parsed.status, 200);
         assert_eq!(parsed.body, b"test");
@@ -509,20 +517,24 @@ mod tests {
                 break;
             }
             data.extend_from_slice(&buffer[..count]);
-            if expected_total.is_none()
-                && let Some(header_end) = find_bytes(&data, b"\r\n\r\n")
-            {
-                let headers = std::str::from_utf8(&data[..header_end]).expect("headers are UTF-8");
-                let content_length = headers
-                    .split("\r\n")
-                    .find_map(|line| {
-                        line.split_once(':').and_then(|(name, value)| {
-                            name.eq_ignore_ascii_case("content-length")
-                                .then(|| value.trim().parse::<usize>().expect("valid length"))
+            if expected_total.is_none() {
+                if let Some(header_end) = find_bytes(&data, b"\r\n\r\n") {
+                    let headers =
+                        std::str::from_utf8(&data[..header_end]).expect("headers are UTF-8");
+                    let content_length = headers
+                        .split("\r\n")
+                        .find_map(|line| {
+                            line.split_once(':').and_then(|(name, value)| {
+                                if name.eq_ignore_ascii_case("content-length") {
+                                    Some(value.trim().parse::<usize>().expect("valid length"))
+                                } else {
+                                    None
+                                }
+                            })
                         })
-                    })
-                    .expect("content length should exist");
-                expected_total = Some(header_end + 4 + content_length);
+                        .expect("content length should exist");
+                    expected_total = Some(header_end + 4 + content_length);
+                }
             }
             if expected_total.is_some_and(|total| data.len() >= total) {
                 break;
