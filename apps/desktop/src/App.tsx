@@ -376,6 +376,7 @@ export default function App() {
                           {input ? 'Değiştir' : 'Dosya seç'}
                           <input
                             accept={acceptForInput(selected.record.job_kind, role)}
+                            aria-label={`${ROLE_LABELS[role] ?? role}: ${input ? 'Değiştir' : 'Dosya seç'}`}
                             disabled={busy || !['draft', 'unresolved_intent'].includes(selected.record.phase)}
                             onChange={(event) => void importFile(role, event)}
                             type="file"
