@@ -463,5 +463,8 @@ function errorMessage(reason: unknown): string {
 }
 
 function isStateDigestMismatch(reason: unknown): boolean {
-  return errorMessage(reason).includes('STATE_DIGEST_MISMATCH');
+  const message = errorMessage(reason).toLowerCase();
+  return message.includes('state_digest_mismatch')
+    || message.includes('stale product job snapshot')
+    || message.includes('renderer supplied a stale state digest');
 }
