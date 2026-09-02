@@ -1,6 +1,7 @@
 #![forbid(unsafe_code)]
 
 mod commands;
+mod nvidia_assist;
 mod pipeline;
 mod product_jobs;
 mod production_execution;
@@ -32,6 +33,7 @@ pub fn run() {
             commands::start_desktop_job_execution,
             commands::cancel_desktop_job,
             commands::rollback_desktop_job,
+            nvidia_assist::draft_static_social_post_with_nvidia,
             product_jobs::list_product_jobs,
             product_jobs::create_product_job,
             product_jobs::import_product_job_input,
@@ -81,6 +83,7 @@ pub fn run() {
             commands::start_desktop_job_execution,
             commands::cancel_desktop_job,
             commands::rollback_desktop_job,
+            nvidia_assist::draft_static_social_post_with_nvidia,
             product_jobs::list_product_jobs,
             product_jobs::create_product_job,
             product_jobs::import_product_job_input,
