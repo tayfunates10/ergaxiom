@@ -48,6 +48,32 @@ const ROLE_LABELS: Record<string, string> = {
   print_specification: 'Print specification',
 };
 
+const ROLE_ACCEPT: Record<string, string> = {
+  intent_manifest: 'application/json,.json',
+  approved_logo: 'image/png,image/jpeg,image/webp,image/svg+xml,.svg',
+  brand_profile: 'application/json,.json',
+  approved_copy: 'text/plain,text/markdown,.txt,.md',
+  source_raster: 'image/png,image/jpeg,image/webp',
+  approved_cleanup_mask: 'image/png,image/jpeg,image/webp',
+  source_svg: 'image/svg+xml,.svg',
+  brand_manifest: 'application/json,.json',
+  print_specification: 'application/pdf,application/json,.pdf,.json',
+};
+
+function acceptForInput(jobKind: GraphicDesignerJobKind, role: string): string | undefined {
+  if (
+    jobKind === 'image_background_cleanup'
+    && ['source_raster', 'approved_cleanup_mask'].includes(role)
+  ) return 'image/png,.png';
+  if (jobKind === 'brand_compliant_image_export' && role === 'approved_logo') {
+    return 'image/png,.png';
+  }
+  if (jobKind === 'print_ready_poster_preflight' && role === 'print_specification') {
+    return 'application/json,.json';
+  }
+  return ROLE_ACCEPT[role];
+}
+
 function phaseTone(phase: UserJobPhase): 'neutral' | 'warning' | 'danger' | 'positive' {
   if (phase === 'accepted') return 'positive';
   if (['execution_failed', 'evidence_rejected'].includes(phase)) return 'danger';
@@ -349,6 +375,7 @@ export default function App() {
                         <label className="file-button">
                           {input ? 'Değiştir' : 'Dosya seç'}
                           <input
+                            accept={acceptForInput(selected.record.job_kind, role)}
                             disabled={busy || !['draft', 'unresolved_intent'].includes(selected.record.phase)}
                             onChange={(event) => void importFile(role, event)}
                             type="file"
