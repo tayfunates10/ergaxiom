@@ -271,10 +271,7 @@ fn validate_advisory_text(
     Ok(())
 }
 
-fn post_chat_completion(
-    config: &GatewayConfig,
-    body: &Value,
-) -> Result<Value, NvidiaAssistError> {
+fn post_chat_completion(config: &GatewayConfig, body: &Value) -> Result<Value, NvidiaAssistError> {
     let encoded = serde_json::to_vec(body).map_err(NvidiaAssistError::InvalidGatewayJson)?;
 
     for attempt in 0..MAX_ATTEMPTS {
@@ -332,7 +329,8 @@ fn parse_http_response(raw: &[u8]) -> Result<HttpResponse, NvidiaAssistError> {
     let header_end = find_bytes(raw, b"\r\n\r\n").ok_or(NvidiaAssistError::MalformedHttp)?;
     let header_bytes = &raw[..header_end];
     let body = &raw[header_end + 4..];
-    let headers = std::str::from_utf8(header_bytes).map_err(|_| NvidiaAssistError::MalformedHttp)?;
+    let headers =
+        std::str::from_utf8(header_bytes).map_err(|_| NvidiaAssistError::MalformedHttp)?;
     let mut lines = headers.split("\r\n");
     let status_line = lines.next().ok_or(NvidiaAssistError::MalformedHttp)?;
     let status = status_line
@@ -447,7 +445,9 @@ mod tests {
                 .set_read_timeout(Some(Duration::from_secs(2)))
                 .expect("timeout should configure");
             let request = read_complete_request(&mut stream);
-            request_tx.send(request).expect("request should be captured");
+            request_tx
+                .send(request)
+                .expect("request should be captured");
 
             let model_content = r#"{"language":"tr","visual_tone":"technical premium"}"#;
             let body = json!({
