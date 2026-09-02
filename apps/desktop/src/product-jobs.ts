@@ -123,6 +123,8 @@ export interface ExpectedProductJobRequest {
   expected_state_digest: string;
 }
 
+export const MAX_RENDERER_IMPORT_BYTES = 8 * 1024 * 1024;
+
 export const JOB_LABELS: Record<GraphicDesignerJobKind, string> = {
   static_social_post: 'Static Social Post',
   image_background_cleanup: 'Background Cleanup',
@@ -189,6 +191,9 @@ export async function fileImportRequest(
   role: string,
   file: File,
 ): Promise<ImportProductJobInputRequest> {
+  if (file.size > MAX_RENDERER_IMPORT_BYTES) {
+    throw new Error('Dosya 8 MiB renderer import güvenlik sınırını aşıyor. Daha küçük bir dosya seçin.');
+  }
   const buffer = await file.arrayBuffer();
   return {
     job_id: job.record.job_id,
