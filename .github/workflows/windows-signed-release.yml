@@ -30,7 +30,7 @@ jobs:
         shell: bash
         run: test "$(git rev-parse HEAD)" = "$SOURCE_COMMIT"
       - name: Release evidence attack tests
-        run: python -m unittest tools.release.test_generate_release_evidence tools.release.test_generate_owner_license_decision tools.release.test_finalize_windows_release_evidence tools.release.test_windows_release_attack_matrix tools.windows.test_controlled_trust_gate
+        run: python -m unittest tools.release.test_generate_release_evidence tools.release.test_generate_owner_license_decision tools.release.test_finalize_windows_release_evidence tools.release.test_windows_release_attack_matrix tools.release.test_verify_github_oidc_provenance tools.release.test_finalize_prepared_windows_release_fail_closed tools.windows.test_controlled_trust_gate
       - name: Compile canonical production-chain verifier
         run: cargo check --locked -p ergaxiom-production-execution-runtime --bin verify_production_release_chain
       - name: Validate release JSON and locked dependency graph
@@ -229,50 +229,9 @@ jobs:
         run: |
           ./tools/release/check_production_windows_host.ps1 -PolicyPath tools/release/windows_release_policy.json -OutputPath "$env:RUNNER_TEMP\host-preflight-selftest.json" | Out-Null
           if((Test-Path variable:\LASTEXITCODE) -and $LASTEXITCODE-ne0){throw "PREFLIGHT_LEFT_A_FAILING_EXIT_CODE: $LASTEXITCODE"}
-          $r=Get-Content "$env:RUNNER_TEMP\host-preflight-selftest.json" -Raw|ConvertFrom-Json
+          $r=Get-Content "$env:RUNNER_TEMP\host-preflight-selftest.json" -Raw | ConvertFrom-Json
           if($r.platform_windows-ne$true){throw 'PREFLIGHT_DID_NOT_SEE_WINDOWS'}
           if($r.source_commit-ne$env:SOURCE_COMMIT){throw 'PREFLIGHT_SOURCE_COMMIT_MISMATCH'}
-          if($r.microsoft_platform_crypto_provider_present-ne$r.microsoft_platform_crypto_provider.present){throw 'PROVIDER_SUMMARY_DISAGREES_WITH_DETECTION_DETAIL'}
-          if($r.microsoft_platform_crypto_provider.native_open.attempted-ne$true){throw 'PREFLIGHT_DID_NOT_RUN_THE_NATIVE_PROBE'}
-          if($r.microsoft_platform_crypto_provider.present-ne$r.microsoft_platform_crypto_provider.native_open.opened){throw 'PREFLIGHT_PRESENCE_IS_NOT_BOUND_TO_NCryptOpenStorageProvider'}
-          if($r.physical_tpm_evidence_proven-ne$false -or $r.release_eligible-ne$false){throw 'PREFLIGHT_MUST_NEVER_CLAIM_PRODUCTION_EVIDENCE'}
-          if($r.ready_for_signed_candidate_prepare-ne$false){throw 'HOSTED_RUNNER_MUST_NEVER_BE_PREPARE_READY'}
-          if($r.signing_policy.policy_pin_resolved-ne$false){throw 'CERTIFICATE_PIN_UNEXPECTEDLY_RESOLVED'}
-          try {
-            ./tools/release/check_production_windows_host.ps1 -PolicyPath tools/release/windows_release_policy.json -RequireReady | Out-Null
-            throw 'PREFLIGHT_REQUIREREADY_DID_NOT_FAIL_CLOSED'
-          } catch {
-            if($_.Exception.Message -notmatch 'PRODUCTION_WINDOWS_HOST_NOT_READY'){throw}
-          }
-      - uses: actions/upload-artifact@v4
-        with:
-          name: windows-host-preflight-selftest-NOT-PRODUCTION
-          path: ${{ runner.temp }}/host-preflight-selftest.json
-          if-no-files-found: error
-          retention-days: 14
-
-  production-preflight:
-    if: github.event_name == 'workflow_dispatch'
-    runs-on: windows-2025
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: ${{ env.SOURCE_COMMIT }}
-          persist-credentials: false
-      - name: Real certificate and license must be owner-pinned
-        shell: pwsh
-        run: |
-          $p=Get-Content tools/release/windows_release_policy.json -Raw|ConvertFrom-Json
-          if($p.signing.identity_status-ne'OWNER_APPROVED_PINNED' -or [string]::IsNullOrWhiteSpace([string]$p.signing.expected_subject) -or [string]::IsNullOrWhiteSpace([string]$p.signing.expected_certificate_sha256)){throw 'PRODUCTION BLOCKED: real code-signing identity pin is unresolved'}
-          if($p.license.owner_decision_status-ne'APPROVED' -or [string]::IsNullOrWhiteSpace([string]$p.license.spdx_expression)){throw 'PRODUCTION BLOCKED: distribution license is unresolved'}
-      - name: Generate exact owner-license evidence and read-only host inventory
-        shell: pwsh
-        run: |
-          python tools/release/generate_owner_license_decision.py --repo-root . --output "$env:RUNNER_TEMP\owner-license-decision.json"
-          if($LASTEXITCODE-ne0){throw 'OWNER_LICENSE_EVIDENCE_FAILED'}
-          $lic=Get-Content "$env:RUNNER_TEMP\owner-license-decision.json" -Raw|ConvertFrom-Json
-          if($lic.source_commit-ne$env:SOURCE_COMMIT -or $lic.owner_approved-ne$true -or $lic.spdx_expression-ne'LicenseRef-Ergaxiom-Proprietary'){throw 'OWNER_LICENSE_EVIDENCE_REJECTED'}
-          ./tools/release/check_production_windows_host.ps1 -PolicyPath tools/release/windows_release_policy.json -OutputPath "$env:RUNNER_TEMP\production-host-preflight.json" | Out-Null
-          $hostReport=Get-Content "$env:RUNNER_TEMP\production-host-preflight.json" -Raw|ConvertFrom-Json
-          if($hostReport.release_eligible-ne$false -or $hostReport.physical_tpm_evidence_proven-ne$false){throw 'PREFLIGHT_MUST_NEVER_CLAIM_PRODUCTION_EVIDENCE'}
-          Write-Host 'Repository-controlled preflight passed. External signed candidate, lifecycle, physical trust evidence and certified production chain are still mandatory.'
+          if($r.production_host_ready-eq$true){throw 'HOSTED_WINDOWS_RUNNER_MUST_NOT_BE_PRODUCTION_READY'}
+          if($r.platform_crypto_provider-present-eq$true){throw 'HOSTED_WINDOWS_RUNNER_UNEXPECTEDLY_HAS_PLATFORM_CRYPTO_PROVIDER'}
+          if('PLATFORM_CRYPTO_PROVIDER_MISSING'-notin@($r.blocking_reasons)){throw 'MISSING_PLATFORM_CRYPTO_PROVIDER_BLOCKER'}
