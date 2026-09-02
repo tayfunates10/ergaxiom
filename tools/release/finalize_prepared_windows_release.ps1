@@ -27,6 +27,14 @@ $ErrorActionPreference='Stop'; Set-StrictMode -Version Latest
 $repoRoot=[IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..'))
 Push-Location $repoRoot
 try {
+  # Defense in depth for Stage B. These environment markers are not themselves
+  # hardware attestation and therefore can never satisfy the hardware-origin
+  # requirement below; they only prevent accidental local finalization.
+  if($env:GITHUB_ACTIONS-cne'true'){throw 'PROTECTED_ENVIRONMENT_REQUIRED: Stage B must run in GitHub Actions'}
+  if($env:GITHUB_REPOSITORY-cne'tayfunates10/ergaxiom'){throw 'PROTECTED_ENVIRONMENT_REPOSITORY_MISMATCH'}
+  if($env:GITHUB_REF_PROTECTED-cne'true'){throw 'PROTECTED_REF_REQUIRED'}
+  if($env:ERGAXIOM_PRODUCTION_ENVIRONMENT-cne'controlled-windows-production'){throw 'CONTROLLED_PRODUCTION_ENVIRONMENT_MARKER_REQUIRED'}
+
   $prepared=[IO.Path]::GetFullPath($PreparedReleaseDirectory)
   $baseManifestPath=Join-Path $prepared 'base\ergaxiom-release-manifest.json'
   $handoffPath=Join-Path $prepared 'signed-candidate-handoff.json'
@@ -38,6 +46,7 @@ try {
   $handoff=Get-Content $handoffPath -Raw|ConvertFrom-Json -Depth 32
   $sourceCommit=(& git rev-parse HEAD).Trim()
   if($LASTEXITCODE-ne0 -or $manifest.source.commit-ne$sourceCommit -or $handoff.source_commit-ne$sourceCommit){throw 'PREPARED_SOURCE_COMMIT_MISMATCH'}
+  if($env:GITHUB_SHA-cne$sourceCommit){throw 'PROTECTED_ENVIRONMENT_SOURCE_COMMIT_MISMATCH'}
   if((& git status --porcelain --untracked-files=no)){throw 'TRACKED_WORKTREE_NOT_CLEAN'}
   if($handoff.status-ne'SIGNED_CANDIDATE_NOT_RELEASED' -or $handoff.release_eligible-ne$false){throw 'PREPARED_HANDOFF_STATE_REJECTED'}
 
@@ -71,6 +80,10 @@ try {
   & (Join-Path $PSScriptRoot 'verify_windows_signatures.ps1') -Mode production -PolicyPath $policyPath -Artifact @($actualFiles.FullName) -EvidenceOut $signatureEvidence
   if($LASTEXITCODE-ne0){throw 'PREPARED_SIGNATURE_REVERIFY_FAILED'}
 
+  # IMPORTANT: controlled_trust_gate.py currently proves structural consistency
+  # of the six evidence files. It does NOT cryptographically prove that the
+  # provisioned private keys are TPM-resident/non-exportable. Do not promote
+  # this result to release eligibility by itself.
   $hardwareSummary=Join-Path $out 'controlled-trust-gate.json'
   & python tools/windows/controlled_trust_gate.py verify `
     --physical (Resolve-Path $PhysicalTpmPromotionEvidence).Path `
@@ -126,7 +139,15 @@ try {
     --output $final
   if($LASTEXITCODE-ne0){throw 'FINAL_RELEASE_EVIDENCE_FAILED'}
   $decision=Get-Content $final -Raw|ConvertFrom-Json -Depth 32
-  if($decision.release_eligible-ne$true){throw "PRODUCTION_RELEASE_INELIGIBLE: $(@($decision.blocking_reasons)-join',')"}
-  Write-Host "Prepared candidate finalized as production-eligible for exact source $sourceCommit."
+
+  # G-01 hard stop: until Ergaxiom validates vendor-rooted TPM key attestation
+  # (for example EK/AK chain + TPM2_Certify binding for the production keys),
+  # a structurally valid evidence bundle must never become a shippable release.
+  # This intentionally keeps production fail-closed even when the local
+  # structural finalizer calculates release_eligible=true.
+  if($decision.release_eligible-eq$true){
+    throw 'TPM_KEY_ATTESTATION_NOT_VERIFIED: structural evidence is insufficient for hardware-origin assurance'
+  }
+  throw "PRODUCTION_RELEASE_INELIGIBLE: $(@($decision.blocking_reasons)-join',')"
 }
 finally{Pop-Location}
