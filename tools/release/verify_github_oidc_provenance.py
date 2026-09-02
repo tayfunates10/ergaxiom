@@ -20,7 +20,7 @@ from typing import Any
 
 ISSUER = "https://token.actions.githubusercontent.com"
 DISCOVERY_URL = f"{ISSUER}/.well-known/openid-configuration"
-JWKS_URL = f"{ISSUER}/.well-known/jwks"
+JWKS_URL = "https://token.actions.githubusercontent.com/.well-known/jwks"
 AUDIENCE = "ergaxiom-stage-b"
 REPOSITORY = "tayfunates10/ergaxiom"
 ENVIRONMENT = "controlled-windows-production"
