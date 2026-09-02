@@ -116,7 +116,9 @@ describe('Product Alpha renderer trust boundary', () => {
   });
 
   it('keeps an unconditional authoritative reload path for stale state digests', () => {
-    expect(appSource).toContain("includes('STATE_DIGEST_MISMATCH')");
+    expect(appSource).toContain("includes('state_digest_mismatch')");
+    expect(appSource).toContain("includes('stale product job snapshot')");
+    expect(appSource).toContain("includes('renderer supplied a stale state digest')");
     expect(appSource).toContain("reloadJobs('Kayıt backend’den güncellendi; işlemi yeniden deneyin.')");
     expect(appSource).toContain('disabled={busy} onClick={() => void refreshFromBackend()}');
     expect(appSource).toContain("'Yeniden oku'");
