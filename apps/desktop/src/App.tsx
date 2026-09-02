@@ -10,11 +10,13 @@ import {
   approveProductJob,
   cancelProductJob,
   createProductJob,
+  draftStaticSocialPostWithNvidia,
   importProductJobInput,
   listProductJobs,
   prepareProductJob,
   startProductJobExecution,
   syncProductJobFromProduction,
+  type NvidiaAssistResponse,
 } from './api';
 import {
   JOB_LABELS,
@@ -83,6 +85,7 @@ export default function App() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [jobKind, setJobKind] = useState<GraphicDesignerJobKind>('static_social_post');
   const [requestText, setRequestText] = useState('');
+  const [nvidiaDraft, setNvidiaDraft] = useState<NvidiaAssistResponse | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -134,6 +137,31 @@ export default function App() {
     }
   }
 
+  async function analyzeWithNvidia(): Promise<void> {
+    const trimmed = requestText.trim();
+    if (!trimmed) {
+      setError('NVIDIA analizi için iş açıklaması boş bırakılamaz.');
+      return;
+    }
+    if (jobKind !== 'static_social_post') {
+      setError('NVIDIA intent yardımcısı şu anda yalnız Static Social Post için etkin.');
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    setNotice(null);
+    try {
+      const draft = await draftStaticSocialPostWithNvidia({ original_text: trimmed });
+      setNvidiaDraft(draft);
+      setNotice('NVIDIA taslağı alındı. Sonuç yalnız danışman niteliğindedir; proof-critical alanlar backend tarafından çözülmeden kabul edilmez.');
+    } catch (reason) {
+      setNvidiaDraft(null);
+      setError(errorMessage(reason));
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function submitNewJob(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
     const trimmed = requestText.trim();
@@ -146,6 +174,7 @@ export default function App() {
       'Persistent kullanıcı işi backend tarafından oluşturuldu.',
     );
     setRequestText('');
+    setNvidiaDraft(null);
   }
 
   async function importFile(role: string, event: ChangeEvent<HTMLInputElement>): Promise<void> {
@@ -205,7 +234,13 @@ export default function App() {
           <form className="create-form" onSubmit={(event) => void submitNewJob(event)}>
             <label>
               Certified job
-              <select value={jobKind} onChange={(event) => setJobKind(event.target.value as GraphicDesignerJobKind)}>
+              <select
+                value={jobKind}
+                onChange={(event) => {
+                  setJobKind(event.target.value as GraphicDesignerJobKind);
+                  setNvidiaDraft(null);
+                }}
+              >
                 {JOB_KINDS.map((kind) => <option key={kind} value={kind}>{JOB_LABELS[kind]}</option>)}
               </select>
             </label>
@@ -213,18 +248,48 @@ export default function App() {
               Kullanıcı isteği
               <textarea
                 maxLength={16_384}
-                onChange={(event) => setRequestText(event.target.value)}
+                onChange={(event) => {
+                  setRequestText(event.target.value);
+                  setNvidiaDraft(null);
+                }}
                 placeholder="Yapılacak gerçek işi açıklayın…"
                 rows={4}
                 value={requestText}
               />
             </label>
+            <button
+              className="secondary"
+              disabled={busy || requestText.trim().length === 0 || jobKind !== 'static_social_post'}
+              onClick={() => void analyzeWithNvidia()}
+              type="button"
+            >
+              NVIDIA ile güvenli analiz
+            </button>
             <button disabled={busy || requestText.trim().length === 0} type="submit">Persistent iş oluştur</button>
+            <p className="muted">NVIDIA yalnız dil ve görsel ton önerisi üretir. Dosya kimliği, hash, ölçü, onay, evidence veya certificate üretemez.</p>
           </form>
         </section>
 
         {error ? <div className="message error-message" role="alert">{error}</div> : null}
         {notice ? <div className="message" role="status">{notice}</div> : null}
+
+        {nvidiaDraft ? (
+          <section className="section-card" aria-labelledby="nvidia-heading">
+            <div className="section-heading">
+              <div>
+                <p className="eyebrow">NVIDIA / Untrusted advisory</p>
+                <h2 id="nvidia-heading">Guarded intent taslağı</h2>
+              </div>
+              <span>{nvidiaDraft.draft_provenance.model ?? 'model bildirimi yok'}</span>
+            </div>
+            <p className="muted">Bu panel acceptance kanıtı değildir. Eksik zorunlu alanlar deterministic compiler tarafından çözüm bekleyen UNKNOWN olarak kalır.</p>
+            <div className="json-grid">
+              <JsonPanel title="Guarded intent" value={nvidiaDraft.guarded_intent} />
+              <JsonPanel title="Compiler outcome" value={nvidiaDraft.compile_outcome} />
+              <JsonPanel title="NVIDIA provenance" value={nvidiaDraft.draft_provenance} />
+            </div>
+          </section>
+        ) : null}
 
         {!selected ? (
           <section className="empty-state"><h2>Bir iş oluşturun veya geçmişten seçin.</h2></section>
