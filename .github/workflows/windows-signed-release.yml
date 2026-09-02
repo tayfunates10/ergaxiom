@@ -232,6 +232,8 @@ jobs:
           $r=Get-Content "$env:RUNNER_TEMP\host-preflight-selftest.json" -Raw | ConvertFrom-Json
           if($r.platform_windows-ne$true){throw 'PREFLIGHT_DID_NOT_SEE_WINDOWS'}
           if($r.source_commit-ne$env:SOURCE_COMMIT){throw 'PREFLIGHT_SOURCE_COMMIT_MISMATCH'}
-          if($r.production_host_ready-eq$true){throw 'HOSTED_WINDOWS_RUNNER_MUST_NOT_BE_PRODUCTION_READY'}
-          if($r.platform_crypto_provider-present-eq$true){throw 'HOSTED_WINDOWS_RUNNER_UNEXPECTEDLY_HAS_PLATFORM_CRYPTO_PROVIDER'}
-          if('PLATFORM_CRYPTO_PROVIDER_MISSING'-notin@($r.blocking_reasons)){throw 'MISSING_PLATFORM_CRYPTO_PROVIDER_BLOCKER'}
+          if($r.microsoft_platform_crypto_provider_present-ne$r.microsoft_platform_crypto_provider.present){throw 'PROVIDER_SUMMARY_DISAGREES_WITH_DETECTION_DETAIL'}
+          if($r.microsoft_platform_crypto_provider_present-ne$false){throw 'HOSTED_WINDOWS_RUNNER_UNEXPECTEDLY_HAS_PLATFORM_CRYPTO_PROVIDER'}
+          if($r.ready_for_signed_candidate_prepare-ne$false){throw 'HOSTED_RUNNER_MUST_NEVER_BE_PREPARE_READY'}
+          if($r.ready_for_controlled_hardware_ceremony-ne$false){throw 'HOSTED_RUNNER_MUST_NEVER_BE_HARDWARE_CEREMONY_READY'}
+          if($r.physical_tpm_evidence_proven-ne$false -or $r.release_eligible-ne$false){throw 'PREFLIGHT_MUST_NEVER_CLAIM_PRODUCTION_EVIDENCE'}
