@@ -6,6 +6,7 @@ from __future__ import annotations
 import base64
 import hashlib
 import importlib.util
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -39,6 +40,46 @@ def ecc_public_area(x: bytes, y: bytes, attrs: int) -> bytes:
     )
 
 
+def certify_attestation(role: str, digest: str, object_name: bytes) -> bytes:
+    extra = hashlib.sha256(
+        b"ergaxiom.tpm-key-certify.v1\0" + role.encode("ascii") + bytes.fromhex(digest)
+    ).digest()
+    return b"".join(
+        [
+            mod.TPM_GENERATED_VALUE.to_bytes(4, "big"),
+            mod.TPM_ST_ATTEST_CERTIFY.to_bytes(2, "big"),
+            b"\x00\x00",  # qualifiedSigner
+            len(extra).to_bytes(2, "big"),
+            extra,
+            b"\x00" * 17,  # clockInfo
+            b"\x00" * 8,  # firmwareVersion
+            len(object_name).to_bytes(2, "big"),
+            object_name,
+            b"\x00\x00",  # qualifiedName
+        ]
+    )
+
+
+def der_ecdsa_to_p1363(signature: bytes) -> bytes:
+    if len(signature) < 8 or signature[0] != 0x30:
+        raise AssertionError("unexpected DER ECDSA signature")
+    offset = 2
+    if signature[offset] != 0x02:
+        raise AssertionError("missing DER r")
+    r_len = signature[offset + 1]
+    r = signature[offset + 2:offset + 2 + r_len]
+    offset += 2 + r_len
+    if signature[offset] != 0x02:
+        raise AssertionError("missing DER s")
+    s_len = signature[offset + 1]
+    s = signature[offset + 2:offset + 2 + s_len]
+    r = r.lstrip(b"\x00").rjust(32, b"\x00")
+    s = s.lstrip(b"\x00").rjust(32, b"\x00")
+    if len(r) != 32 or len(s) != 32:
+        raise AssertionError("unexpected P-256 ECDSA integer size")
+    return r + s
+
+
 class TpmKeyAttestationFailClosedTests(unittest.TestCase):
     def test_repository_policy_is_unconfigured_and_fail_closed(self) -> None:
         policy = mod.load_pinned_policy()
@@ -60,6 +101,18 @@ class TpmKeyAttestationFailClosedTests(unittest.TestCase):
         policy = mod.load_pinned_policy()
         with self.assertRaisesRegex(mod.AttestationError, "SOFTWARE_GENERATED_KEY_FORBIDDEN"):
             mod.verify_role("capability", {"key_origin": "software", "public_key_digest": "0" * 64}, "0" * 64, b"", policy)
+
+    def test_uploaded_forge_shape_cannot_self_assert_hardware_origin(self) -> None:
+        policy = mod.load_pinned_policy()
+        forged = {
+            "key_origin": "software",
+            "public_key_digest": "a" * 64,
+            "tpm_public_area_base64url": b64u(b"software-p256-is-not-a-tpm-public-area"),
+            "certify_attestation_base64url": b64u(b"self-consistent-local-claim"),
+            "certify_signature_p1363_base64url": b64u(b"\x01" * 64),
+        }
+        with self.assertRaisesRegex(mod.AttestationError, "SOFTWARE_GENERATED_KEY_FORBIDDEN"):
+            mod.verify_role("capability", forged, "a" * 64, b"", policy)
 
     def test_wrong_public_key_digest_fails_closed(self) -> None:
         policy = mod.load_pinned_policy()
@@ -117,6 +170,46 @@ class TpmKeyAttestationFailClosedTests(unittest.TestCase):
     def test_mutated_certify_signature_shape_is_rejected(self) -> None:
         with self.assertRaisesRegex(mod.AttestationError, "TPM_CERTIFY_SIGNATURE_LENGTH_REJECTED"):
             mod._p1363_to_der(b"\x01" * 63)
+
+    def test_cryptographically_mutated_certify_signature_is_rejected(self) -> None:
+        policy = mod.load_pinned_policy()
+        attrs = mod.ATTR_FIXED_TPM | mod.ATTR_FIXED_PARENT | mod.ATTR_SENSITIVE_DATA_ORIGIN | mod.ATTR_SIGN_ENCRYPT
+        x = b"\x77" * 32
+        y = b"\x88" * 32
+        area = ecc_public_area(x, y, attrs)
+        digest = hashlib.sha256(b"\x04" + x + y).hexdigest()
+        _, _, object_name = mod.parse_ecc_public_area(area)
+        attest = certify_attestation("capability", digest, object_name)
+
+        with tempfile.TemporaryDirectory() as temp:
+            base = Path(temp)
+            key = base / "ak.key.pem"
+            pub = base / "ak.pub.pem"
+            msg = base / "attest.bin"
+            sig = base / "sig.der"
+            mod._run_openssl(["ecparam", "-name", "prime256v1", "-genkey", "-noout", "-out", str(key)])
+            mod._run_openssl(["pkey", "-in", str(key), "-pubout", "-out", str(pub)])
+            msg.write_bytes(attest)
+            mod._run_openssl(["dgst", "-sha256", "-sign", str(key), "-out", str(sig), str(msg)])
+            p1363 = bytearray(der_ecdsa_to_p1363(sig.read_bytes()))
+            p1363[-1] ^= 0x01
+            item = {
+                "key_origin": "tpm",
+                "public_key_digest": digest,
+                "tpm_public_area_base64url": b64u(area),
+                "certify_attestation_base64url": b64u(attest),
+                "certify_signature_p1363_base64url": b64u(bytes(p1363)),
+            }
+            with self.assertRaisesRegex(mod.AttestationError, "TPM_ATTESTATION_CRYPTOGRAPHIC_VERIFICATION_FAILED"):
+                mod.verify_role("capability", item, digest, pub.read_bytes(), policy)
+
+    def test_forged_ak_certificate_chain_is_rejected_cryptographically(self) -> None:
+        forged_cert = "-----BEGIN CERTIFICATE-----\nZm9yZ2Vk\n-----END CERTIFICATE-----\n"
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp) / "root.pem"
+            root.write_text(forged_cert, encoding="ascii")
+            with self.assertRaisesRegex(mod.AttestationError, "TPM_ATTESTATION_CRYPTOGRAPHIC_VERIFICATION_FAILED"):
+                mod.verify_cert_chain([forged_cert], [root])
 
     def test_truncated_public_area_is_rejected(self) -> None:
         with self.assertRaisesRegex(mod.AttestationError, "TPM_STRUCTURE_TRUNCATED"):
