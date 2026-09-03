@@ -1,7 +1,10 @@
 import base64
 import hashlib
 import json
+import os
 import unittest
+from pathlib import Path
+from unittest import mock
 
 from tools.release import verify_github_oidc_provenance as oidc
 
@@ -12,6 +15,7 @@ KID = "offline-fixture"
 NOW = 2_000_000_000
 SHA = "a" * 40
 REF = "refs/heads/claude/ergaxiom-windows-production-release-bq2z43"
+WORKFLOW = Path(__file__).parents[2] / ".github" / "workflows" / "controlled-windows-trust.yml"
 
 
 def b64(value: bytes) -> str:
@@ -105,6 +109,20 @@ class GithubOidcProvenanceTests(unittest.TestCase):
         self.assertNotIn("--issuer", source)
         self.assertIn("ACTIONS_ID_TOKEN_REQUEST_URL", source)
         self.assertIn(oidc.JWKS_URL, source)
+
+    def test_missing_oidc_request_capability_fails_closed_before_network(self) -> None:
+        with mock.patch.dict(os.environ, {}, clear=True):
+            with self.assertRaisesRegex(oidc.OidcVerificationError, "request capability is unavailable"):
+                oidc.request_token()
+
+    def test_oidc_minting_permission_is_scoped_to_controlled_hardware_job(self) -> None:
+        workflow = WORKFLOW.read_text(encoding="utf-8")
+        self.assertEqual(workflow.count("id-token: write"), 1)
+        controlled_job = workflow.split("  controlled-hardware-ceremony:\n", 1)[1]
+        self.assertIn("    environment: controlled-windows-production\n", controlled_job)
+        self.assertIn("    permissions:\n      contents: read\n      id-token: write\n", controlled_job)
+        prefix = workflow.split("  controlled-hardware-ceremony:\n", 1)[0]
+        self.assertNotIn("id-token: write", prefix)
 
 
 if __name__ == "__main__":
