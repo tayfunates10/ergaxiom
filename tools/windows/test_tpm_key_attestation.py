@@ -134,7 +134,7 @@ class TpmKeyAttestationFailClosedTests(unittest.TestCase):
 
     def test_required_non_exportable_tpm_attributes_are_enforced(self) -> None:
         policy = mod.load_pinned_policy()
-        attrs = mod.ATTR_SIGN_ENCRYPT  # deliberately omits fixedTPM/fixedParent/sensitiveDataOrigin
+        attrs = mod.ATTR_SIGN_ENCRYPT
         x = b"\x55" * 32
         y = b"\x66" * 32
         area = ecc_public_area(x, y, attrs)
@@ -156,12 +156,12 @@ class TpmKeyAttestationFailClosedTests(unittest.TestCase):
             [
                 mod.TPM_GENERATED_VALUE.to_bytes(4, "big"),
                 mod.TPM_ST_ATTEST_CERTIFY.to_bytes(2, "big"),
-                b"\x00\x00",  # qualifiedSigner
-                b"\x00\x00",  # extraData
-                b"\x00" * 25,  # clockInfo + firmwareVersion
-                b"\x00\x00",  # certified name
-                b"\x00\x00",  # qualified name
-                b"\xff",       # forbidden trailing mutation
+                b"\x00\x00",
+                b"\x00\x00",
+                b"\x00" * 25,
+                b"\x00\x00",
+                b"\x00\x00",
+                b"\xff",
             ]
         )
         with self.assertRaisesRegex(mod.AttestationError, "TPM_CERTIFY_ATTESTATION_TRAILING_DATA"):
@@ -210,6 +210,23 @@ class TpmKeyAttestationFailClosedTests(unittest.TestCase):
             root.write_text(forged_cert, encoding="ascii")
             with self.assertRaisesRegex(mod.AttestationError, "TPM_ATTESTATION_CRYPTOGRAPHIC_VERIFICATION_FAILED"):
                 mod.verify_cert_chain([forged_cert], [root])
+
+    def test_missing_ek_ak_same_tpm_binding_fails_closed(self) -> None:
+        with self.assertRaisesRegex(mod.AttestationError, "TPM_EK_AK_BINDING_REQUIRED"):
+            mod.verify_ek_ak_binding({}, b"ek-public-key", b"ak-public-key")
+
+    def test_forged_ek_ak_same_tpm_binding_cannot_self_assert_success(self) -> None:
+        forged = {
+            "ek_ak_binding": {
+                "verified": False,
+                "type": "self-asserted",
+                "ek_public_key_digest": hashlib.sha256(b"ek-public-key").hexdigest(),
+                "ak_public_key_digest": hashlib.sha256(b"ak-public-key").hexdigest(),
+                "transcript": b64u(b"forged-local-binding"),
+            }
+        }
+        with self.assertRaisesRegex(mod.AttestationError, "TPM_EK_AK_BINDING_NOT_VERIFIED"):
+            mod.verify_ek_ak_binding(forged, b"ek-public-key", b"ak-public-key")
 
     def test_truncated_public_area_is_rejected(self) -> None:
         with self.assertRaisesRegex(mod.AttestationError, "TPM_STRUCTURE_TRUNCATED"):
