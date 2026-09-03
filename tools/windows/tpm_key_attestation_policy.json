@@ -1,0 +1,36 @@
+{
+  "schema_version": "0.1.0",
+  "policy_id": "ergaxiom.windows-production-tpm-key-attestation.v1",
+  "status": "UNCONFIGURED_FAIL_CLOSED",
+  "trust_model": {
+    "caller_supplied_trust_roots_allowed": false,
+    "self_asserted_verification_flags_allowed": false,
+    "manufacturer_root_sha256_allowlist": [],
+    "require_ek_certificate_chain": true,
+    "require_ak_certified_by_ek_identity": true,
+    "require_tpm_key_certification": true
+  },
+  "key_certification": {
+    "required_roles": [
+      "capability",
+      "attestation"
+    ],
+    "required_name_algorithm": "sha256",
+    "required_signature_hash": "sha256",
+    "required_public_key_digest_algorithm": "sha256",
+    "require_fixed_tpm": true,
+    "require_fixed_parent": true,
+    "require_sensitive_data_origin": true,
+    "require_restricted": false,
+    "require_sign_encrypt": true,
+    "forbid_exportable_private_material": true
+  },
+  "acceptance": {
+    "software_generated_p256_allowed": false,
+    "untrusted_or_unknown_manufacturer_allowed": false,
+    "missing_ek_or_ak_chain_allowed": false,
+    "missing_or_unverified_certify_signature_allowed": false,
+    "public_key_digest_mismatch_allowed": false
+  },
+  "blocking_reason": "TPM_MANUFACTURER_TRUST_ROOTS_NOT_PINNED"
+}
