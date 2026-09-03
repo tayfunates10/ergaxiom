@@ -260,6 +260,20 @@ def provisioning_digest(path: Path, role: str) -> str:
     return digest
 
 
+def verify_ek_ak_binding(bundle: dict[str, Any], ek_public_key_pem: bytes, ak_public_key_pem: bytes) -> None:
+    """Require a cryptographic EK->AK same-TPM proof before any production acceptance.
+
+    Independent validation of an EK certificate chain and an AK certificate chain does not
+    establish that the AK belongs to the same physical TPM as the EK. The repository does
+    not yet define a manufacturer-grounded credential-activation/certification transcript,
+    so this boundary intentionally has no permissive fallback.
+    """
+    binding = bundle.get("ek_ak_binding")
+    if not isinstance(binding, dict):
+        raise AttestationError("TPM_EK_AK_BINDING_REQUIRED")
+    raise AttestationError("TPM_EK_AK_BINDING_NOT_VERIFIED")
+
+
 def verify(bundle: dict[str, Any], capability_path: Path, attestation_path: Path) -> dict[str, Any]:
     reject_untrusted_claims(bundle)
     policy = load_pinned_policy()
@@ -276,8 +290,9 @@ def verify(bundle: dict[str, Any], capability_path: Path, attestation_path: Path
     if not isinstance(roles, dict):
         raise AttestationError("TPM_KEY_ATTESTATION_ROLES_REQUIRED")
 
-    verify_cert_chain(ek_chain, roots)
+    ek_public_key_pem = verify_cert_chain(ek_chain, roots)
     ak_public_key_pem = verify_cert_chain(ak_chain, roots)
+    verify_ek_ak_binding(bundle, ek_public_key_pem, ak_public_key_pem)
     expected = {
         "capability": provisioning_digest(capability_path, "capability"),
         "attestation": provisioning_digest(attestation_path, "attestation"),
