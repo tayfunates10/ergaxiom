@@ -3,6 +3,8 @@
 
 from __future__ import annotations
 
+import base64
+import hashlib
 import importlib.util
 import unittest
 from pathlib import Path
@@ -12,6 +14,29 @@ SPEC = importlib.util.spec_from_file_location("verify_tpm_key_attestation", MODU
 assert SPEC and SPEC.loader
 mod = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(mod)
+
+
+def b64u(value: bytes) -> str:
+    return base64.urlsafe_b64encode(value).rstrip(b"=").decode("ascii")
+
+
+def ecc_public_area(x: bytes, y: bytes, attrs: int) -> bytes:
+    return b"".join(
+        [
+            mod.TPM_ALG_ECC.to_bytes(2, "big"),
+            mod.TPM_ALG_SHA256.to_bytes(2, "big"),
+            attrs.to_bytes(4, "big"),
+            b"\x00\x00",  # authPolicy
+            mod.TPM_ALG_NULL.to_bytes(2, "big"),  # symmetric
+            mod.TPM_ALG_NULL.to_bytes(2, "big"),  # scheme
+            b"\x00\x03",  # curveID: NIST P-256
+            mod.TPM_ALG_NULL.to_bytes(2, "big"),  # kdf
+            len(x).to_bytes(2, "big"),
+            x,
+            len(y).to_bytes(2, "big"),
+            y,
+        ]
+    )
 
 
 class TpmKeyAttestationFailClosedTests(unittest.TestCase):
@@ -41,9 +66,57 @@ class TpmKeyAttestationFailClosedTests(unittest.TestCase):
         with self.assertRaisesRegex(mod.AttestationError, "PUBLIC_KEY_DIGEST_MISMATCH"):
             mod.verify_role("attestation", {"key_origin": "tpm", "public_key_digest": "1" * 64}, "2" * 64, b"", policy)
 
+    def test_tpm_public_area_must_match_provisioned_key_digest(self) -> None:
+        policy = mod.load_pinned_policy()
+        attrs = mod.ATTR_FIXED_TPM | mod.ATTR_FIXED_PARENT | mod.ATTR_SENSITIVE_DATA_ORIGIN | mod.ATTR_SIGN_ENCRYPT
+        area = ecc_public_area(b"\x11" * 32, b"\x22" * 32, attrs)
+        claimed_digest = hashlib.sha256(b"\x04" + b"\x33" * 32 + b"\x44" * 32).hexdigest()
+        item = {
+            "key_origin": "tpm",
+            "public_key_digest": claimed_digest,
+            "tpm_public_area_base64url": b64u(area),
+        }
+        with self.assertRaisesRegex(mod.AttestationError, "TPM_PUBLIC_KEY_DIGEST_MISMATCH"):
+            mod.verify_role("capability", item, claimed_digest, b"", policy)
+
+    def test_required_non_exportable_tpm_attributes_are_enforced(self) -> None:
+        policy = mod.load_pinned_policy()
+        attrs = mod.ATTR_SIGN_ENCRYPT  # deliberately omits fixedTPM/fixedParent/sensitiveDataOrigin
+        x = b"\x55" * 32
+        y = b"\x66" * 32
+        area = ecc_public_area(x, y, attrs)
+        digest = hashlib.sha256(b"\x04" + x + y).hexdigest()
+        item = {
+            "key_origin": "tpm",
+            "public_key_digest": digest,
+            "tpm_public_area_base64url": b64u(area),
+        }
+        with self.assertRaisesRegex(mod.AttestationError, "TPM_OBJECT_ATTRIBUTES_REJECTED"):
+            mod.verify_role("attestation", item, digest, b"", policy)
+
     def test_mutated_certify_header_is_rejected(self) -> None:
         with self.assertRaisesRegex(mod.AttestationError, "TPM_CERTIFY_ATTESTATION_HEADER_REJECTED"):
             mod.parse_certify_attestation(b"\x00\x00\x00\x00\x80\x17")
+
+    def test_certify_trailing_data_is_rejected(self) -> None:
+        attest = b"".join(
+            [
+                mod.TPM_GENERATED_VALUE.to_bytes(4, "big"),
+                mod.TPM_ST_ATTEST_CERTIFY.to_bytes(2, "big"),
+                b"\x00\x00",  # qualifiedSigner
+                b"\x00\x00",  # extraData
+                b"\x00" * 25,  # clockInfo + firmwareVersion
+                b"\x00\x00",  # certified name
+                b"\x00\x00",  # qualified name
+                b"\xff",       # forbidden trailing mutation
+            ]
+        )
+        with self.assertRaisesRegex(mod.AttestationError, "TPM_CERTIFY_ATTESTATION_TRAILING_DATA"):
+            mod.parse_certify_attestation(attest)
+
+    def test_mutated_certify_signature_shape_is_rejected(self) -> None:
+        with self.assertRaisesRegex(mod.AttestationError, "TPM_CERTIFY_SIGNATURE_LENGTH_REJECTED"):
+            mod._p1363_to_der(b"\x01" * 63)
 
     def test_truncated_public_area_is_rejected(self) -> None:
         with self.assertRaisesRegex(mod.AttestationError, "TPM_STRUCTURE_TRUNCATED"):
