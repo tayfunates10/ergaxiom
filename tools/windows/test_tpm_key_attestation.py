@@ -217,7 +217,7 @@ class TpmKeyAttestationFailClosedTests(unittest.TestCase):
                 "transcript": b64u(b"forged-local-binding"),
             }
         }
-        with self.assertRaisesRegex(mod.AttestationError, "TPM_EK_AK_BINDING_NOT_VERIFIED"):
+        with self.assertRaisesRegex(mod.AttestationError, "TPM_EK_AK_BINDING_TYPE_REJECTED"):
             mod.verify_ek_ak_binding(forged, b"ek-public-key", b"ak-public-key")
 
     def test_unsupported_ek_ak_binding_type_is_rejected(self) -> None:
