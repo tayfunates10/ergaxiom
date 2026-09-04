@@ -70,6 +70,8 @@ jobs:
           -p ergaxiom-windows-production-signer-provisioning-runtime
           -p ergaxiom-windows-production-signer-service-runtime
           -p ergaxiom-windows-production-trust-state-runtime
+      - name: Run TPM key-attestation fail-closed regressions
+        run: python tools/windows/test_tpm_key_attestation.py
       - name: Assert hosted runner is not physical TPM evidence
         if: runner.os == 'Windows'
         shell: pwsh

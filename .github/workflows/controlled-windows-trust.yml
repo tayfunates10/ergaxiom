@@ -169,6 +169,9 @@ jobs:
     if: github.event_name == 'workflow_dispatch' && inputs.run_controlled_hardware
     runs-on: [self-hosted, windows, x64, ergaxiom-controlled-tpm]
     environment: controlled-windows-production
+    permissions:
+      contents: read
+      id-token: write
     timeout-minutes: 30
     env:
       ERGAXIOM_CONTROLLED_HARDWARE_RUNNER: "1"
