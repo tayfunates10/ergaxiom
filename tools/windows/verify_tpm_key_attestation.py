@@ -264,13 +264,27 @@ def verify_ek_ak_binding(bundle: dict[str, Any], ek_public_key_pem: bytes, ak_pu
     """Require a cryptographic EK->AK same-TPM proof before any production acceptance.
 
     Independent validation of an EK certificate chain and an AK certificate chain does not
-    establish that the AK belongs to the same physical TPM as the EK. The repository does
-    not yet define a manufacturer-grounded credential-activation/certification transcript,
-    so this boundary intentionally has no permissive fallback.
+    establish that the AK belongs to the same physical TPM as the EK. Only the reserved
+    TPM2 ActivateCredential contract is structurally recognized here, and even a correctly
+    shaped claim remains rejected until a repository-grounded transcript verifier exists.
     """
     binding = bundle.get("ek_ak_binding")
     if not isinstance(binding, dict):
         raise AttestationError("TPM_EK_AK_BINDING_REQUIRED")
+
+    # Define the narrow future evidence identity contract without treating it as proof.
+    # These digests bind a future credential-activation transcript to the exact EK/AK
+    # certificate public keys already validated against repository-pinned roots.
+    if binding.get("type") != "tpm2_activatecredential_v1":
+        raise AttestationError("TPM_EK_AK_BINDING_NOT_VERIFIED")
+    if binding.get("ek_public_key_digest") != _sha256(ek_public_key_pem):
+        raise AttestationError("TPM_EK_AK_BINDING_NOT_VERIFIED")
+    if binding.get("ak_public_key_digest") != _sha256(ak_public_key_pem):
+        raise AttestationError("TPM_EK_AK_BINDING_NOT_VERIFIED")
+
+    # No permissive fallback: matching identity claims are still not cryptographic
+    # same-TPM evidence. A real TPM2 MakeCredential/ActivateCredential transcript
+    # verifier must land before this boundary may return success.
     raise AttestationError("TPM_EK_AK_BINDING_NOT_VERIFIED")
 
 
