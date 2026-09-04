@@ -276,11 +276,11 @@ def verify_ek_ak_binding(bundle: dict[str, Any], ek_public_key_pem: bytes, ak_pu
     # These digests bind a future credential-activation transcript to the exact EK/AK
     # certificate public keys already validated against repository-pinned roots.
     if binding.get("type") != "tpm2_activatecredential_v1":
-        raise AttestationError("TPM_EK_AK_BINDING_NOT_VERIFIED")
+        raise AttestationError("TPM_EK_AK_BINDING_TYPE_REJECTED")
     if binding.get("ek_public_key_digest") != _sha256(ek_public_key_pem):
-        raise AttestationError("TPM_EK_AK_BINDING_NOT_VERIFIED")
+        raise AttestationError("TPM_EK_AK_BINDING_EK_DIGEST_MISMATCH")
     if binding.get("ak_public_key_digest") != _sha256(ak_public_key_pem):
-        raise AttestationError("TPM_EK_AK_BINDING_NOT_VERIFIED")
+        raise AttestationError("TPM_EK_AK_BINDING_AK_DIGEST_MISMATCH")
 
     # No permissive fallback: matching identity claims are still not cryptographic
     # same-TPM evidence. A real TPM2 MakeCredential/ActivateCredential transcript
