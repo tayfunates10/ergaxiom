@@ -27,11 +27,11 @@ def ecc_public_area(x: bytes, y: bytes, attrs: int) -> bytes:
             mod.TPM_ALG_ECC.to_bytes(2, "big"),
             mod.TPM_ALG_SHA256.to_bytes(2, "big"),
             attrs.to_bytes(4, "big"),
-            b"\x00\x00",  # authPolicy
-            mod.TPM_ALG_NULL.to_bytes(2, "big"),  # symmetric
-            mod.TPM_ALG_NULL.to_bytes(2, "big"),  # scheme
-            b"\x00\x03",  # curveID: NIST P-256
-            mod.TPM_ALG_NULL.to_bytes(2, "big"),  # kdf
+            b"\x00\x00",
+            mod.TPM_ALG_NULL.to_bytes(2, "big"),
+            mod.TPM_ALG_NULL.to_bytes(2, "big"),
+            b"\x00\x03",
+            mod.TPM_ALG_NULL.to_bytes(2, "big"),
             len(x).to_bytes(2, "big"),
             x,
             len(y).to_bytes(2, "big"),
@@ -48,14 +48,14 @@ def certify_attestation(role: str, digest: str, object_name: bytes) -> bytes:
         [
             mod.TPM_GENERATED_VALUE.to_bytes(4, "big"),
             mod.TPM_ST_ATTEST_CERTIFY.to_bytes(2, "big"),
-            b"\x00\x00",  # qualifiedSigner
+            b"\x00\x00",
             len(extra).to_bytes(2, "big"),
             extra,
-            b"\x00" * 17,  # clockInfo
-            b"\x00" * 8,  # firmwareVersion
+            b"\x00" * 17,
+            b"\x00" * 8,
             len(object_name).to_bytes(2, "big"),
             object_name,
-            b"\x00\x00",  # qualifiedName
+            b"\x00\x00",
         ]
     )
 
@@ -152,18 +152,10 @@ class TpmKeyAttestationFailClosedTests(unittest.TestCase):
             mod.parse_certify_attestation(b"\x00\x00\x00\x00\x80\x17")
 
     def test_certify_trailing_data_is_rejected(self) -> None:
-        attest = b"".join(
-            [
-                mod.TPM_GENERATED_VALUE.to_bytes(4, "big"),
-                mod.TPM_ST_ATTEST_CERTIFY.to_bytes(2, "big"),
-                b"\x00\x00",
-                b"\x00\x00",
-                b"\x00" * 25,
-                b"\x00\x00",
-                b"\x00\x00",
-                b"\xff",
-            ]
-        )
+        attest = b"".join([
+            mod.TPM_GENERATED_VALUE.to_bytes(4, "big"), mod.TPM_ST_ATTEST_CERTIFY.to_bytes(2, "big"),
+            b"\x00\x00", b"\x00\x00", b"\x00" * 25, b"\x00\x00", b"\x00\x00", b"\xff",
+        ])
         with self.assertRaisesRegex(mod.AttestationError, "TPM_CERTIFY_ATTESTATION_TRAILING_DATA"):
             mod.parse_certify_attestation(attest)
 
@@ -227,6 +219,52 @@ class TpmKeyAttestationFailClosedTests(unittest.TestCase):
         }
         with self.assertRaisesRegex(mod.AttestationError, "TPM_EK_AK_BINDING_NOT_VERIFIED"):
             mod.verify_ek_ak_binding(forged, b"ek-public-key", b"ak-public-key")
+
+    def test_unsupported_ek_ak_binding_type_is_rejected(self) -> None:
+        binding = {
+            "ek_ak_binding": {
+                "type": "matching-serials-v1",
+                "ek_public_key_digest": hashlib.sha256(b"ek-public-key").hexdigest(),
+                "ak_public_key_digest": hashlib.sha256(b"ak-public-key").hexdigest(),
+            }
+        }
+        with self.assertRaisesRegex(mod.AttestationError, "TPM_EK_AK_BINDING_TYPE_REJECTED"):
+            mod.verify_ek_ak_binding(binding, b"ek-public-key", b"ak-public-key")
+
+    def test_wrong_ek_digest_in_activatecredential_binding_is_rejected(self) -> None:
+        binding = {
+            "ek_ak_binding": {
+                "type": "tpm2_activatecredential_v1",
+                "ek_public_key_digest": "0" * 64,
+                "ak_public_key_digest": hashlib.sha256(b"ak-public-key").hexdigest(),
+            }
+        }
+        with self.assertRaisesRegex(mod.AttestationError, "TPM_EK_AK_BINDING_EK_DIGEST_MISMATCH"):
+            mod.verify_ek_ak_binding(binding, b"ek-public-key", b"ak-public-key")
+
+    def test_wrong_ak_digest_in_activatecredential_binding_is_rejected(self) -> None:
+        binding = {
+            "ek_ak_binding": {
+                "type": "tpm2_activatecredential_v1",
+                "ek_public_key_digest": hashlib.sha256(b"ek-public-key").hexdigest(),
+                "ak_public_key_digest": "0" * 64,
+            }
+        }
+        with self.assertRaisesRegex(mod.AttestationError, "TPM_EK_AK_BINDING_AK_DIGEST_MISMATCH"):
+            mod.verify_ek_ak_binding(binding, b"ek-public-key", b"ak-public-key")
+
+    def test_structurally_valid_activatecredential_claim_still_fails_closed(self) -> None:
+        binding = {
+            "ek_ak_binding": {
+                "type": "tpm2_activatecredential_v1",
+                "ek_public_key_digest": hashlib.sha256(b"ek-public-key").hexdigest(),
+                "ak_public_key_digest": hashlib.sha256(b"ak-public-key").hexdigest(),
+                "credential_blob_base64url": b64u(b"not-verified"),
+                "secret_base64url": b64u(b"not-verified"),
+            }
+        }
+        with self.assertRaisesRegex(mod.AttestationError, "TPM_EK_AK_BINDING_NOT_VERIFIED"):
+            mod.verify_ek_ak_binding(binding, b"ek-public-key", b"ak-public-key")
 
     def test_truncated_public_area_is_rejected(self) -> None:
         with self.assertRaisesRegex(mod.AttestationError, "TPM_STRUCTURE_TRUNCATED"):
